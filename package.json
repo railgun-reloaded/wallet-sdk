@@ -8,7 +8,8 @@
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "tsc --build",
-    "clean": "tsc --build --clean"
+    "clean": "tsc --build --clean",
+    "postinstall": "patch-package"
   },
   "repository": {
     "type": "git",
@@ -24,6 +25,11 @@
   "homepage": "https://github.com/railgun-reloaded/wallet-sdk#readme",
   "devDependencies": {
     "@railgun-reloaded/eslint-config": "^1.1.0",
-    "@railgun-reloaded/tsconfig": "^1.2.0"
+    "@railgun-reloaded/tsconfig": "^1.2.0",
+    "patch-package": "^8.0.1"
+  },
+  "dependencies": {
+    "@reloaded/storage": "https://github.com/railgun-reloaded/storage#chore/kickoff",
+    "scanner": "https://github.com/railgun-reloaded/scanner#v0.0.1"
   }
 }

@@ -1,0 +1,8 @@
+diff --git a/node_modules/scanner/src/index.ts b/node_modules/scanner/src/index.ts
+index d505853..38d1fd4 100644
+--- a/node_modules/scanner/src/index.ts
++++ b/node_modules/scanner/src/index.ts
+@@ -1,2 +1,3 @@
+ export * from './models'
+ export { /* RPCProvider, JSONRPCProvider, */ SubsquidProvider } from './sources'
++export {SourceAggregator} from './sources/source-aggregator'
