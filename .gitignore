@@ -16,3 +16,5 @@ tsconfig.test.tsbuildinfo
 coverage
 *.rgblock
 *.bin.gz
+
+.railgun

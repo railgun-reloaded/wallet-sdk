@@ -4,12 +4,14 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1",
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "tsc --build",
     "clean": "tsc --build --clean",
-    "postinstall": "patch-package"
+    "postinstall": "patch-package && ./postinstall.sh",
+    "pretest": "npm run build",
+    "test": "node --test --enable-source-maps test/*.test.js",
+    "db:generate:chain": "db-generate-chain"
   },
   "repository": {
     "type": "git",
@@ -26,10 +28,12 @@
   "devDependencies": {
     "@railgun-reloaded/eslint-config": "^1.1.0",
     "@railgun-reloaded/tsconfig": "^1.2.0",
+    "@types/brittle": "^3.5.0",
+    "brittle": "^3.19.1",
     "patch-package": "^8.0.1"
   },
   "dependencies": {
     "@reloaded/storage": "https://github.com/railgun-reloaded/storage#chore/kickoff",
-    "scanner": "https://github.com/railgun-reloaded/scanner#v0.0.1"
+    "scanner": "https://github.com/railgun-reloaded/scanner#main"
   }
 }
