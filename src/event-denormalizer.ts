@@ -1,4 +1,4 @@
-import type { Commitment, NewNullifier } from '@reloaded/storage'
+import type { NewCommitment, NewNullifier } from '@reloaded/storage'
 import type { EVMBlock, Transact } from 'scanner'
 import { ActionType } from 'scanner'
 
@@ -9,10 +9,10 @@ import { ActionType } from 'scanner'
  */
 function denormalizeBlockData (block : EVMBlock) : {
   nullifiers: NewNullifier[]
-  commitments: Commitment[]
+  commitments: NewCommitment[]
 } {
   const nullifiers = new Array<NewNullifier>()
-  const commitments = new Array<Commitment>()
+  const commitments = new Array<NewCommitment>()
 
   const blockNumber = block.number
   for (const tx of block.transactions) {
@@ -34,6 +34,13 @@ function denormalizeBlockData (block : EVMBlock) : {
             txid: txHash,
             blockNumber,
             treeId: transact.utxoTreeIn
+          })))
+          commitments.push(...transact.commitments.map((c) => ({
+            txid: txHash,
+            blockNumber,
+            treeId: c.treeNumber,
+            hash: c.hash,
+            leafIndex: BigInt(c.treePosition)
           })))
           break
         }

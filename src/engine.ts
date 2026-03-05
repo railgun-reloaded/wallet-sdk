@@ -1,7 +1,7 @@
 import path from 'path'
 
-import type { ChainDB } from '@reloaded/storage/chain'
-import { createChainDB, getSyncState, insertNullifiersBatch, updateSyncState } from '@reloaded/storage/chain'
+import type { ChainDB, NewCommitment, NewNullifier } from '@reloaded/storage/chain'
+import { createChainDB, getSyncState, insertCommitmentsBatch, insertNullifiersBatch, updateSyncState } from '@reloaded/storage/chain'
 import type { EVMBlock, SourceAggregator } from 'scanner'
 
 import { createChainDBTables } from './db-utils'
@@ -123,32 +123,46 @@ class RailgunEngine {
       startHeight,
     })
 
+    /**
+     * Insert Batched data to the table
+     * @param nullifierBatch - Batched Nullifiers to insert
+     * @param commitmentBatch - Batched Commitments to insert
+     * @param blockNumber - Block number of last batched entry
+     */
+    const insertBatch = (nullifierBatch: NewNullifier[], commitmentBatch: NewCommitment[], blockNumber: bigint) => {
+      // We insert in batch to reduce the cost of updating database
+      const intsertedNullifiers = insertNullifiersBatch(this.#db!, nullifierBatch)
+      const insertedCommitments = insertCommitmentsBatch(this.#db!, commitmentBatch)
+      updateSyncState(this.#db!, this.#networkConfig.chainID, blockNumber)
+      this.#log(`Inserting batch, blockNumber:${blockNumber}, Nullifiers: ${intsertedNullifiers}, Commitments: ${insertedCommitments}`)
+      nullifierBatch = []
+      commitmentBatch = []
+    }
+
     // Batch size, when reached should update the DB
     // This is to reduce the DB load by updating entries in batch
     const batchInsertSize = 100
-    let nullifierBatch = []
+    const nullifierBatch = []
+    const commitmentBatch = []
+
     let totalBlocks = 0
     let lastBlockNumber = 0n
     for await (const block of eventIterator) {
-      const { nullifiers } = denormalizeBlockData(block)
+      const { nullifiers, commitments } = denormalizeBlockData(block)
       nullifierBatch.push(...nullifiers)
+      commitmentBatch.push(...commitments)
       totalBlocks += 1
 
       if (totalBlocks > batchInsertSize) {
-        // We insert in batch to reduce the cost of updating database
-        const intsertedNullifiers = insertNullifiersBatch(this.#db!, nullifierBatch)
-        updateSyncState(this.#db!, this.#networkConfig.chainID, block.number)
-        this.#log(`Inserting batch, blockNumber:${block.number}, Nullifiers: ${intsertedNullifiers}`)
-        nullifierBatch = []
+        insertBatch(nullifierBatch, commitmentBatch, block.number)
         totalBlocks = 0
       }
       lastBlockNumber = block.number
     }
+
     if (totalBlocks > 0) {
-      // We insert in batch to reduce the cost of updating database
-      const insertedNullifiers = insertNullifiersBatch(this.#db!, nullifierBatch)
-      updateSyncState(this.#db!, this.#networkConfig.chainID, lastBlockNumber)
-      this.#log(`Inserting batch, blockNumber:${lastBlockNumber}, Nullifiers: ${insertedNullifiers}`)
+      insertBatch(nullifierBatch, commitmentBatch, lastBlockNumber)
+      totalBlocks = 0
     }
   }
 
