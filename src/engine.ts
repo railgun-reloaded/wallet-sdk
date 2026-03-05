@@ -1,5 +1,6 @@
 import path from 'path'
 
+import { NoteCommitmentTree } from '@railgun-reloaded/note-commitment-indexer'
 import type { ChainDB, NewCommitment, NewNullifier } from '@reloaded/storage/chain'
 import { createChainDB, getSyncState, insertCommitmentsBatch, insertNullifiersBatch, updateSyncState } from '@reloaded/storage/chain'
 import type { EVMBlock, SourceAggregator } from 'scanner'
@@ -9,7 +10,6 @@ import { denormalizeBlockData } from './event-denormalizer'
 import { createDirectoryIfNotExists } from './fs-utils'
 import type { NetworkConfig, NetworkName } from './network-config'
 import { NETWORK_CONFIG } from './network-config'
-
 /**
  * RailgunEngine
  *
@@ -49,6 +49,11 @@ class RailgunEngine {
    * Database Instance to store chain related data
    */
   #db: ChainDB | undefined
+
+  /**
+   * Note Commitment Merkle Tree
+   */
+  #noteCommitmentTree = new Map<number, NoteCommitmentTree>()
 
   /**
    * Set Aggregated Data Source for the engine
@@ -135,15 +140,36 @@ class RailgunEngine {
       const insertedCommitments = insertCommitmentsBatch(this.#db!, commitmentBatch)
       updateSyncState(this.#db!, this.#networkConfig.chainID, blockNumber)
       this.#log(`Inserting batch, blockNumber:${blockNumber}, Nullifiers: ${intsertedNullifiers}, Commitments: ${insertedCommitments}`)
-      nullifierBatch = []
-      commitmentBatch = []
+
+      const treeSortedCommitments = new Map<number, { leafIndex: number, hash: Uint8Array }[]>()
+      commitmentBatch.forEach((c) => {
+        const { treeId, leafIndex, hash } = c
+        if (!treeSortedCommitments.has(treeId)) {
+          treeSortedCommitments.set(treeId, [{ leafIndex: Number(leafIndex), hash: hash as Uint8Array }])
+        } else {
+          treeSortedCommitments.get(treeId)?.push({ leafIndex: Number(leafIndex), hash: hash as Uint8Array })
+        }
+      })
+
+      for (const [key, val] of treeSortedCommitments) {
+        if (!this.#noteCommitmentTree.has(key)) {
+          this.#noteCommitmentTree.set(key, new NoteCommitmentTree())
+        }
+        const commitments = val.sort((a, b) => a.leafIndex - b.leafIndex)
+        if (commitments.length > 0) {
+          this.#noteCommitmentTree.get(key)!.append(commitments.map(c => c.hash))
+        }
+
+        const root = Buffer.from(this.#noteCommitmentTree.get(key)!.root()).toString('hex')
+        this.#log(`TreeNumber: ${key} MerkleRoot: 0x${root}`)
+      }
     }
 
     // Batch size, when reached should update the DB
     // This is to reduce the DB load by updating entries in batch
     const batchInsertSize = 100
-    const nullifierBatch = []
-    const commitmentBatch = []
+    let nullifierBatch = []
+    let commitmentBatch = []
 
     let totalBlocks = 0
     let lastBlockNumber = 0n
@@ -156,13 +182,14 @@ class RailgunEngine {
       if (totalBlocks > batchInsertSize) {
         insertBatch(nullifierBatch, commitmentBatch, block.number)
         totalBlocks = 0
+        nullifierBatch = []
+        commitmentBatch = []
       }
       lastBlockNumber = block.number
     }
 
     if (totalBlocks > 0) {
       insertBatch(nullifierBatch, commitmentBatch, lastBlockNumber)
-      totalBlocks = 0
     }
   }
 

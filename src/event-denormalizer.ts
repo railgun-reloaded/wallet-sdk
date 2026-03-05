@@ -1,6 +1,22 @@
 import type { NewCommitment, NewNullifier } from '@reloaded/storage'
-import type { EVMBlock, Transact } from 'scanner'
+import type { EVMBlock, Shield, Transact } from 'scanner'
 import { ActionType } from 'scanner'
+
+/**
+ * Left pads byte array to length
+ * @param byteArray - byte array to pad
+ * @param length - length of new array
+ * @returns padded array
+ */
+const arrayToByteLength = (byteArray: Uint8Array, length: number): Uint8Array => {
+  // Check the length of array requested is large enough to accommodate the original array
+  if (byteArray.length > length) { throw new Error('BigInt byte size is larger than length') }
+
+  // Create Uint8Array of requested length
+  return new Uint8Array(
+    new Array(length - byteArray.length).concat(...byteArray)
+  )
+}
 
 /**
  * Denormalize blockData into nullifiers and commitments
@@ -23,6 +39,15 @@ function denormalizeBlockData (block : EVMBlock) : {
         case ActionType.ShieldCommitment:
         case ActionType.GeneratedCommitment:
         {
+          const shield = action as Shield
+          const { treeNumber, treePosition, hash } = shield.commitment
+          commitments.push({
+            txid: txHash,
+            blockNumber,
+            treeId: treeNumber,
+            leafIndex: BigInt(treePosition),
+            hash: arrayToByteLength(hash, 32)
+          })
           break
         }
         case ActionType.EncryptedCommitment:
@@ -39,7 +64,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             txid: txHash,
             blockNumber,
             treeId: c.treeNumber,
-            hash: c.hash,
+            hash: arrayToByteLength(c.hash, 32),
             leafIndex: BigInt(c.treePosition)
           })))
           break
