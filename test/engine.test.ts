@@ -1,10 +1,12 @@
+import { NoteCommitmentTree } from '@railgun-reloaded/note-commitment-indexer'
+import { getMerkleTree } from '@railgun-reloaded/storage'
 import { test } from 'brittle'
 import { SourceAggregator, SubsquidProvider } from 'scanner'
 
 import { RailgunEngine } from '../src/engine'
 import { NetworkName } from '../src/network-config'
 
-test.skip('Start and Shutdown Engine', async (t) => {
+test('Start and Shutdown Engine', async (t) => {
   t.timeout(100_000)
   const engine = new RailgunEngine()
   const aggregator = new SourceAggregator([
@@ -12,10 +14,14 @@ test.skip('Start and Shutdown Engine', async (t) => {
   ])
   engine.setDataSource(aggregator)
   engine.setNetwork(NetworkName.EthereumSepolia)
-
   engine.start()
-
   await new Promise((resolve) => setTimeout(() => {
+    const merkleTree = getMerkleTree(engine.db!, 0)
+    const tree = new NoteCommitmentTree({
+      buffer: merkleTree!.leaves as Readonly<Uint8Array>,
+      length: merkleTree!.leafCount
+    })
+    console.log(tree.root(), engine.getMerkleTreeByTreeNumber(0).root())
     engine.destroy()
     resolve(true)
   }, 10_000))

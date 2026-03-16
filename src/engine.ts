@@ -2,7 +2,7 @@ import path from 'path'
 
 import { NoteCommitmentTree } from '@railgun-reloaded/note-commitment-indexer'
 import type { ChainDB, DBNewCommitment, DBNewNullifier } from '@railgun-reloaded/storage'
-import { createChainDB, getCommitmentsByBlockRange, getSyncState, insertCommitmentBatch, insertNullifiersBatch, updateSyncState } from '@railgun-reloaded/storage'
+import { createChainDB, getSyncState, insertCommitmentBatch, insertNullifiersBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
 import type { EVMBlock, SourceAggregator } from 'scanner'
 
 import { denormalizeBlockData } from './event-denormalizer'
@@ -131,12 +131,7 @@ class RailgunEngine {
      * @param blockNumber - Block number of last batched entry
      */
     const insertBatch = (nullifierBatch: DBNewNullifier[], commitmentBatch: DBNewCommitment[], blockNumber: bigint) => {
-      // We insert in batch to reduce the cost of updating database
-      const intsertedNullifiers = insertNullifiersBatch(this.#db!, nullifierBatch)
-      const insertedCommitments = insertCommitmentBatch(this.#db!, commitmentBatch)
-      updateSyncState(this.#db!, this.#networkConfig.chainID, blockNumber)
-      this.#log(`Inserting batch, blockNumber:${blockNumber}, Nullifiers: ${intsertedNullifiers}, Commitments: ${insertedCommitments}`)
-
+      // Update commitmentTree
       const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
       commitmentBatch.forEach((c) => {
         const { treeNumber, treePosition, hash } = c
@@ -155,10 +150,25 @@ class RailgunEngine {
         if (commitments.length > 0) {
           this.#noteCommitmentTree.get(key)!.append(commitments.map(c => c.hash))
         }
-
-        const root = Buffer.from(this.#noteCommitmentTree.get(key)!.root()).toString('hex')
-        this.#log(`TreeNumber: ${key} MerkleRoot: 0x${root}`)
       }
+
+      runDBTransaction(this.#db!, (tx) => {
+      // We insert in batch to reduce the cost of updating database
+        const insertedNullifiers = insertNullifiersBatch(tx, nullifierBatch)
+        const insertedCommitments = insertCommitmentBatch(tx, commitmentBatch)
+        updateSyncState(tx, this.#networkConfig.chainID, blockNumber)
+        this.#log(`Inserted batch, blockNumber:${blockNumber}, Nullifiers: ${insertedNullifiers}, Commitments: ${insertedCommitments}`)
+
+        for (const [key] of treeSortedCommitments) {
+          const tree = this.#noteCommitmentTree.get(key)!
+          const { length, buf } = tree.merkleTree.serialize()
+          setMerkleTree(tx, {
+            treeNumber: key,
+            leafCount: length,
+            leaves: buf
+          })
+        }
+      })
     }
 
     // Batch size, when reached should update the DB
@@ -166,13 +176,15 @@ class RailgunEngine {
     const batchInsertSize = 100
     let nullifierBatch = []
     let commitmentBatch = []
+    const unshieldBatch = []
 
     let totalBlocks = 0
     let lastBlockNumber = 0n
     for await (const block of eventIterator) {
-      const { nullifiers, commitments } = denormalizeBlockData(block)
+      const { nullifiers, commitments, unshields } = denormalizeBlockData(block)
       nullifierBatch.push(...nullifiers)
       commitmentBatch.push(...commitments)
+      unshieldBatch.push(...unshields)
       totalBlocks += 1
 
       if (totalBlocks > batchInsertSize) {
@@ -180,16 +192,13 @@ class RailgunEngine {
         totalBlocks = 0
         nullifierBatch = []
         commitmentBatch = []
+        nullifierBatch = []
       }
       lastBlockNumber = block.number
     }
-
     if (totalBlocks > 0) {
       insertBatch(nullifierBatch, commitmentBatch, lastBlockNumber)
     }
-
-    const totalCommitments = getCommitmentsByBlockRange(this.#db!, this.#networkConfig.deploymentBlock!, lastBlockNumber)
-    console.log(totalCommitments.length)
   }
 
   /**
@@ -198,6 +207,18 @@ class RailgunEngine {
    */
   get db () {
     return this.#db
+  }
+
+  /**
+   * Get MerkleTree by treeNumber
+   * @param treeNumber - Input treeNumber
+   * @returns - NoteCommitmentTree instance
+   */
+  getMerkleTreeByTreeNumber (treeNumber: number) {
+    if (!this.#noteCommitmentTree.has(treeNumber)) {
+      throw new Error(`NoteCommitmentMerkleTree not found for treeNumber ${treeNumber}`)
+    }
+    return this.#noteCommitmentTree.get(treeNumber)!
   }
 
   /**
