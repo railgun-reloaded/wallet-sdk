@@ -33,6 +33,8 @@
     "patch-package": "^8.0.1"
   },
   "dependencies": {
-    "scanner": "https://github.com/railgun-reloaded/scanner#main"
+    "scanner": "https://github.com/railgun-reloaded/scanner#main",
+    "@railgun-reloaded/note-commitment-indexer": "https://github.com/railgun-reloaded/note-commitment-indexer#fafo-dev",
+    "@railgun-reloaded/storage": "https://github.com/railgun-reloaded/storage#feat/enhance-schema"
   }
 }

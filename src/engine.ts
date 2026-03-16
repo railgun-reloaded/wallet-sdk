@@ -1,11 +1,10 @@
 import path from 'path'
 
 import { NoteCommitmentTree } from '@railgun-reloaded/note-commitment-indexer'
-import type { ChainDB, NewCommitment, NewNullifier } from '@reloaded/storage/chain'
-import { createChainDB, getSyncState, insertCommitmentsBatch, insertNullifiersBatch, updateSyncState } from '@reloaded/storage/chain'
+import type { ChainDB, DBNewCommitment, DBNewNullifier } from '@railgun-reloaded/storage'
+import { createChainDB, getCommitmentsByBlockRange, getSyncState, insertCommitmentBatch, insertNullifiersBatch, updateSyncState } from '@railgun-reloaded/storage'
 import type { EVMBlock, SourceAggregator } from 'scanner'
 
-import { createChainDBTables } from './db-utils'
 import { denormalizeBlockData } from './event-denormalizer'
 import { createDirectoryIfNotExists } from './fs-utils'
 import type { NetworkConfig, NetworkName } from './network-config'
@@ -104,14 +103,11 @@ class RailgunEngine {
 
         this.#db = createChainDB({
           path: path.join(dirName, 'chain.db'),
-          runMigrations: false
+          runMigrations: true
         })
-
-        // This should be created by some command in package.json
-        createChainDBTables(this.#db)
       }
 
-      const lastSycedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlock
+      const lastSycedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
       this.#startDataSync(lastSycedBlock ?? this.#networkConfig.deploymentBlock)
     } catch (err) {
       console.log(err)
@@ -134,20 +130,20 @@ class RailgunEngine {
      * @param commitmentBatch - Batched Commitments to insert
      * @param blockNumber - Block number of last batched entry
      */
-    const insertBatch = (nullifierBatch: NewNullifier[], commitmentBatch: NewCommitment[], blockNumber: bigint) => {
+    const insertBatch = (nullifierBatch: DBNewNullifier[], commitmentBatch: DBNewCommitment[], blockNumber: bigint) => {
       // We insert in batch to reduce the cost of updating database
       const intsertedNullifiers = insertNullifiersBatch(this.#db!, nullifierBatch)
-      const insertedCommitments = insertCommitmentsBatch(this.#db!, commitmentBatch)
+      const insertedCommitments = insertCommitmentBatch(this.#db!, commitmentBatch)
       updateSyncState(this.#db!, this.#networkConfig.chainID, blockNumber)
       this.#log(`Inserting batch, blockNumber:${blockNumber}, Nullifiers: ${intsertedNullifiers}, Commitments: ${insertedCommitments}`)
 
-      const treeSortedCommitments = new Map<number, { leafIndex: number, hash: Uint8Array }[]>()
+      const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
       commitmentBatch.forEach((c) => {
-        const { treeId, leafIndex, hash } = c
-        if (!treeSortedCommitments.has(treeId)) {
-          treeSortedCommitments.set(treeId, [{ leafIndex: Number(leafIndex), hash: hash as Uint8Array }])
+        const { treeNumber, treePosition, hash } = c
+        if (!treeSortedCommitments.has(treeNumber)) {
+          treeSortedCommitments.set(treeNumber, [{ treePosition, hash: hash as Uint8Array }])
         } else {
-          treeSortedCommitments.get(treeId)?.push({ leafIndex: Number(leafIndex), hash: hash as Uint8Array })
+          treeSortedCommitments.get(treeNumber)!.push({ treePosition, hash: hash as Uint8Array })
         }
       })
 
@@ -155,7 +151,7 @@ class RailgunEngine {
         if (!this.#noteCommitmentTree.has(key)) {
           this.#noteCommitmentTree.set(key, new NoteCommitmentTree())
         }
-        const commitments = val.sort((a, b) => a.leafIndex - b.leafIndex)
+        const commitments = val.sort((a, b) => a.treePosition - b.treePosition)
         if (commitments.length > 0) {
           this.#noteCommitmentTree.get(key)!.append(commitments.map(c => c.hash))
         }
@@ -191,6 +187,17 @@ class RailgunEngine {
     if (totalBlocks > 0) {
       insertBatch(nullifierBatch, commitmentBatch, lastBlockNumber)
     }
+
+    const totalCommitments = getCommitmentsByBlockRange(this.#db!, this.#networkConfig.deploymentBlock!, lastBlockNumber)
+    console.log(totalCommitments.length)
+  }
+
+  /**
+   * Get Chain DB Instance
+   * @returns ChainDB Instance
+   */
+  get db () {
+    return this.#db
   }
 
   /**

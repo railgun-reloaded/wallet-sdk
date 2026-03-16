@@ -1,6 +1,11 @@
-import type { NewCommitment, NewNullifier } from '@reloaded/storage'
+import type { DBNewCommitment, DBNewNullifier } from '@railgun-reloaded/storage'
 import type { EVMBlock, Shield, Transact } from 'scanner'
 import { ActionType } from 'scanner'
+
+enum CommitmentType {
+  Shield = 0,
+  Transact = 1,
+}
 
 /**
  * Left pads byte array to length
@@ -24,15 +29,15 @@ const arrayToByteLength = (byteArray: Uint8Array, length: number): Uint8Array =>
  * @returns - Denormalized nullifiers and commitments
  */
 function denormalizeBlockData (block : EVMBlock) : {
-  nullifiers: NewNullifier[]
-  commitments: NewCommitment[]
+  nullifiers: DBNewNullifier[]
+  commitments: DBNewCommitment[]
 } {
-  const nullifiers = new Array<NewNullifier>()
-  const commitments = new Array<NewCommitment>()
+  const nullifiers = new Array<DBNewNullifier>()
+  const commitments = new Array<DBNewCommitment>()
 
   const blockNumber = block.number
   for (const tx of block.transactions) {
-    const txHash = tx.hash
+    const transactionHash = tx.hash
     const actions = tx.actions.flat()
     for (const action of actions) {
       switch (action.actionType) {
@@ -42,11 +47,13 @@ function denormalizeBlockData (block : EVMBlock) : {
           const shield = action as Shield
           const { treeNumber, treePosition, hash } = shield.commitment
           commitments.push({
-            txid: txHash,
+            transactionHash,
             blockNumber,
-            treeId: treeNumber,
-            leafIndex: BigInt(treePosition),
-            hash: arrayToByteLength(hash, 32)
+            treeNumber,
+            treePosition,
+            hash: arrayToByteLength(hash, 32),
+            commitmentType: CommitmentType.Shield,
+            commitment: {}// Need to populate this later
           })
           break
         }
@@ -56,16 +63,19 @@ function denormalizeBlockData (block : EVMBlock) : {
           const transact = action as Transact
           nullifiers.push(...transact.nullifiers.map(nullifier => ({
             nullifier,
-            txid: txHash,
+            transactionHash,
             blockNumber,
-            treeId: transact.utxoTreeIn
+            treeNumber: transact.utxoTreeIn
           })))
+
           commitments.push(...transact.commitments.map((c) => ({
-            txid: txHash,
+            transactionHash,
             blockNumber,
-            treeId: c.treeNumber,
+            treeNumber: c.treeNumber,
             hash: arrayToByteLength(c.hash, 32),
-            leafIndex: BigInt(c.treePosition)
+            treePosition: c.treePosition,
+            commitmentType: CommitmentType.Transact,
+            commitment: {},
           })))
           break
         }

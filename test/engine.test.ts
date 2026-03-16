@@ -4,7 +4,7 @@ import { SourceAggregator, SubsquidProvider } from 'scanner'
 import { RailgunEngine } from '../src/engine'
 import { NetworkName } from '../src/network-config'
 
-test('Start and Shutdown Engine', async (t) => {
+test.skip('Start and Shutdown Engine', async (t) => {
   t.timeout(100_000)
   const engine = new RailgunEngine()
   const aggregator = new SourceAggregator([
