@@ -2,7 +2,7 @@ import path from 'path'
 
 import { NoteCommitmentTree } from '@railgun-reloaded/note-commitment-indexer'
 import type { ChainDB, DBNewCommitment, DBNewNullifier } from '@railgun-reloaded/storage'
-import { createChainDB, getSyncState, insertCommitmentBatch, insertNullifiersBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
+import { createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
 import type { EVMBlock, SourceAggregator } from 'scanner'
 
 import { denormalizeBlockData } from './event-denormalizer'
@@ -107,11 +107,86 @@ class RailgunEngine {
         })
       }
 
+      // Load existing merkleTree from the DB
+      this.#loadMerkleTree()
+      for (const [key, val] of this.#noteCommitmentTree) {
+        const root = Buffer.from(val.root()).toString('hex')
+        this.#log(`TreeNumber: ${key}, MerkleRoot: 0x${root}`)
+      }
+
       const lastSycedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
-      this.#startDataSync(lastSycedBlock ?? this.#networkConfig.deploymentBlock)
+      const startHeight = lastSycedBlock ? lastSycedBlock + 1n : this.#networkConfig.deploymentBlock
+      this.#startDataSync(startHeight)
     } catch (err) {
       console.log(err)
     }
+  }
+
+  /**
+   * Load merkletree from the DB
+   */
+  #loadMerkleTree () {
+    let treeNumber = 0
+    // @TODO replace this by getAllMerkleTree query, should be added in the reloaded/storage
+    while (true) {
+      const treeEntry = getMerkleTree(this.#db!, treeNumber)
+      if (treeEntry) {
+        this.#noteCommitmentTree.set(treeNumber, new NoteCommitmentTree({
+          buffer: treeEntry.leaves,
+          length: treeEntry.leafCount
+        }))
+        treeNumber++
+      } else {
+        return
+      }
+    }
+  }
+
+  /**
+   * Insert Batched data to the table
+   * @param nullifierBatch - Batched Nullifiers to insert
+   * @param commitmentBatch - Batched Commitments to insert
+   * @param blockNumber - Block number of last batched entry
+   */
+  #insertBatch (nullifierBatch: DBNewNullifier[], commitmentBatch: DBNewCommitment[], blockNumber: bigint) {
+    // Update commitmentTree
+    const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
+    commitmentBatch.forEach((c) => {
+      const { treeNumber, treePosition, hash } = c
+      if (!treeSortedCommitments.has(treeNumber)) {
+        treeSortedCommitments.set(treeNumber, [{ treePosition, hash: hash as Uint8Array }])
+      } else {
+        treeSortedCommitments.get(treeNumber)!.push({ treePosition, hash: hash as Uint8Array })
+      }
+    })
+
+    for (const [key, val] of treeSortedCommitments) {
+      if (!this.#noteCommitmentTree.has(key)) {
+        this.#noteCommitmentTree.set(key, new NoteCommitmentTree())
+      }
+      const commitments = val.sort((a, b) => a.treePosition - b.treePosition)
+      if (commitments.length > 0) {
+        this.#noteCommitmentTree.get(key)!.append(commitments.map(c => c.hash))
+      }
+    }
+
+    runDBTransaction(this.#db!, (tx) => {
+      // We insert in batch to reduce the cost of updating database
+      const insertedNullifiers = insertNullifiersBatch(tx, nullifierBatch)
+      const insertedCommitments = insertCommitmentBatch(tx, commitmentBatch)
+      updateSyncState(tx, this.#networkConfig.chainID, blockNumber)
+      this.#log(`Inserted batch, blockNumber:${blockNumber}, Nullifiers: ${insertedNullifiers}, Commitments: ${insertedCommitments}`)
+
+      for (const [key] of treeSortedCommitments) {
+        const tree = this.#noteCommitmentTree.get(key)!
+        const { length, buf } = tree.merkleTree.serialize()
+        setMerkleTree(tx, {
+          treeNumber: key,
+          leafCount: length,
+          leaves: buf
+        })
+      }
+    })
   }
 
   /**
@@ -123,53 +198,6 @@ class RailgunEngine {
     const eventIterator = this.#dataSource.from({
       startHeight,
     })
-
-    /**
-     * Insert Batched data to the table
-     * @param nullifierBatch - Batched Nullifiers to insert
-     * @param commitmentBatch - Batched Commitments to insert
-     * @param blockNumber - Block number of last batched entry
-     */
-    const insertBatch = (nullifierBatch: DBNewNullifier[], commitmentBatch: DBNewCommitment[], blockNumber: bigint) => {
-      // Update commitmentTree
-      const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
-      commitmentBatch.forEach((c) => {
-        const { treeNumber, treePosition, hash } = c
-        if (!treeSortedCommitments.has(treeNumber)) {
-          treeSortedCommitments.set(treeNumber, [{ treePosition, hash: hash as Uint8Array }])
-        } else {
-          treeSortedCommitments.get(treeNumber)!.push({ treePosition, hash: hash as Uint8Array })
-        }
-      })
-
-      for (const [key, val] of treeSortedCommitments) {
-        if (!this.#noteCommitmentTree.has(key)) {
-          this.#noteCommitmentTree.set(key, new NoteCommitmentTree())
-        }
-        const commitments = val.sort((a, b) => a.treePosition - b.treePosition)
-        if (commitments.length > 0) {
-          this.#noteCommitmentTree.get(key)!.append(commitments.map(c => c.hash))
-        }
-      }
-
-      runDBTransaction(this.#db!, (tx) => {
-      // We insert in batch to reduce the cost of updating database
-        const insertedNullifiers = insertNullifiersBatch(tx, nullifierBatch)
-        const insertedCommitments = insertCommitmentBatch(tx, commitmentBatch)
-        updateSyncState(tx, this.#networkConfig.chainID, blockNumber)
-        this.#log(`Inserted batch, blockNumber:${blockNumber}, Nullifiers: ${insertedNullifiers}, Commitments: ${insertedCommitments}`)
-
-        for (const [key] of treeSortedCommitments) {
-          const tree = this.#noteCommitmentTree.get(key)!
-          const { length, buf } = tree.merkleTree.serialize()
-          setMerkleTree(tx, {
-            treeNumber: key,
-            leafCount: length,
-            leaves: buf
-          })
-        }
-      })
-    }
 
     // Batch size, when reached should update the DB
     // This is to reduce the DB load by updating entries in batch
@@ -188,7 +216,7 @@ class RailgunEngine {
       totalBlocks += 1
 
       if (totalBlocks > batchInsertSize) {
-        insertBatch(nullifierBatch, commitmentBatch, block.number)
+        this.#insertBatch(nullifierBatch, commitmentBatch, block.number)
         totalBlocks = 0
         nullifierBatch = []
         commitmentBatch = []
@@ -197,7 +225,7 @@ class RailgunEngine {
       lastBlockNumber = block.number
     }
     if (totalBlocks > 0) {
-      insertBatch(nullifierBatch, commitmentBatch, lastBlockNumber)
+      this.#insertBatch(nullifierBatch, commitmentBatch, lastBlockNumber)
     }
   }
 
