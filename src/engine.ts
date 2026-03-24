@@ -55,6 +55,16 @@ class RailgunEngine {
   #noteCommitmentTree = new Map<number, NoteCommitmentTree>()
 
   /**
+   * Timeout value for controlling eventSync
+   */
+  #eventSyncTimeout: number | null = null
+
+  /**
+   * Flag to indicate if we should stop eventSync
+   */
+  #shouldStopEventSync = false
+
+  /**
    * Set Aggregated Data Source for the engine
    * @param dataSource - Input source aggregator
    */
@@ -194,6 +204,8 @@ class RailgunEngine {
    * @param startHeight - Starting Height for fetching data
    */
   async #startDataSync (startHeight: bigint) {
+    if (this.#shouldStopEventSync) return
+
     this.#log(`Syncing event from height ${startHeight}`)
     const eventIterator = this.#dataSource.from({
       startHeight,
@@ -207,7 +219,7 @@ class RailgunEngine {
     const unshieldBatch = []
 
     let totalBlocks = 0
-    let lastBlockNumber = 0n
+    let lastBlockNumber = startHeight
     for await (const block of eventIterator) {
       const { nullifiers, commitments, unshields } = denormalizeBlockData(block)
       nullifierBatch.push(...nullifiers)
@@ -227,6 +239,10 @@ class RailgunEngine {
     if (totalBlocks > 0) {
       this.#insertBatch(nullifierBatch, commitmentBatch, lastBlockNumber)
     }
+    // This is a temporary solution for liveSync, every 10s it schedules new  iterator for syncing data.
+    // This should be removed in favor of RPCProvider
+    // Also lastBlockNumber should the actual block number returned by the dataSync, instead of last insertedBlock
+    this.#eventSyncTimeout = setTimeout(this.#startDataSync.bind(this), 10_000, lastBlockNumber === startHeight ? lastBlockNumber : lastBlockNumber + 1n)
   }
 
   /**
@@ -253,6 +269,11 @@ class RailgunEngine {
    * Destroy Railgun Engine
    */
   destroy () {
+    this.#shouldStopEventSync = true
+    if (this.#eventSyncTimeout) {
+      clearTimeout(this.#eventSyncTimeout)
+      this.#eventSyncTimeout = null
+    }
     this.#dataSource.destroy()
   }
 }

@@ -16,13 +16,13 @@ test('Start and Shutdown Engine', async (t) => {
   engine.setNetwork(NetworkName.EthereumSepolia)
   engine.start()
   await new Promise((resolve) => setTimeout(() => {
+    engine.destroy()
     const merkleTree = getMerkleTree(engine.db!, 0)
     const tree = new NoteCommitmentTree({
       buffer: merkleTree!.leaves as Readonly<Uint8Array>,
       length: merkleTree!.leafCount
     })
     console.log(tree.root(), engine.getMerkleTreeByTreeNumber(0).root())
-    engine.destroy()
     resolve(true)
   }, 10_000))
 })
