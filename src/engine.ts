@@ -57,7 +57,7 @@ class RailgunEngine {
   /**
    * Timeout value for controlling eventSync
    */
-  #eventSyncTimeout: number | null = null
+  #eventSyncTimeout: NodeJS.Timeout | null = null
 
   /**
    * Flag to indicate if we should stop eventSync
@@ -119,10 +119,6 @@ class RailgunEngine {
 
       // Load existing merkleTree from the DB
       this.#loadMerkleTree()
-      for (const [key, val] of this.#noteCommitmentTree) {
-        const root = Buffer.from(val.root()).toString('hex')
-        this.#log(`TreeNumber: ${key}, MerkleRoot: 0x${root}`)
-      }
 
       const lastSycedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
       const startHeight = lastSycedBlock ? lastSycedBlock + 1n : this.#networkConfig.deploymentBlock
@@ -258,11 +254,19 @@ class RailgunEngine {
    * @param treeNumber - Input treeNumber
    * @returns - NoteCommitmentTree instance
    */
-  getMerkleTreeByTreeNumber (treeNumber: number) {
+  getNoteCommitmentTreeByTreeNumber (treeNumber: number) {
     if (!this.#noteCommitmentTree.has(treeNumber)) {
       throw new Error(`NoteCommitmentMerkleTree not found for treeNumber ${treeNumber}`)
     }
     return this.#noteCommitmentTree.get(treeNumber)!
+  }
+
+  /**
+   * Get all the note commitment tree in the engine
+   * @returns - Map of treeNumber with corresponding NoteCommitmentTree instance
+   */
+  getAllNoteCommitmentTree () {
+    return this.#noteCommitmentTree
   }
 
   /**

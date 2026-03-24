@@ -1,28 +1,38 @@
-import { NoteCommitmentTree } from '@railgun-reloaded/note-commitment-indexer'
-import { getMerkleTree } from '@railgun-reloaded/storage'
 import { test } from 'brittle'
+import { Contract, JsonRpcProvider } from 'ethers'
 import { SourceAggregator, SubsquidProvider } from 'scanner'
 
 import { RailgunEngine } from '../src/engine'
-import { NetworkName } from '../src/network-config'
+import { NETWORK_CONFIG, NetworkName } from '../src/network-config'
 
-test('Start and Shutdown Engine', async (t) => {
-  t.timeout(100_000)
+const CONTRACT_ROOT_HISTORY_ABI = [
+  'function rootHistory(uint256, bytes32) view returns (bool)'
+]
+const networkName = NetworkName.EthereumSepolia
+
+test('Should create NoteCommitmentTree and verify root', async (t) => {
+  t.timeout(15_000)
   const engine = new RailgunEngine()
   const aggregator = new SourceAggregator([
     new SubsquidProvider('https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql')
   ])
   engine.setDataSource(aggregator)
-  engine.setNetwork(NetworkName.EthereumSepolia)
+  engine.setNetwork(networkName)
   engine.start()
-  await new Promise((resolve) => setTimeout(() => {
+
+  await new Promise((resolve) => setTimeout(async () => {
+    const noteCommitmentTrees = engine.getAllNoteCommitmentTree()
     engine.destroy()
-    const merkleTree = getMerkleTree(engine.db!, 0)
-    const tree = new NoteCommitmentTree({
-      buffer: merkleTree!.leaves as Readonly<Uint8Array>,
-      length: merkleTree!.leafCount
-    })
-    console.log(tree.root(), engine.getMerkleTreeByTreeNumber(0).root())
+
+    const networkConfig = NETWORK_CONFIG[networkName]
+    const provider = new JsonRpcProvider(networkConfig.rpcURL)
+
+    const contract = new Contract(networkConfig.proxyContractAddress, CONTRACT_ROOT_HISTORY_ABI, provider)
+    for (const [key, val] of noteCommitmentTrees) {
+      const root = `0x${Buffer.from(val.root()).toString('hex')}`
+      // @ts-ignore should be always present for valid ABI
+      t.is(await contract.rootHistory(key, root), true)
+    }
     resolve(true)
   }, 10_000))
 })

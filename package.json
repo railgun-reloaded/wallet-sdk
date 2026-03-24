@@ -30,11 +30,12 @@
     "@railgun-reloaded/tsconfig": "^1.2.0",
     "@types/brittle": "^3.5.0",
     "brittle": "^3.19.1",
+    "ethers": "^6.16.0",
     "patch-package": "^8.0.1"
   },
   "dependencies": {
-    "scanner": "https://github.com/railgun-reloaded/scanner#main",
     "@railgun-reloaded/note-commitment-indexer": "https://github.com/railgun-reloaded/note-commitment-indexer#fafo-dev",
-    "@railgun-reloaded/storage": "https://github.com/railgun-reloaded/storage#feat/enhance-schema"
+    "@railgun-reloaded/storage": "https://github.com/railgun-reloaded/storage#feat/enhance-schema",
+    "scanner": "https://github.com/railgun-reloaded/scanner#main"
   }
 }
