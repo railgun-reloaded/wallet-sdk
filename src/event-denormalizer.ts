@@ -83,6 +83,10 @@ function denormalizeBlockData (block : EVMBlock) : {
         }
         case ActionType.EncryptedCommitment:
         {
+          /**
+           * Both encryptedCommitment/TransactCommitment has additional field txID and boundParamHash
+           * which is required for PPOI. This is not handled currently.
+           */
           const transact = action as Transact
           nullifiers.push(...transact.nullifiers.map(nullifier => ({
             nullifier,
@@ -154,4 +158,4 @@ function denormalizeBlockData (block : EVMBlock) : {
   return { nullifiers, commitments, unshields }
 }
 
-export { denormalizeBlockData }
+export { denormalizeBlockData, CommitmentType }
