@@ -1,8 +1,8 @@
 import path from 'path'
 
 import { NoteCommitmentTree } from '@railgun-reloaded/note-commitment-indexer'
-import type { ChainDB, DBNewCommitment, DBNewNullifier } from '@railgun-reloaded/storage'
-import { createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
+import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
+import { closeChainDB, createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
 import type { EVMBlock, SourceAggregator } from 'scanner'
 
 import { denormalizeBlockData } from './event-denormalizer'
@@ -152,9 +152,10 @@ class RailgunEngine {
    * Insert Batched data to the table
    * @param nullifierBatch - Batched Nullifiers to insert
    * @param commitmentBatch - Batched Commitments to insert
+   * @param unshieldBatch - Batched Unshields to insert
    * @param blockNumber - Block number of last batched entry
    */
-  #insertBatch (nullifierBatch: DBNewNullifier[], commitmentBatch: DBNewCommitment[], blockNumber: bigint) {
+  #insertBatch (nullifierBatch: DBNewNullifier[], commitmentBatch: DBNewCommitment[], unshieldBatch: DBNewUnshield[], blockNumber: bigint) {
     // Update commitmentTree
     const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
     commitmentBatch.forEach((c) => {
@@ -178,10 +179,17 @@ class RailgunEngine {
 
     runDBTransaction(this.#db!, (tx) => {
       // We insert in batch to reduce the cost of updating database
-      const insertedNullifiers = insertNullifiersBatch(tx, nullifierBatch)
-      const insertedCommitments = insertCommitmentBatch(tx, commitmentBatch)
+      if (nullifierBatch.length > 0) {
+        insertNullifiersBatch(tx, nullifierBatch)
+      }
+      if (commitmentBatch.length > 0) {
+        insertCommitmentBatch(tx, commitmentBatch)
+      }
+      if (unshieldBatch.length > 0) {
+        insertUnshieldBatch(tx, unshieldBatch)
+      }
+
       updateSyncState(tx, this.#networkConfig.chainID, blockNumber)
-      this.#log(`Inserted batch, blockNumber:${blockNumber}, Nullifiers: ${insertedNullifiers}, Commitments: ${insertedCommitments}`)
 
       for (const [key] of treeSortedCommitments) {
         const tree = this.#noteCommitmentTree.get(key)!
@@ -212,7 +220,7 @@ class RailgunEngine {
     const batchInsertSize = 100
     let nullifierBatch = []
     let commitmentBatch = []
-    const unshieldBatch = []
+    let unshieldBatch = []
 
     let totalBlocks = 0
     let lastBlockNumber = startHeight
@@ -224,16 +232,16 @@ class RailgunEngine {
       totalBlocks += 1
 
       if (totalBlocks > batchInsertSize) {
-        this.#insertBatch(nullifierBatch, commitmentBatch, block.number)
+        this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, block.number)
         totalBlocks = 0
-        nullifierBatch = []
         commitmentBatch = []
         nullifierBatch = []
+        unshieldBatch = []
       }
       lastBlockNumber = block.number
     }
     if (totalBlocks > 0) {
-      this.#insertBatch(nullifierBatch, commitmentBatch, lastBlockNumber)
+      this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, lastBlockNumber)
     }
     // This is a temporary solution for liveSync, every 10s it schedules new  iterator for syncing data.
     // This should be removed in favor of RPCProvider
@@ -278,6 +286,7 @@ class RailgunEngine {
       clearTimeout(this.#eventSyncTimeout)
       this.#eventSyncTimeout = null
     }
+    closeChainDB(this.#db!)
     this.#dataSource.destroy()
   }
 }
