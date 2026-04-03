@@ -1,12 +1,12 @@
+import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 
-import { NoteCommitmentTree } from '@railgun-reloaded/note-commitment-indexer'
 import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
 import { closeChainDB, createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
 import type { EVMBlock, SourceAggregator } from 'scanner'
 
 import { denormalizeBlockData } from './event-denormalizer'
-import { createDirectoryIfNotExists } from './fs-utils'
+import { NoteCommitmentTree } from './merkle'
 import type { NetworkConfig, NetworkName } from './network-config'
 import { NETWORK_CONFIG } from './network-config'
 /**
@@ -109,7 +109,9 @@ class RailgunEngine {
     try {
       if (!this.#db) {
         const dirName = `./.railgun/chains/${this.#networkConfig.chainID}/`
-        createDirectoryIfNotExists(dirName)
+        if (!existsSync(dirName)) {
+          mkdirSync(dirName, { recursive: true })
+        }
 
         this.#db = createChainDB({
           path: path.join(dirName, 'chain.db'),

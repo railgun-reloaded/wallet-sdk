@@ -34,7 +34,8 @@
     "patch-package": "^8.0.1"
   },
   "dependencies": {
-    "@railgun-reloaded/note-commitment-indexer": "https://github.com/railgun-reloaded/note-commitment-indexer#fafo-dev",
+    "@railgun-reloaded/cryptography": "https://github.com/railgun-reloaded/cryptography.git#main",
+    "@railgun-reloaded/merkle-tree": "https://github.com/railgun-reloaded/merkle-tree.git#main",
     "@railgun-reloaded/storage": "https://github.com/railgun-reloaded/storage#feat/enhance-schema",
     "scanner": "https://github.com/railgun-reloaded/scanner#main"
   }
