@@ -1,1 +1,1 @@
-npm link scanner @railgun-reloaded/storage @railgun-reloaded/note-commitment-indexer
+npm link scanner @railgun-reloaded/storage
