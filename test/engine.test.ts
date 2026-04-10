@@ -1,6 +1,6 @@
+import { SourceAggregator, SubsquidProvider } from '@railgun-reloaded/scanner'
 import { test } from 'brittle'
 import { Contract, JsonRpcProvider } from 'ethers'
-import { SourceAggregator, SubsquidProvider } from 'scanner'
 
 import { RailgunEngine } from '../src/engine'
 import { NETWORK_CONFIG, NetworkName } from '../src/network-config'

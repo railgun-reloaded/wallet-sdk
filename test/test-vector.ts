@@ -1,5 +1,5 @@
-import type { EVMBlock } from 'scanner'
-import { ActionType } from 'scanner'
+import type { EVMBlock } from '@railgun-reloaded/scanner'
+import { ActionType } from '@railgun-reloaded/scanner'
 
 const TEST_VECTOR_SHIELD : EVMBlock = {
   number: 6035105n,

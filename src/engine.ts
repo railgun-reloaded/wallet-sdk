@@ -3,7 +3,7 @@ import path from 'path'
 
 import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
 import { closeChainDB, createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
-import type { EVMBlock, SourceAggregator } from 'scanner'
+import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 
 import { denormalizeBlockData } from './event-denormalizer'
 import { NoteCommitmentTree } from './merkle'
