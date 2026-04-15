@@ -5,7 +5,7 @@ import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@r
 import { closeChainDB, createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 
-import { denormalizeBlockData } from './event-denormalizer'
+import { denormalizeBlockData } from './sync'
 import { NoteCommitmentTree } from './merkle'
 import type { NetworkConfig, NetworkName } from './network-config'
 import { NETWORK_CONFIG } from './network-config'

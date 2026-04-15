@@ -1,7 +1,7 @@
 import type { DBNewCommitment, DBNewNullifier } from '@railgun-reloaded/storage'
 import { test } from 'brittle'
 
-import { CommitmentType, denormalizeBlockData } from '../src/event-denormalizer'
+import { CommitmentType, denormalizeBlockData } from '../src/sync'
 
 import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } from './test-vector'
 
