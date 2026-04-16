@@ -1,6 +1,5 @@
-/* eslint camelcase: ["error", {allow: [""]}] */
 import { bigintToUint8Array, keccak256, uint8ArrayToBigInt } from '@railgun-reloaded/cryptography'
-import { SparseMerkleTree } from '@railgun-reloaded/merkle-tree/sparse-merkle-tree.js'
+import { SparseMerkleTree } from '@railgun-reloaded/merkle-tree/sparse-merkle-tree'
 
 import { poseidonHash } from './hash'
 

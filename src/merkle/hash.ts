@@ -8,7 +8,8 @@ import { poseidonFunc } from '@railgun-reloaded/cryptography'
  * @returns 32 bytes hash output
  */
 function poseidonHash (out: Uint8Array, left: Readonly<Uint8Array>, right: Readonly<Uint8Array>) {
-  // @ts-ignore - Update this when type is updated
+  // TODO: Update poseidonFunc type signature to accept Uint8Array[] instead of any
+  // @ts-ignore
   const hash = poseidonFunc([left, right])
   // @ts-ignore
   out.set(hash)

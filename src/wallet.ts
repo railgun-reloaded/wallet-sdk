@@ -13,9 +13,12 @@ import {
 } from '@railgun-reloaded/wallet-node'
 import { poseidon } from '@railgun-reloaded/cryptography'
 
-/**
- * Decrypted note with full metadata
- */
+enum NoteType {
+  Shield = 'shield',
+  TransactReceived = 'transact-received',
+  TransactSent = 'transact-sent'
+}
+
 type DecryptedNote = {
   commitment: string
   nullifier: string
@@ -24,7 +27,7 @@ type DecryptedNote = {
   blockNumber: bigint
   treeNumber: number
   leafIndex: bigint
-  noteType: 'shield' | 'transact-received' | 'transact-sent'
+  noteType: NoteType
 }
 
 /**
@@ -201,10 +204,9 @@ export class RailgunWalletSDK {
     }
 
     if (!shieldNote) {
-      return // Not for this wallet
+      return
     }
 
-    // Calculate nullifier: poseidon(nullifyingKey, leafIndex)
     const leafIndexBytes = bigintToUint8Array(BigInt(commitment.treePosition), 32)
     const nullifier = poseidon([nullifyingKey, leafIndexBytes])
 
@@ -216,7 +218,7 @@ export class RailgunWalletSDK {
       blockNumber,
       treeNumber: commitment.treeNumber,
       leafIndex: BigInt(commitment.treePosition),
-      noteType: 'shield'
+      noteType: NoteType.Shield
     })
   }
 
@@ -257,7 +259,6 @@ export class RailgunWalletSDK {
 
       const isReceiver = receiverData !== null
 
-      // Calculate nullifier: poseidon(nullifyingKey, leafIndex)
       const leafIndexBytes = bigintToUint8Array(BigInt(commitment.treePosition), 32)
       const nullifier = poseidon([nullifyingKey, leafIndexBytes])
 
@@ -269,7 +270,7 @@ export class RailgunWalletSDK {
         blockNumber,
         treeNumber: commitment.treeNumber,
         leafIndex: BigInt(commitment.treePosition),
-        noteType: isReceiver ? 'transact-received' : 'transact-sent'
+        noteType: isReceiver ? NoteType.TransactReceived : NoteType.TransactSent
       })
     }
   }
@@ -295,9 +296,7 @@ export class RailgunWalletSDK {
    * @returns Array of token balances with underlying notes
    */
   getBalances(): TokenBalance[] {
-    console.log('[wallet-sdk] GET BALANCES ')
     const unspentNotes = this.getUnspentNotes()
-    console.log('[wallet-sdk] unspent notes: ', unspentNotes)
     if (unspentNotes.length === 0) {
       return []
     }
@@ -313,14 +312,11 @@ export class RailgunWalletSDK {
         balanceMap.set(note.token, { balance: note.amount, notes: [note] })
       }
     }
-    const balances = Array.from(balanceMap.entries()).map(([token, { balance, notes }]) => ({
+    return Array.from(balanceMap.entries()).map(([token, { balance, notes }]) => ({
       token,
       balance,
       notes
-    }));
-
-    console.log('[wallet-sdk] balances avail: ', balances)
-    return balances
+    }))
   }
 
   /**
@@ -350,4 +346,5 @@ export class RailgunWalletSDK {
   }
 }
 
+export { NoteType }
 export type { DecryptedNote, TokenBalance }

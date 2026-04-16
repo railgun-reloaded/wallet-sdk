@@ -1,5 +1,5 @@
 import { bytesToHex, hexToBytes } from '@railgun-reloaded/cryptography'
-import type { MerkleProof } from '@railgun-reloaded/merkle-tree/types.js'
+import type { MerkleProof } from '@railgun-reloaded/merkle-tree/types'
 import { test } from 'brittle'
 
 import { COMMITMENT_TREE_ZERO_ELEMENT, NoteCommitmentTree } from '../../src/merkle/note-commitment-tree'

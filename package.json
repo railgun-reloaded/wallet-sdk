@@ -38,6 +38,6 @@
     "@railgun-reloaded/merkle-tree": "https://github.com/railgun-reloaded/merkle-tree.git#main",
     "@railgun-reloaded/storage": "https://github.com/railgun-reloaded/storage#feat/enhance-schema",
     "scanner": "https://github.com/railgun-reloaded/scanner#main",
-    "@railgun-reloaded/wallet-node": "workspace:*"
+    "@railgun-reloaded/wallet-node": "https://github.com/railgun-reloaded/wallet-node.git#main"
   }
 }
