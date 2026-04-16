@@ -1,1 +1,0 @@
-npm link scanner @railgun-reloaded/storage
