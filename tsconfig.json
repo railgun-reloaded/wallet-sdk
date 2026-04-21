@@ -1,11 +1,5 @@
 {
     "extends": [
         "@railgun-reloaded/tsconfig/tsconfig"
-    ],
-    "compilerOptions": {
-        "paths": {
-            "@railgun-reloaded/merkle-tree/sparse-merkle-tree": ["./node_modules/@railgun-reloaded/merkle-tree/src/sparse-merkle-tree.ts"],
-            "@railgun-reloaded/merkle-tree/types": ["./node_modules/@railgun-reloaded/merkle-tree/src/types.ts"]
-        }
-    }
+    ]
 }
