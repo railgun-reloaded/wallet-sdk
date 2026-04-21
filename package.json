@@ -37,7 +37,7 @@
     "@railgun-reloaded/cryptography": "https://github.com/railgun-reloaded/cryptography.git#main",
     "@railgun-reloaded/merkle-tree": "https://github.com/railgun-reloaded/merkle-tree.git#main",
     "@railgun-reloaded/storage": "https://github.com/railgun-reloaded/storage#feat/enhance-schema",
-    "scanner": "https://github.com/railgun-reloaded/scanner#main",
+    "@railgun-reloaded/scanner": "https://github.com/railgun-reloaded/scanner#dev",
     "@railgun-reloaded/wallet-node": "https://github.com/railgun-reloaded/wallet-node.git#main"
   }
 }
