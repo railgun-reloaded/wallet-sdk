@@ -1,7 +1,8 @@
 /**
- *
- * @param byteArray
- * @param length
+ * Pad a byte array to a fixed length by prepending zero bytes.
+ * @param byteArray - Source bytes.
+ * @param length - Target output length.
+ * @returns A new Uint8Array exactly `length` bytes long.
  */
 function arrayToByteLength (byteArray: Uint8Array, length: number) : Uint8Array {
   if (byteArray.length > length) throw new Error('BigInt byte size is larger than length')
@@ -9,9 +10,10 @@ function arrayToByteLength (byteArray: Uint8Array, length: number) : Uint8Array 
 }
 
 /**
- *
- * @param ns
- * @param length
+ * Convert a numeric string into a fixed-length big-endian Uint8Array.
+ * @param ns - Decimal numeric string.
+ * @param length - Target byte length.
+ * @returns Zero-padded Uint8Array representation.
  */
 function numberStringToUint8Array (ns: string, length: number): Uint8Array {
   let hex = BigInt(ns).toString(16)

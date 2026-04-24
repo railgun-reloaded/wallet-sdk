@@ -130,13 +130,14 @@ class RailgunClient {
   /**
    * Delete a wallet by ID. Idempotent. Delegates to WalletService.
    * @param walletId - Wallet to remove.
+   * @returns Resolves when the delete completes.
    */
   deleteWallet (walletId: string): Promise<void> {
     return this.#walletService.deleteWallet(walletId)
   }
 
   /**
-   * Access the underlying RailgunEngine for chain sync operations.
+   * The underlying RailgunEngine for chain sync operations.
    * @returns The engine instance.
    */
   get engine (): RailgunEngine {

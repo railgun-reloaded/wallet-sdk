@@ -23,7 +23,8 @@ class InvalidEncryptionKeyError extends Error {
   /**
    * Construct an InvalidEncryptionKeyError.
    * @param message - Optional custom message.
-   * @param options - Optional `{ cause }` to preserve the underlying error.
+   * @param options - Optional options object.
+   * @param options.cause - Underlying error to attach via `Error.cause`.
    */
   constructor (
     message = 'Encryption key invalid (wrong length or decryption auth failure)',
