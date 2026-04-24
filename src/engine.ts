@@ -1,14 +1,14 @@
 import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 
+import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
 import { closeChainDB, createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
-import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 
-import { denormalizeBlockData } from './sync'
 import { NoteCommitmentTree } from './merkle'
 import type { NetworkConfig, NetworkName } from './network-config'
 import { NETWORK_CONFIG } from './network-config'
+import { denormalizeBlockData } from './sync'
 /**
  * RailgunEngine
  *
@@ -215,6 +215,7 @@ class RailgunEngine {
     this.#log(`Syncing event from height ${startHeight}`)
     const eventIterator = this.#dataSource.from({
       startHeight,
+      liveSync: true,
     })
 
     // Batch size, when reached should update the DB

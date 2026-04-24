@@ -1,6 +1,6 @@
-import type { DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
 import type { EVMBlock, EncryptedCommitment, GeneratedCommitment, Shield, ShieldCommitment, Transact, TransactCommitment, Unshield } from '@railgun-reloaded/scanner'
 import { ActionType } from '@railgun-reloaded/scanner'
+import type { DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
 
 enum CommitmentType {
   Shield = 0,
