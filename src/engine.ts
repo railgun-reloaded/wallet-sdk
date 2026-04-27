@@ -3,7 +3,7 @@ import path from 'path'
 
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
-import { closeChainDB, createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
+import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
 
 import { NoteCommitmentTree } from './merkle'
 import type { NetworkConfig, NetworkName } from './network-config'
@@ -131,22 +131,16 @@ class RailgunEngine {
   }
 
   /**
-   * Load merkletree from the DB
+   * Load all persisted merkle trees from chain.db into the in-memory map.
+   * Trees are returned ordered by treeNumber, so map insertion order matches
+   * on-disk order.
    */
   #loadMerkleTree () {
-    let treeNumber = 0
-    // @TODO replace this by getAllMerkleTree query, should be added in the reloaded/storage
-    while (true) {
-      const treeEntry = getMerkleTree(this.#db!, treeNumber)
-      if (treeEntry) {
-        this.#noteCommitmentTree.set(treeNumber, new NoteCommitmentTree({
-          buffer: treeEntry.leaves,
-          length: treeEntry.leafCount
-        }))
-        treeNumber++
-      } else {
-        return
-      }
+    for (const tree of getAllMerkleTrees(this.#db!)) {
+      this.#noteCommitmentTree.set(tree.treeNumber, new NoteCommitmentTree({
+        buffer: tree.leaves,
+        length: tree.leafCount
+      }))
     }
   }
 
