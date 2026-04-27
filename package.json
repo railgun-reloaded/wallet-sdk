@@ -34,11 +34,11 @@
     "patch-package": "^8.0.1"
   },
   "dependencies": {
-    "@railgun-reloaded/bytes": "file:../bytes",
-    "@railgun-reloaded/cryptography": "file:../cryptography",
+    "@railgun-reloaded/bytes": "git+https://github.com/railgun-reloaded/bytes.git#main",
+    "@railgun-reloaded/cryptography": "git+https://github.com/railgun-reloaded/cryptography.git#chore/migrate-to-bytes-package",
     "@railgun-reloaded/merkle-tree": "https://github.com/railgun-reloaded/merkle-tree.git#main",
-    "@railgun-reloaded/scanner": "file:../scanner",
-    "@railgun-reloaded/storage": "file:../storage",
-    "@railgun-reloaded/wallet-node": "file:../wallet-node"
+    "@railgun-reloaded/scanner": "git+https://github.com/railgun-reloaded/scanner.git#chore/migrate-to-bytes-package",
+    "@railgun-reloaded/storage": "git+https://github.com/railgun-reloaded/storage.git#chore/migrate-to-bytes-package",
+    "@railgun-reloaded/wallet-node": "git+https://github.com/railgun-reloaded/wallet-node.git#chore/migrate-to-bytes-package"
   }
 }
