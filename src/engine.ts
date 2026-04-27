@@ -55,16 +55,6 @@ class RailgunEngine {
   #noteCommitmentTree = new Map<number, NoteCommitmentTree>()
 
   /**
-   * Timeout value for controlling eventSync
-   */
-  #eventSyncTimeout: NodeJS.Timeout | null = null
-
-  /**
-   * Flag to indicate if we should stop eventSync
-   */
-  #shouldStopEventSync = false
-
-  /**
    * Set Aggregated Data Source for the engine
    * @param dataSource - Input source aggregator
    */
@@ -92,42 +82,46 @@ class RailgunEngine {
   }
 
   /**
-   * Start Railgun Engine, This initializes all the necessary components
-   * in order.
+   * Drain the configured data source into chain.db, returning when the source
+   * reaches its current tip. Resumes from the persisted sync cursor when one
+   * exists, otherwise starts at the network's deployment block.
+   *
+   * Live sources (RPCProvider) never reach a natural tip; bound the scan with
+   * `endBlock` when using one.
+   * @param options - Optional `{ endBlock? }` to bound the scan height.
+   * @param options.endBlock - Inclusive ceiling; the scan exits after writing
+   *   a block at or above this height.
+   * @returns Last block number written to chain.db, or `undefined` when the
+   *   source had nothing to yield.
    */
-  start () {
+  async scan (options: { endBlock?: bigint } = {}): Promise<bigint | undefined> {
     if (!this.#currentNetwork) {
-      throw new Error('Initialization Failed: No valid network selected')
+      throw new Error('Scan failed: no network selected')
     }
-    this.#log(`EngineInit:: Initializing for Network ${this.#currentNetwork}`)
-
     if (!this.#dataSource) {
-      throw new Error('Initialization Failed: Invalid data source')
+      throw new Error('Scan failed: no data source set')
     }
 
     this.#networkConfig = NETWORK_CONFIG[this.#currentNetwork]
-    try {
-      if (!this.#db) {
-        const dirName = `./.railgun/chains/${this.#networkConfig.chainID}/`
-        if (!existsSync(dirName)) {
-          mkdirSync(dirName, { recursive: true })
-        }
+    this.#log(`EngineInit:: Initializing for Network ${this.#currentNetwork}`)
 
-        this.#db = createChainDB({
-          path: path.join(dirName, 'chain.db'),
-          runMigrations: true
-        })
+    if (!this.#db) {
+      const dirName = `./.railgun/chains/${this.#networkConfig.chainID}/`
+      if (!existsSync(dirName)) {
+        mkdirSync(dirName, { recursive: true })
       }
-
-      // Load existing merkleTree from the DB
-      this.#loadMerkleTree()
-
-      const lastSycedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
-      const startHeight = lastSycedBlock ? lastSycedBlock + 1n : this.#networkConfig.deploymentBlock
-      this.#startDataSync(startHeight)
-    } catch (err) {
-      console.log(err)
+      this.#db = createChainDB({
+        path: path.join(dirName, 'chain.db'),
+        runMigrations: true
+      })
     }
+
+    this.#loadMerkleTree()
+
+    const lastSyncedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
+    const startHeight = lastSyncedBlock ? lastSyncedBlock + 1n : this.#networkConfig.deploymentBlock
+
+    return this.#drainToTip(startHeight, options.endBlock)
   }
 
   /**
@@ -200,50 +194,56 @@ class RailgunEngine {
   }
 
   /**
-   * Start Scanner in the background
-   * @param startHeight - Starting Height for fetching data
+   * Drive the data source iterator from `startHeight` until it terminates,
+   * batching writes to chain.db. Stops early when a block at `endBlock` (or
+   * past it) has been ingested. Returns the last block number written, or
+   * `undefined` when the iterator yielded nothing.
+   * @param startHeight - Block to begin syncing from (inclusive).
+   * @param endBlock - Optional ceiling; the loop exits after writing a block
+   *   at or above this height.
+   * @returns Last block number persisted, or `undefined`.
    */
-  async #startDataSync (startHeight: bigint) {
-    if (this.#shouldStopEventSync) return
-
+  async #drainToTip (startHeight: bigint, endBlock?: bigint): Promise<bigint | undefined> {
     this.#log(`Syncing event from height ${startHeight}`)
     const eventIterator = this.#dataSource.from({
       startHeight,
-      liveSync: true,
+      endHeight: endBlock,
+      liveSync: false,
     })
 
-    // Batch size, when reached should update the DB
-    // This is to reduce the DB load by updating entries in batch
     const batchInsertSize = 100
-    let nullifierBatch = []
-    let commitmentBatch = []
-    let unshieldBatch = []
+    let nullifierBatch: DBNewNullifier[] = []
+    let commitmentBatch: DBNewCommitment[] = []
+    let unshieldBatch: DBNewUnshield[] = []
 
-    let totalBlocks = 0
-    let lastBlockNumber = startHeight
+    let blocksInBatch = 0
+    let lastBlockNumber: bigint | undefined
     for await (const block of eventIterator) {
       const { nullifiers, commitments, unshields } = denormalizeBlockData(block)
       nullifierBatch.push(...nullifiers)
       commitmentBatch.push(...commitments)
       unshieldBatch.push(...unshields)
-      totalBlocks += 1
+      blocksInBatch += 1
+      lastBlockNumber = block.number
 
-      if (totalBlocks > batchInsertSize) {
+      if (blocksInBatch >= batchInsertSize) {
         this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, block.number)
-        totalBlocks = 0
+        blocksInBatch = 0
         commitmentBatch = []
         nullifierBatch = []
         unshieldBatch = []
       }
-      lastBlockNumber = block.number
+
+      if (endBlock !== undefined && block.number >= endBlock) {
+        break
+      }
     }
-    if (totalBlocks > 0) {
+
+    if (blocksInBatch > 0 && lastBlockNumber !== undefined) {
       this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, lastBlockNumber)
     }
-    // This is a temporary solution for liveSync, every 10s it schedules new  iterator for syncing data.
-    // This should be removed in favor of RPCProvider
-    // Also lastBlockNumber should the actual block number returned by the dataSync, instead of last insertedBlock
-    this.#eventSyncTimeout = setTimeout(this.#startDataSync.bind(this), 10_000, lastBlockNumber === startHeight ? lastBlockNumber : lastBlockNumber + 1n)
+
+    return lastBlockNumber
   }
 
   /**
@@ -275,16 +275,15 @@ class RailgunEngine {
   }
 
   /**
-   * Destroy Railgun Engine
+   * Release engine resources: close chain.db and tear down the data source.
    */
   destroy () {
-    this.#shouldStopEventSync = true
-    if (this.#eventSyncTimeout) {
-      clearTimeout(this.#eventSyncTimeout)
-      this.#eventSyncTimeout = null
+    if (this.#db) {
+      closeChainDB(this.#db)
     }
-    closeChainDB(this.#db!)
-    this.#dataSource.destroy()
+    if (this.#dataSource) {
+      this.#dataSource.destroy()
+    }
   }
 }
 
