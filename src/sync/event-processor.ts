@@ -1,26 +1,11 @@
-import type { DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
+import { padBytesLeft } from '@railgun-reloaded/bytes'
 import type { EVMBlock, EncryptedCommitment, GeneratedCommitment, Shield, ShieldCommitment, Transact, TransactCommitment, Unshield } from '@railgun-reloaded/scanner'
 import { ActionType } from '@railgun-reloaded/scanner'
+import type { DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
 
 enum CommitmentType {
   Shield = 0,
   Transact = 1,
-}
-
-/**
- * Left pads byte array to length
- * @param byteArray - byte array to pad
- * @param length - length of new array
- * @returns padded array
- */
-const arrayToByteLength = (byteArray: Uint8Array, length: number): Uint8Array => {
-  // Check the length of array requested is large enough to accommodate the original array
-  if (byteArray.length > length) { throw new Error('BigInt byte size is larger than length') }
-
-  // Create Uint8Array of requested length
-  return new Uint8Array(
-    new Array(length - byteArray.length).concat(...byteArray)
-  )
 }
 
 /**
@@ -52,7 +37,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             blockNumber,
             treeNumber,
             treePosition,
-            hash: arrayToByteLength(hash, 32),
+            hash: padBytesLeft(hash, 32),
             commitmentType: CommitmentType.Shield,
             commitment: {
               preimage,
@@ -72,7 +57,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             blockNumber,
             treeNumber,
             treePosition,
-            hash: arrayToByteLength(hash, 32),
+            hash: padBytesLeft(hash, 32),
             commitmentType: CommitmentType.Shield,
             commitment: {
               preimage,
@@ -100,7 +85,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             transactionHash,
             blockNumber,
             treeNumber: c.treeNumber,
-            hash: arrayToByteLength(c.hash, 32),
+            hash: padBytesLeft(c.hash, 32),
             treePosition: c.treePosition,
             commitmentType: CommitmentType.Transact,
             commitment: {
@@ -126,7 +111,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             transactionHash,
             blockNumber,
             treeNumber: c.treeNumber,
-            hash: arrayToByteLength(c.hash, 32),
+            hash: padBytesLeft(c.hash, 32),
             treePosition: c.treePosition,
             commitmentType: CommitmentType.Transact,
             commitment: {

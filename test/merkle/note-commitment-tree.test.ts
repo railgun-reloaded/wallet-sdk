@@ -1,4 +1,4 @@
-import { bytesToHex, hexToBytes } from '@railgun-reloaded/cryptography'
+import { bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import type { MerkleProof } from '@railgun-reloaded/merkle-tree'
 import { test } from 'brittle'
 

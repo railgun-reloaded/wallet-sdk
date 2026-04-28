@@ -215,6 +215,7 @@ class RailgunEngine {
     this.#log(`Syncing event from height ${startHeight}`)
     const eventIterator = this.#dataSource.from({
       startHeight,
+      liveSync: false,
     })
 
     // Batch size, when reached should update the DB

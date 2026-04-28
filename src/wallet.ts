@@ -1,3 +1,5 @@
+import { bigIntToBytes, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
+import { poseidon } from '@railgun-reloaded/cryptography'
 import type { Shield, Transact } from '@railgun-reloaded/scanner'
 import type { TokenData, TokenDataGetter } from '@railgun-reloaded/wallet-node'
 import {
@@ -6,12 +8,8 @@ import {
   ShieldNote,
   TokenType,
   TXIDVersion,
-  bigintToUint8Array,
   decryptCommitmentAsReceiverOrSender,
-  hexToUint8Array,
-  uint8ArrayToHex
 } from '@railgun-reloaded/wallet-node'
-import { poseidon } from '@railgun-reloaded/cryptography'
 
 enum NoteType {
   Shield = 'shield',
@@ -49,7 +47,7 @@ const createTokenDataGetter = (): TokenDataGetter => ({
     const addressHex = cleanHash.slice(24) // last 20 bytes = address
     return {
       tokenType: TokenType.ERC20,
-      tokenAddress: hexToUint8Array(`0x${addressHex}`),
+      tokenAddress: hexToBytes(`0x${addressHex}`),
       tokenSubID: new Uint8Array(32)
     }
   }
@@ -111,7 +109,7 @@ export class RailgunWalletSDK {
    * This is the public identifier for receiving private transfers
    */
   getAddress (): string {
-    return uint8ArrayToHex(this.wallet.getMasterPublicKey())
+    return bytesToHex(this.wallet.getMasterPublicKey(), { prefix: true })
   }
 
   /**
@@ -119,7 +117,7 @@ export class RailgunWalletSDK {
    * Used for establishing shared secrets in ECDH encryption
    */
   getViewingPublicKey (): string {
-    return uint8ArrayToHex(this.wallet.getViewingPublicKey())
+    return bytesToHex(this.wallet.getViewingPublicKey(), { prefix: true })
   }
 
   /**
@@ -128,7 +126,7 @@ export class RailgunWalletSDK {
    */
   getSpendingPublicKey (): string {
     const spk = this.wallet.getSpendingPublicKey()
-    return `${uint8ArrayToHex(spk[0])},${uint8ArrayToHex(spk[1])}`
+    return `${bytesToHex(spk[0], { prefix: true })},${bytesToHex(spk[1], { prefix: true })}`
   }
 
   /**
@@ -206,13 +204,13 @@ export class RailgunWalletSDK {
       return
     }
 
-    const leafIndexBytes = bigintToUint8Array(BigInt(commitment.treePosition), 32)
+    const leafIndexBytes = bigIntToBytes(BigInt(commitment.treePosition), 32)
     const nullifier = poseidon([nullifyingKey, leafIndexBytes])
 
     this.notes.push({
-      commitment: uint8ArrayToHex(commitment.hash),
-      nullifier: uint8ArrayToHex(nullifier),
-      token: uint8ArrayToHex(shieldNote.tokenData.tokenAddress),
+      commitment: bytesToHex(commitment.hash, { prefix: true }),
+      nullifier: bytesToHex(nullifier, { prefix: true }),
+      token: bytesToHex(shieldNote.tokenData.tokenAddress, { prefix: true }),
       amount: shieldNote.value,
       blockNumber,
       treeNumber: commitment.treeNumber,
@@ -231,7 +229,7 @@ export class RailgunWalletSDK {
 
     // Track spent nullifiers from this transaction
     for (const nullifier of action.nullifiers) {
-      this.spentNullifiers.add(uint8ArrayToHex(nullifier))
+      this.spentNullifiers.add(bytesToHex(nullifier, { prefix: true }))
     }
 
     for (const commitment of action.commitments) {
@@ -258,13 +256,13 @@ export class RailgunWalletSDK {
 
       const isReceiver = receiverData !== null
 
-      const leafIndexBytes = bigintToUint8Array(BigInt(commitment.treePosition), 32)
+      const leafIndexBytes = bigIntToBytes(BigInt(commitment.treePosition), 32)
       const nullifier = poseidon([nullifyingKey, leafIndexBytes])
 
       this.notes.push({
-        commitment: uint8ArrayToHex(commitment.hash),
-        nullifier: uint8ArrayToHex(nullifier),
-        token: uint8ArrayToHex(decrypted.tokenData.tokenAddress),
+        commitment: bytesToHex(commitment.hash, { prefix: true }),
+        nullifier: bytesToHex(nullifier, { prefix: true }),
+        token: bytesToHex(decrypted.tokenData.tokenAddress, { prefix: true }),
         amount: decrypted.value,
         blockNumber,
         treeNumber: commitment.treeNumber,

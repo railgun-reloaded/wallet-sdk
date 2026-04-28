@@ -1,4 +1,5 @@
-import { bigintToUint8Array, keccak256, uint8ArrayToBigInt } from '@railgun-reloaded/cryptography'
+import { bigIntToBytes, bytesToBigInt } from '@railgun-reloaded/bytes'
+import { keccak256 } from '@railgun-reloaded/cryptography'
 import { SparseMerkleTree } from '@railgun-reloaded/merkle-tree'
 
 import { poseidonHash } from './hash'
@@ -15,7 +16,7 @@ const COMMITMENT_TREE_ELEMENT_LENGTH = 32
 const RAILGUN_BYTES = Uint8Array.from([82, 97, 105, 108, 103, 117, 110])
 
 // Zero Element of Railgun Note Commitment Tree
-const COMMITMENT_TREE_ZERO_ELEMENT = bigintToUint8Array(uint8ArrayToBigInt(keccak256(RAILGUN_BYTES)) % SNARK_PRIME)
+const COMMITMENT_TREE_ZERO_ELEMENT = bigIntToBytes(bytesToBigInt(keccak256(RAILGUN_BYTES)) % SNARK_PRIME, 32)
 
 /**
  * Note Commitment Tree Class for managing note

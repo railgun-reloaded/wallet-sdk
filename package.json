@@ -34,10 +34,11 @@
     "patch-package": "^8.0.1"
   },
   "dependencies": {
-    "@railgun-reloaded/cryptography": "https://github.com/railgun-reloaded/cryptography.git#main",
+    "@railgun-reloaded/bytes": "file:../bytes",
+    "@railgun-reloaded/cryptography": "file:../cryptography",
     "@railgun-reloaded/merkle-tree": "https://github.com/railgun-reloaded/merkle-tree.git#main",
-    "@railgun-reloaded/storage": "https://github.com/railgun-reloaded/storage#feat/enhance-schema",
-    "@railgun-reloaded/scanner": "https://github.com/railgun-reloaded/scanner#dev",
-    "@railgun-reloaded/wallet-node": "https://github.com/railgun-reloaded/wallet-node.git#main"
+    "@railgun-reloaded/scanner": "file:../scanner",
+    "@railgun-reloaded/storage": "file:../storage",
+    "@railgun-reloaded/wallet-node": "file:../wallet-node"
   }
 }
