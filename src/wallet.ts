@@ -8,7 +8,7 @@ import {
   TXIDVersion,
   bigintToUint8Array,
   decryptCommitmentAsReceiverOrSender,
-  uint8ArrayToBigInt,
+  hexToUint8Array,
   uint8ArrayToHex
 } from '@railgun-reloaded/wallet-node'
 import { poseidon } from '@railgun-reloaded/cryptography'
@@ -49,8 +49,8 @@ const createTokenDataGetter = (): TokenDataGetter => ({
     const addressHex = cleanHash.slice(24) // last 20 bytes = address
     return {
       tokenType: TokenType.ERC20,
-      tokenAddress: `0x${addressHex}`,
-      tokenSubID: '0x' + '0'.repeat(64)
+      tokenAddress: hexToUint8Array(`0x${addressHex}`),
+      tokenSubID: new Uint8Array(32)
     }
   }
 })
@@ -189,7 +189,6 @@ export class RailgunWalletSDK {
   private async processShield (action: Shield, blockNumber: bigint): Promise<void> {
     const viewingPrivateKey = this.wallet.getViewingPrivateKey()
     const masterPublicKeyBytes = this.wallet.getMasterPublicKey()
-    const masterPublicKey = uint8ArrayToBigInt(masterPublicKeyBytes)
     const nullifyingKey = this.wallet.getNullifyingKey()
     const commitment = action.commitment
 
@@ -197,10 +196,10 @@ export class RailgunWalletSDK {
 
     if ('encryptedRandom' in commitment) {
       // V1: GeneratedCommitment with plaintext random
-      shieldNote = ShieldNote.fromGeneratedCommitment(commitment, masterPublicKey)
+      shieldNote = ShieldNote.fromGeneratedCommitment(commitment, viewingPrivateKey, masterPublicKeyBytes)
     } else {
       // V2+: ShieldCommitment with ECDH-encrypted bundle
-      shieldNote = await ShieldNote.fromShieldCommitment(commitment, viewingPrivateKey, masterPublicKey)
+      shieldNote = await ShieldNote.fromShieldCommitment(commitment, viewingPrivateKey, masterPublicKeyBytes)
     }
 
     if (!shieldNote) {
@@ -213,7 +212,7 @@ export class RailgunWalletSDK {
     this.notes.push({
       commitment: uint8ArrayToHex(commitment.hash),
       nullifier: uint8ArrayToHex(nullifier),
-      token: shieldNote.tokenData.tokenAddress,
+      token: uint8ArrayToHex(shieldNote.tokenData.tokenAddress),
       amount: shieldNote.value,
       blockNumber,
       treeNumber: commitment.treeNumber,
@@ -265,7 +264,7 @@ export class RailgunWalletSDK {
       this.notes.push({
         commitment: uint8ArrayToHex(commitment.hash),
         nullifier: uint8ArrayToHex(nullifier),
-        token: decrypted.tokenData.tokenAddress,
+        token: uint8ArrayToHex(decrypted.tokenData.tokenAddress),
         amount: decrypted.value,
         blockNumber,
         treeNumber: commitment.treeNumber,
