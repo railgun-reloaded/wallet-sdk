@@ -35,10 +35,10 @@
   },
   "dependencies": {
     "@railgun-reloaded/bytes": "git+https://github.com/railgun-reloaded/bytes.git#dev",
-    "@railgun-reloaded/cryptography": "git+https://github.com/railgun-reloaded/cryptography.git#chore/migrate-to-bytes-package",
+    "@railgun-reloaded/cryptography": "git+https://github.com/railgun-reloaded/cryptography.git#main",
     "@railgun-reloaded/merkle-tree": "https://github.com/railgun-reloaded/merkle-tree.git#main",
-    "@railgun-reloaded/scanner": "git+https://github.com/railgun-reloaded/scanner.git#chore/migrate-to-bytes-package",
-    "@railgun-reloaded/storage": "git+https://github.com/railgun-reloaded/storage.git#chore/migrate-to-bytes-package",
-    "@railgun-reloaded/wallet-node": "git+https://github.com/railgun-reloaded/wallet-node.git#chore/migrate-to-bytes-package"
+    "@railgun-reloaded/scanner": "git+https://github.com/railgun-reloaded/scanner.git#dev",
+    "@railgun-reloaded/storage": "git+https://github.com/railgun-reloaded/storage.git#dev",
+    "@railgun-reloaded/wallet-node": "git+https://github.com/railgun-reloaded/wallet-node.git#main"
   }
 }
