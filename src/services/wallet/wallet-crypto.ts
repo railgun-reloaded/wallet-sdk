@@ -94,6 +94,8 @@ function assertKeyLength (key: Uint8Array): void {
 
 /**
  * Concatenate a list of Uint8Arrays into a single contiguous buffer.
+ *
+ * TODO: extract to @railgun-reloaded/bytes when available.
  * @param arrays - Input byte arrays.
  * @returns A single Uint8Array containing the concatenation.
  */

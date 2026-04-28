@@ -7,11 +7,12 @@ import {
   decryptWalletBlob,
   encryptWalletBlob
 } from '../../../src/services/wallet/wallet-crypto'
+import { MNEMONIC } from '../../fixtures/wallet-vectors'
 
 test('encrypt / decrypt round-trip returns the same blob', (t) => {
   const key = new Uint8Array(randomBytes(32))
   const blob = {
-    mnemonic: 'test test test test test test test test test test test junk',
+    mnemonic: MNEMONIC,
     index: 0
   }
   const packed = encryptWalletBlob(blob, key)

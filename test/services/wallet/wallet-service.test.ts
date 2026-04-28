@@ -16,6 +16,8 @@ import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors'
 
 /**
  * Encode bytes as unprefixed lowercase hex for fixture comparison.
+ *
+ * TODO: replace with the helper from @railgun-reloaded/bytes when available.
  * @param bytes - Input buffer.
  * @returns Hex representation.
  */

@@ -131,16 +131,22 @@ class WalletService {
     }
 
     const blob = decryptWalletBlob(row.encryptedKeys, encryptionKey)
-    const keys = deriveWalletKeys(blob.mnemonic, blob.index)
+    const {
+      railgunAddress,
+      masterPublicKey,
+      viewingPublicKey,
+      viewingPrivateKey,
+      nullifyingKey
+    } = deriveWalletKeys(blob.mnemonic, blob.index)
 
     return {
       walletId: row.id,
       name: row.name ?? null,
-      railgunAddress: keys.railgunAddress,
-      masterPublicKey: keys.masterPublicKey,
-      viewingPublicKey: keys.viewingPublicKey,
-      viewingPrivateKey: keys.viewingPrivateKey,
-      nullifyingKey: keys.nullifyingKey
+      railgunAddress,
+      masterPublicKey,
+      viewingPublicKey,
+      viewingPrivateKey,
+      nullifyingKey
     }
   }
 

@@ -29,6 +29,8 @@ function generateWalletId (mnemonic: string, index: number = 0): string {
 
 /**
  * Parse an even-length hex string into a Uint8Array.
+ *
+ * TODO: extract to @railgun-reloaded/bytes when available.
  * @param hex - Hex string (no `0x` prefix, even length).
  * @returns Decoded bytes.
  */
@@ -42,6 +44,8 @@ function hexToBytes (hex: string): Uint8Array {
 
 /**
  * Encode a Uint8Array as an unprefixed lowercase hex string.
+ *
+ * TODO: extract to @railgun-reloaded/bytes when available.
  * @param bytes - Input byte array.
  * @returns Hex representation.
  */
