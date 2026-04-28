@@ -34,7 +34,7 @@
     "patch-package": "^8.0.1"
   },
   "dependencies": {
-    "@railgun-reloaded/bytes": "git+https://github.com/railgun-reloaded/bytes.git#main",
+    "@railgun-reloaded/bytes": "git+https://github.com/railgun-reloaded/bytes.git#dev",
     "@railgun-reloaded/cryptography": "git+https://github.com/railgun-reloaded/cryptography.git#chore/migrate-to-bytes-package",
     "@railgun-reloaded/merkle-tree": "https://github.com/railgun-reloaded/merkle-tree.git#main",
     "@railgun-reloaded/scanner": "git+https://github.com/railgun-reloaded/scanner.git#chore/migrate-to-bytes-package",
