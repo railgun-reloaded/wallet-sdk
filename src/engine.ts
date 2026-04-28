@@ -55,6 +55,37 @@ class RailgunEngine {
   #noteCommitmentTree = new Map<number, NoteCommitmentTree>()
 
   /**
+   * True when this engine constructed its own chain DB and is responsible
+   * for closing it. False when a chain DB was injected via the constructor.
+   */
+  #ownsChainDB = true
+
+  /**
+   * Base directory under which chain DBs live (`<dataDir>/chains/<id>/chain.db`).
+   * Ignored when `chainDB` is injected.
+   */
+  #dataDir: string
+
+  /**
+   * Construct an engine. Pass `chainDB` to inject a pre-configured database
+   * (for tests). When omitted, the engine creates
+   * `<dataDir>/chains/<id>/chain.db` the first time `scan()` runs (`dataDir`
+   * defaults to `./.railgun`).
+   * @param options - Optional `{ chainDB?, dataDir? }`.
+   * @param options.chainDB - Pre-built ChainDB; engine will not close it.
+   *   When provided, `dataDir` is ignored.
+   * @param options.dataDir - Base directory for chain DB files. Defaults to
+   *   `./.railgun`.
+   */
+  constructor (options: { chainDB?: ChainDB, dataDir?: string } = {}) {
+    this.#dataDir = options.dataDir ?? './.railgun'
+    if (options.chainDB) {
+      this.#db = options.chainDB
+      this.#ownsChainDB = false
+    }
+  }
+
+  /**
    * Set Aggregated Data Source for the engine
    * @param dataSource - Input source aggregator
    */
@@ -94,7 +125,7 @@ class RailgunEngine {
    * @returns Last block number written to chain.db, or `undefined` when the
    *   source had nothing to yield.
    */
-  async scan (options: { endBlock?: bigint } = {}): Promise<bigint | undefined> {
+  async scan (options: { endBlock?: bigint | undefined } = {}): Promise<bigint | undefined> {
     if (!this.#currentNetwork) {
       throw new Error('Scan failed: no network selected')
     }
@@ -106,7 +137,7 @@ class RailgunEngine {
     this.#log(`EngineInit:: Initializing for Network ${this.#currentNetwork}`)
 
     if (!this.#db) {
-      const dirName = `./.railgun/chains/${this.#networkConfig.chainID}/`
+      const dirName = path.join(this.#dataDir, 'chains', `${this.#networkConfig.chainID}`)
       if (!existsSync(dirName)) {
         mkdirSync(dirName, { recursive: true })
       }
@@ -243,7 +274,21 @@ class RailgunEngine {
       this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, lastBlockNumber)
     }
 
-    return lastBlockNumber
+    // Iterators only yield event-bearing blocks, so `lastBlockNumber` lags the
+    // actual walked range when the tail (or interior gaps) emit no RAILGUN
+    // events. The aggregator tracks the actual high-water mark across its
+    // sources — read it back so the cursor reflects coverage, not just the
+    // last event. Otherwise re-syncs replay the empty tail and the wallet
+    // decryptor reads a stale `toBlock`.
+    const coveredThrough = this.#dataSource.lastIteratedHeight ?? lastBlockNumber
+    if (coveredThrough !== undefined) {
+      const persisted = getSyncState(this.#db!, this.#networkConfig.chainID)?.lastBlockHeight
+      if (persisted === undefined || coveredThrough > persisted) {
+        updateSyncState(this.#db!, this.#networkConfig.chainID, coveredThrough)
+      }
+    }
+
+    return coveredThrough
   }
 
   /**
@@ -275,10 +320,11 @@ class RailgunEngine {
   }
 
   /**
-   * Release engine resources: close chain.db and tear down the data source.
+   * Release engine resources: close chain.db (only when owned) and tear
+   * down the data source (when one was set).
    */
   destroy () {
-    if (this.#db) {
+    if (this.#db && this.#ownsChainDB) {
       closeChainDB(this.#db)
     }
     if (this.#dataSource) {

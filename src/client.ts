@@ -2,19 +2,74 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
-import type { WalletDB } from '@railgun-reloaded/storage'
+import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
+import type { ChainDB, WalletDB } from '@railgun-reloaded/storage'
 import {
   closeWalletDB,
   createWalletDB
 } from '@railgun-reloaded/storage'
 
 import { RailgunEngine } from './engine'
+import type { NetworkName } from './network-config'
+import { NETWORK_CONFIG } from './network-config'
 import type {
   CreateWalletParams,
   WalletContext,
   WalletInfo
 } from './services/wallet/wallet-service'
 import { WalletService } from './services/wallet/wallet-service'
+import type { DecryptSummary } from './sync/wallet-decryptor'
+import { runWalletDecryption } from './sync/wallet-decryptor'
+
+/**
+ * Inputs for `RailgunClient.scan()`.
+ */
+type ScanParams = {
+  network: NetworkName
+  dataSource: SourceAggregator<EVMBlock>
+  endBlock?: bigint
+}
+
+/**
+ * Inputs for `RailgunClient.decrypt()`.
+ */
+type DecryptParams = {
+  /** Chain ID matching the data already in chain.db (e.g. 11155111 for Sepolia). */
+  chainId: number
+  /** Override the resumable cursor; defaults to `scanState.lastScannedBlock + 1`. */
+  fromBlock?: bigint
+  /** Stop point; defaults to chain.db's `syncState.lastBlockHeight`. */
+  toBlock?: bigint
+  /** Block-range chunk size for chain.db queries. Defaults to 10_000. */
+  batchSize?: bigint
+}
+
+/**
+ * Inputs for `RailgunClient.sync()`. Combines `ScanParams` with the wallet
+ * decryption knobs from `DecryptParams` minus `chainId` (derived from
+ * `network`).
+ */
+type SyncParams = {
+  network: NetworkName
+  dataSource: SourceAggregator<EVMBlock>
+  /** Inclusive ceiling on chain ingestion. */
+  endBlock?: bigint
+  /** Override the wallet decryption cursor; defaults to scanState + 1. */
+  fromBlock?: bigint
+  /** Stop point for decryption; defaults to chain.db's tip. */
+  toBlock?: bigint
+  /** Decryption block-range chunk size. Defaults to 10_000. */
+  batchSize?: bigint
+}
+
+/**
+ * Combined result of a `sync()` call: the engine scan outcome plus the
+ * wallet decryption summary.
+ */
+type SyncSummary = {
+  scan: { lastBlock: bigint | undefined }
+  decrypt: DecryptSummary
+}
 
 /**
  * Options for constructing a RailgunClient.
@@ -33,6 +88,13 @@ type RailgunClientOptions = {
    * tests — pass a `createWalletDB({ path: ':memory:', runMigrations: true })`.
    */
   walletDB?: WalletDB
+
+  /**
+   * Pre-constructed chain DB. When provided, `scan()` ingests into this DB
+   * instead of opening one under `dataDir`. Primarily for tests — pass a
+   * `createChainDB({ path: ':memory:', runMigrations: true })`.
+   */
+  chainDB?: ChainDB
 }
 
 const DEFAULT_DATA_DIR = './.railgun'
@@ -74,9 +136,9 @@ class RailgunClient {
 
   /**
    * Construct a RailgunClient.
-   * @param options - Optional `{ dataDir?, walletDB? }`. With `walletDB`,
-   *   the client won't own or close it; with `dataDir`, the client creates
-   *   its own DB at `<dataDir>/wallets.db`.
+   * @param options - Optional `{ dataDir?, walletDB?, chainDB? }`. Injected
+   *   DBs are not owned by the client and won't be closed by `close()`.
+   *   When omitted, DBs are created under `dataDir` (default: `./.railgun`).
    */
   constructor (options: RailgunClientOptions = {}) {
     const dataDir = options.dataDir ?? DEFAULT_DATA_DIR
@@ -97,7 +159,9 @@ class RailgunClient {
     }
 
     this.#walletService = new WalletService(this.#walletDB)
-    this.#engine = new RailgunEngine()
+    this.#engine = new RailgunEngine(
+      options.chainDB ? { chainDB: options.chainDB } : { dataDir }
+    )
   }
 
   /**
@@ -145,6 +209,89 @@ class RailgunClient {
   }
 
   /**
+   * Drain the supplied data source into chain.db for `network`. Returns when
+   * the source reaches its current tip (or `endBlock`, when set). Live
+   * sources never reach a natural tip — bound them with `endBlock`.
+   *
+   * Calling this method twice with different networks reconfigures the engine
+   * each time. The wallet DB is untouched; use `decrypt()` to populate
+   * per-wallet state from the synced chain DB.
+   * @param params - Sync target plus optional bounds.
+   * @param params.network - Network name (e.g. `NetworkName.EthereumSepolia`).
+   * @param params.dataSource - Aggregator that yields EVM blocks.
+   * @param params.endBlock - Inclusive ceiling on blocks to ingest.
+   * @returns Last block number written to chain.db, or `undefined` when the
+   *   source had nothing to yield.
+   */
+  scan (params: ScanParams): Promise<bigint | undefined> {
+    this.#engine.setDataSource(params.dataSource)
+    this.#engine.setNetwork(params.network)
+    return this.#engine.scan({ endBlock: params.endBlock })
+  }
+
+  /**
+   * Decrypt the wallet's notes from chain.db into wallet.db. Pure consumer
+   * of chain state — call `scan()` first to populate chain.db. Idempotent:
+   * the persisted scan cursor (`scanState.lastScannedBlock`) makes repeated
+   * calls a no-op once the wallet is up to date.
+   *
+   * Throws when `scan()` has not yet opened a chain DB for the given chain.
+   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
+   * @param encryptionKey - Same 32-byte key used at wallet creation time.
+   * @param params - Decryption target plus optional bounds.
+   * @returns Summary of blocks scanned and notes added/spent.
+   */
+  async decrypt (
+    walletId: string,
+    encryptionKey: Uint8Array,
+    params: DecryptParams
+  ): Promise<DecryptSummary> {
+    const chainDb = this.#engine.db
+    if (!chainDb) {
+      throw new Error('Decrypt failed: chain DB not initialized — call scan() first')
+    }
+    const walletContext = await this.#walletService.loadWallet(walletId, encryptionKey)
+    return runWalletDecryption({
+      chainDb,
+      walletDb: this.#walletDB,
+      walletContext,
+      chainId: params.chainId,
+      ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
+      ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
+      ...(params.batchSize !== undefined && { batchSize: params.batchSize })
+    })
+  }
+
+  /**
+   * Convenience composer: drain chain state into chain.db (`scan`) then
+   * decrypt the wallet's notes from chain.db into wallet.db (`decrypt`).
+   * Equivalent to calling `scan()` and `decrypt()` back-to-back; consumers
+   * who want scan-only or decrypt-only should call those primitives instead.
+   * @param walletId - Wallet ID to decrypt for.
+   * @param encryptionKey - 32-byte key used at wallet creation time.
+   * @param params - Network + data source + optional bounds.
+   * @returns Combined summary: last scanned block + decryption counters.
+   */
+  async sync (
+    walletId: string,
+    encryptionKey: Uint8Array,
+    params: SyncParams
+  ): Promise<SyncSummary> {
+    const lastBlock = await this.scan({
+      network: params.network,
+      dataSource: params.dataSource,
+      ...(params.endBlock !== undefined && { endBlock: params.endBlock })
+    })
+    const decrypt = await this.decrypt(walletId, encryptionKey, {
+      chainId: NETWORK_CONFIG[params.network].chainID,
+      ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
+      ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
+      ...(params.batchSize !== undefined && { batchSize: params.batchSize })
+    })
+    return { scan: { lastBlock }, decrypt }
+  }
+
+  /**
    * Release any resources owned by this client. Only closes the wallet DB
    * if it was constructed internally (injected DBs remain the caller's
    * responsibility).
@@ -157,4 +304,4 @@ class RailgunClient {
 }
 
 export { RailgunClient }
-export type { RailgunClientOptions }
+export type { DecryptParams, RailgunClientOptions, ScanParams, SyncParams, SyncSummary }

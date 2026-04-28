@@ -1,10 +1,18 @@
 export { RailgunClient } from './client'
-export type { RailgunClientOptions } from './client'
+export type {
+  DecryptParams,
+  RailgunClientOptions,
+  ScanParams,
+  SyncParams,
+  SyncSummary
+} from './client'
+
+export type { DecryptSummary } from './sync/wallet-decryptor'
 
 export { RailgunEngine } from './engine'
 
-export type { NetworkConfig, NetworkName } from './network-config'
-export { NETWORK_CONFIG } from './network-config'
+export type { NetworkConfig } from './network-config'
+export { NETWORK_CONFIG, NetworkName } from './network-config'
 
 export { deriveWalletKeys } from './services/wallet/keys'
 export type { WalletKeys } from './services/wallet/keys'

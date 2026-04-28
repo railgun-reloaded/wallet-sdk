@@ -2,7 +2,8 @@
   "name": "@railgun-reloaded/wallet-sdk",
   "version": "1.0.0",
   "description": "",
-  "main": "index.js",
+  "main": "src/index.js",
+  "types": "src/index.d.ts",
   "scripts": {
     "lint": "eslint",
     "fix": "eslint --fix",
@@ -10,7 +11,7 @@
     "clean": "tsc --build --clean",
     "postinstall": "patch-package && sh postinstall.sh",
     "pretest": "npm run build",
-    "test": "node --test --enable-source-maps test/*.test.js",
+    "test": "node --test --enable-source-maps --test-reporter=spec \"test/**/*.test.js\"",
     "db:generate:chain": "db-generate-chain"
   },
   "repository": {
@@ -34,10 +35,12 @@
     "patch-package": "^8.0.1"
   },
   "dependencies": {
-    "@railgun-reloaded/cryptography": "https://github.com/railgun-reloaded/cryptography.git#main",
-    "@railgun-reloaded/merkle-tree": "https://github.com/railgun-reloaded/merkle-tree.git#main",
-    "@railgun-reloaded/storage": "https://github.com/railgun-reloaded/storage#feat/enhance-schema",
-    "@railgun-reloaded/scanner": "https://github.com/railgun-reloaded/scanner#dev",
-    "@railgun-reloaded/wallet-node": "https://github.com/railgun-reloaded/wallet-node.git#main"
+    "@railgun-reloaded/0zk-addresses": "workspace:*",
+    "@railgun-reloaded/balance-scanner": "workspace:*",
+    "@railgun-reloaded/cryptography": "workspace:*",
+    "@railgun-reloaded/merkle-tree": "workspace:*",
+    "@railgun-reloaded/storage": "workspace:*",
+    "@railgun-reloaded/scanner": "workspace:*",
+    "@railgun-reloaded/wallet-node": "workspace:*"
   }
 }
