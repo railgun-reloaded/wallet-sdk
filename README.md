@@ -8,7 +8,7 @@ data, (future) aggregates balances and builds transactions.
 ## Install
 
 ```sh
-pnpm add @railgun-reloaded/wallet-sdk
+npm add @railgun-reloaded/wallet-sdk
 ```
 
 ## Quick start
