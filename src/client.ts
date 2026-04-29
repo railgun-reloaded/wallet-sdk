@@ -19,7 +19,7 @@ import type {
 } from './services/wallet/wallet-service'
 import { WalletService } from './services/wallet/wallet-service'
 import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor'
-import { runWalletDecryption } from './sync/wallet-decryptor'
+import { runWalletDecryption, SyncPhase } from './sync/wallet-decryptor'
 
 /**
  * Inputs for `RailgunClient.scan()`.
@@ -127,18 +127,20 @@ function resolveWalletMigrationsFolder (): string {
  * event. `startHeight` is the engine's resolved scan start (persisted
  * `syncState.lastBlockHeight + 1` or the network's deployment block), so
  * `blocksScanned` reflects the true window — not just blocks since the
- * first notification. Caller is responsible for guarding the call with
- * `params.onProgress` — this helper assumes it's defined.
- * @param params - Scan params containing `onProgress` and optional `endBlock`.
+ * first notification.
+ * @param onProgress - Progress callback supplied to `scan()`.
+ * @param endBlock - Optional inclusive ceiling set by the caller.
  * @returns Function compatible with `RailgunEngine.scan({ onBatch })`.
  */
-function makeScanOnBatch (params: ScanParams): (startHeight: bigint, lastBlock: bigint) => void {
-  const onProgress = params.onProgress!
+function makeScanOnBatch (
+  onProgress: NonNullable<ScanParams['onProgress']>,
+  endBlock?: bigint
+): (startHeight: bigint, lastBlock: bigint) => void {
   return (startHeight: bigint, lastBlock: bigint) => {
     onProgress({
-      phase: 'scan',
+      phase: SyncPhase.Scan,
       fromBlock: startHeight,
-      toBlock: params.endBlock ?? lastBlock,
+      toBlock: endBlock ?? lastBlock,
       currentBlock: lastBlock,
       blocksScanned: lastBlock - startHeight + 1n,
       notesAdded: 0,
@@ -260,7 +262,7 @@ class RailgunClient {
     this.#engine.setNetwork(params.network)
     return this.#engine.scan({
       endBlock: params.endBlock,
-      ...(params.onProgress && { onBatch: makeScanOnBatch(params) })
+      ...(params.onProgress && { onBatch: makeScanOnBatch(params.onProgress, params.endBlock) })
     })
   }
 

@@ -11,7 +11,7 @@
     "clean": "tsc --build --clean",
     "postinstall": "patch-package && sh postinstall.sh",
     "pretest": "npm run build",
-    "test": "node --test --enable-source-maps --test-reporter=spec \"test/**/*.test.js\"",
+    "test": "NODE_OPTIONS=--enable-source-maps brittle \"test/**/*.test.js\"",
     "db:generate:chain": "db-generate-chain"
   },
   "repository": {

@@ -30,6 +30,7 @@ function memChainDB () {
  * decoder returns views over a shared buffer (non-zero `byteOffset`), so
  * structural deep-equality from brittle's `alike` reports them as different
  * even when the bytes match. Copy through Buffer to compare the bytes only.
+ * TODO: Replace with `@railgun-reloaded/bytes` once the helper exists.
  * @param a - First byte array.
  * @param b - Second byte array.
  * @returns True when both have the same length and identical bytes.

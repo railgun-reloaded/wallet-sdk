@@ -26,13 +26,18 @@ import type { WalletContext } from '../services/wallet/wallet-service'
 import { rehydrateActions } from './event-rehydrator'
 import { erc20TokenDataGetter } from './token-data'
 
+enum SyncPhase {
+  Scan = 'scan',
+  Decrypt = 'decrypt'
+}
+
 /**
  * Per-batch progress event fired by sync/scan/decrypt. `phase` separates the
  * two stages because they have very different throughput; UIs typically show
  * them as two progress bars.
  */
 type SyncProgress = {
-  phase: 'scan' | 'decrypt'
+  phase: SyncPhase
   fromBlock: bigint
   toBlock: bigint
   /** Last block of the batch just finished. Monotonic across a single run. */
@@ -230,7 +235,7 @@ async function runWalletDecryption (
     updateScanState(walletDb, walletId, chainId, batchTo)
 
     params.onProgress?.({
-      phase: 'decrypt',
+      phase: SyncPhase.Decrypt,
       fromBlock: resolvedFrom,
       toBlock: resolvedTo,
       currentBlock: batchTo,
@@ -255,5 +260,5 @@ async function runWalletDecryption (
   }
 }
 
-export { runWalletDecryption }
+export { runWalletDecryption, SyncPhase }
 export type { DecryptSummary, SyncProgress, WalletDecryptionParams }

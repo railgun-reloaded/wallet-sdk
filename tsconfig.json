@@ -3,6 +3,7 @@
         "@railgun-reloaded/tsconfig/tsconfig"
     ],
     "compilerOptions": {
+        // Emit declaration files so the checked-in `.d.ts` outputs stay current.
         "declaration": true
     }
 }

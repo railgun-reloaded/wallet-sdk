@@ -9,6 +9,7 @@ export type {
 } from './client'
 
 export type { DecryptSummary } from './sync/wallet-decryptor'
+export { SyncPhase } from './sync/wallet-decryptor'
 
 export { RailgunEngine } from './engine'
 
