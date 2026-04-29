@@ -211,6 +211,58 @@ test('RailgunClient.sync composes scan() then decrypt()', async (t) => {
   client.close()
 })
 
+test('RailgunClient.sync fires onProgress for both phases in order', async (t) => {
+  await initializeCryptographyLibs()
+  const walletDB = memDB()
+  const chainDB = memChainDB()
+  const client = new RailgunClient({ walletDB, chainDB })
+  const key = new Uint8Array(randomBytes(32))
+  await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
+
+  const blocks: EVMBlock[] = [
+    { number: 5784866n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] },
+    { number: 5784867n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] }
+  ]
+  const aggregator = new SourceAggregator<EVMBlock>([new FakeSource(blocks)])
+
+  const events: { phase: string, currentBlock: bigint, blocksScanned: bigint }[] = []
+  /**
+   * Capture each sync progress event for downstream assertions.
+   * @param p - Progress event emitted by the SDK.
+   * @param p.phase - Either `'scan'` or `'decrypt'`.
+   * @param p.currentBlock - Last block of the batch just finished.
+   * @param p.blocksScanned - Running total of blocks processed.
+   */
+  const record = (p: { phase: string, currentBlock: bigint, blocksScanned: bigint }) => {
+    events.push({ phase: p.phase, currentBlock: p.currentBlock, blocksScanned: p.blocksScanned })
+  }
+  await client.sync(VECTORS[0]!.walletId, key, {
+    network: NetworkName.EthereumSepolia,
+    dataSource: aggregator,
+    endBlock: 5784867n,
+    onProgress: record
+  })
+
+  t.ok(events.length >= 2, 'fired at least once for each phase')
+  const phases = events.map(e => e.phase)
+  const firstDecrypt = phases.indexOf('decrypt')
+  t.not(firstDecrypt, -1, 'decrypt phase emitted')
+  t.is(phases.slice(0, firstDecrypt).every(p => p === 'scan'), true,
+    'scan events all precede the first decrypt event')
+
+  let monotonic = true
+  for (let i = 1; i < events.length; i++) {
+    if (events[i]!.phase === events[i - 1]!.phase &&
+        events[i]!.currentBlock < events[i - 1]!.currentBlock) {
+      monotonic = false
+      break
+    }
+  }
+  t.ok(monotonic, 'currentBlock monotonic within each phase')
+
+  client.close()
+})
+
 test('RailgunClient loadWallet returns correct keys', async (t) => {
   await initializeCryptographyLibs()
   const walletDB = memDB()

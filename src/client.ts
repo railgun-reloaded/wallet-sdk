@@ -18,7 +18,7 @@ import type {
   WalletInfo
 } from './services/wallet/wallet-service'
 import { WalletService } from './services/wallet/wallet-service'
-import type { DecryptSummary } from './sync/wallet-decryptor'
+import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor'
 import { runWalletDecryption } from './sync/wallet-decryptor'
 
 /**
@@ -28,6 +28,8 @@ type ScanParams = {
   network: NetworkName
   dataSource: SourceAggregator<EVMBlock>
   endBlock?: bigint
+  /** Fired per batch with `phase: 'scan'`. Synchronous; throwing aborts the run. */
+  onProgress?: (progress: SyncProgress) => void
 }
 
 /**
@@ -42,6 +44,8 @@ type DecryptParams = {
   toBlock?: bigint
   /** Block-range chunk size for chain.db queries. Defaults to 10_000. */
   batchSize?: bigint
+  /** Fired per batch with `phase: 'decrypt'`. Synchronous; throwing aborts the run. */
+  onProgress?: (progress: SyncProgress) => void
 }
 
 /**
@@ -60,6 +64,8 @@ type SyncParams = {
   toBlock?: bigint
   /** Decryption block-range chunk size. Defaults to 10_000. */
   batchSize?: bigint
+  /** Fired per batch from both phases. `phase` distinguishes scan vs decrypt. */
+  onProgress?: (progress: SyncProgress) => void
 }
 
 /**
@@ -113,6 +119,34 @@ function resolveWalletMigrationsFolder (): string {
   // reach the package root, then into drizzle/wallet.
   const packageRoot = path.dirname(path.dirname(storageEntry))
   return path.join(packageRoot, 'drizzle', 'wallet')
+}
+
+/**
+ * Build the engine `onBatch` callback that translates a per-batch
+ * `lastBlock` notification into a scan-phase `SyncProgress` event.
+ *
+ * The engine doesn't surface its resolved start block, so the first
+ * notification's `lastBlock` is used as the lower bound for
+ * `blocksScanned`. Caller is responsible for guarding the call with
+ * `params.onProgress` — this helper assumes it's defined.
+ * @param params - Scan params containing `onProgress` and optional `endBlock`.
+ * @returns Function compatible with `RailgunEngine.scan({ onBatch })`.
+ */
+function makeScanOnBatch (params: ScanParams): (lastBlock: bigint) => void {
+  const onProgress = params.onProgress!
+  let scanStart: bigint | undefined
+  return (lastBlock: bigint) => {
+    if (scanStart === undefined) scanStart = lastBlock
+    onProgress({
+      phase: 'scan',
+      fromBlock: scanStart,
+      toBlock: params.endBlock ?? lastBlock,
+      currentBlock: lastBlock,
+      blocksScanned: lastBlock - scanStart + 1n,
+      notesAdded: 0,
+      notesSpent: 0
+    })
+  }
 }
 
 /**
@@ -226,7 +260,10 @@ class RailgunClient {
   scan (params: ScanParams): Promise<bigint | undefined> {
     this.#engine.setDataSource(params.dataSource)
     this.#engine.setNetwork(params.network)
-    return this.#engine.scan({ endBlock: params.endBlock })
+    return this.#engine.scan({
+      endBlock: params.endBlock,
+      ...(params.onProgress && { onBatch: makeScanOnBatch(params) })
+    })
   }
 
   /**
@@ -258,7 +295,8 @@ class RailgunClient {
       chainId: params.chainId,
       ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
       ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
-      ...(params.batchSize !== undefined && { batchSize: params.batchSize })
+      ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
+      ...(params.onProgress !== undefined && { onProgress: params.onProgress })
     })
   }
 
@@ -280,13 +318,15 @@ class RailgunClient {
     const lastBlock = await this.scan({
       network: params.network,
       dataSource: params.dataSource,
-      ...(params.endBlock !== undefined && { endBlock: params.endBlock })
+      ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
+      ...(params.onProgress !== undefined && { onProgress: params.onProgress })
     })
     const decrypt = await this.decrypt(walletId, encryptionKey, {
       chainId: NETWORK_CONFIG[params.network].chainID,
       ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
       ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
-      ...(params.batchSize !== undefined && { batchSize: params.batchSize })
+      ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
+      ...(params.onProgress !== undefined && { onProgress: params.onProgress })
     })
     return { scan: { lastBlock }, decrypt }
   }
@@ -304,4 +344,4 @@ class RailgunClient {
 }
 
 export { RailgunClient }
-export type { DecryptParams, RailgunClientOptions, ScanParams, SyncParams, SyncSummary }
+export type { DecryptParams, RailgunClientOptions, ScanParams, SyncParams, SyncProgress, SyncSummary }

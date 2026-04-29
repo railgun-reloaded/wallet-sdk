@@ -26,6 +26,25 @@ import { rehydrateActions } from './event-rehydrator'
 import { erc20TokenDataGetter } from './token-data'
 
 /**
+ * Per-batch progress event fired by sync/scan/decrypt. `phase` separates the
+ * two stages because they have very different throughput; UIs typically show
+ * them as two progress bars.
+ */
+type SyncProgress = {
+  phase: 'scan' | 'decrypt'
+  fromBlock: bigint
+  toBlock: bigint
+  /** Last block of the batch just finished. Monotonic across a single run. */
+  currentBlock: bigint
+  /** Running total of blocks processed since the run began. */
+  blocksScanned: bigint
+  /** Running total of decrypted notes inserted (decrypt phase only). */
+  notesAdded: number
+  /** Running total of owned notes marked spent (decrypt phase only). */
+  notesSpent: number
+}
+
+/**
  * Inputs for `runWalletDecryption`.
  */
 type WalletDecryptionParams = {
@@ -39,6 +58,8 @@ type WalletDecryptionParams = {
   toBlock?: bigint
   /** Block-range chunk size for chain.db queries. Defaults to 10_000. */
   batchSize?: bigint
+  /** Fired after each batch's cursor advance. Synchronous; throwing aborts the run. */
+  onProgress?: (progress: SyncProgress) => void
 }
 
 /**
@@ -187,6 +208,16 @@ async function runWalletDecryption (
     }
 
     updateScanState(walletDb, walletId, chainId, batchTo)
+
+    params.onProgress?.({
+      phase: 'decrypt',
+      fromBlock: resolvedFrom,
+      toBlock: resolvedTo,
+      currentBlock: batchTo,
+      blocksScanned: batchTo - resolvedFrom + 1n,
+      notesAdded,
+      notesSpent
+    })
   }
 
   if (notesAdded > 0 || notesSpent > 0) {
@@ -205,4 +236,4 @@ async function runWalletDecryption (
 }
 
 export { runWalletDecryption }
-export type { WalletDecryptionParams, DecryptSummary }
+export type { DecryptSummary, SyncProgress, WalletDecryptionParams }

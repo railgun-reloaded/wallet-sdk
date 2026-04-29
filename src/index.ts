@@ -4,6 +4,7 @@ export type {
   RailgunClientOptions,
   ScanParams,
   SyncParams,
+  SyncProgress,
   SyncSummary
 } from './client'
 

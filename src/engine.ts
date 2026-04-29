@@ -119,13 +119,19 @@ class RailgunEngine {
    *
    * Live sources (RPCProvider) never reach a natural tip; bound the scan with
    * `endBlock` when using one.
-   * @param options - Optional `{ endBlock? }` to bound the scan height.
+   * @param options - Optional `{ endBlock?, onBatch? }`.
    * @param options.endBlock - Inclusive ceiling; the scan exits after writing
    *   a block at or above this height.
+   * @param options.onBatch - Fired after each batch is committed to chain.db
+   *   with the highest block number in that batch. Synchronous; throwing
+   *   aborts the run.
    * @returns Last block number written to chain.db, or `undefined` when the
    *   source had nothing to yield.
    */
-  async scan (options: { endBlock?: bigint | undefined } = {}): Promise<bigint | undefined> {
+  async scan (options: {
+    endBlock?: bigint | undefined
+    onBatch?: ((lastBlock: bigint) => void) | undefined
+  } = {}): Promise<bigint | undefined> {
     if (!this.#currentNetwork) {
       throw new Error('Scan failed: no network selected')
     }
@@ -152,7 +158,7 @@ class RailgunEngine {
     const lastSyncedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
     const startHeight = lastSyncedBlock ? lastSyncedBlock + 1n : this.#networkConfig.deploymentBlock
 
-    return this.#drainToTip(startHeight, options.endBlock)
+    return this.#drainToTip(startHeight, options.endBlock, options.onBatch)
   }
 
   /**
@@ -232,9 +238,15 @@ class RailgunEngine {
    * @param startHeight - Block to begin syncing from (inclusive).
    * @param endBlock - Optional ceiling; the loop exits after writing a block
    *   at or above this height.
+   * @param onBatch - Optional callback fired after each batch insert with
+   *   the highest block number in that batch.
    * @returns Last block number persisted, or `undefined`.
    */
-  async #drainToTip (startHeight: bigint, endBlock?: bigint): Promise<bigint | undefined> {
+  async #drainToTip (
+    startHeight: bigint,
+    endBlock?: bigint,
+    onBatch?: (lastBlock: bigint) => void
+  ): Promise<bigint | undefined> {
     this.#log(`Syncing event from height ${startHeight}`)
     const eventIterator = this.#dataSource.from({
       startHeight,
@@ -259,6 +271,7 @@ class RailgunEngine {
 
       if (blocksInBatch >= batchInsertSize) {
         this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, block.number)
+        onBatch?.(block.number)
         blocksInBatch = 0
         commitmentBatch = []
         nullifierBatch = []
@@ -272,6 +285,7 @@ class RailgunEngine {
 
     if (blocksInBatch > 0 && lastBlockNumber !== undefined) {
       this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, lastBlockNumber)
+      onBatch?.(lastBlockNumber)
     }
 
     // Iterators only yield event-bearing blocks, so `lastBlockNumber` lags the
