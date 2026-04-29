@@ -1,5 +1,8 @@
 {
     "extends": [
         "@railgun-reloaded/tsconfig/tsconfig"
-    ]
+    ],
+    "compilerOptions": {
+        "declaration": true
+    }
 }

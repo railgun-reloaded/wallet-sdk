@@ -5,6 +5,7 @@ import {
 import type {
   ChainDB,
   DBCommitment,
+  DBNullifier,
   WalletDB
 } from '@railgun-reloaded/storage'
 import {
@@ -98,6 +99,26 @@ function groupCommitmentsByBlock (rows: DBCommitment[]): Map<bigint, DBCommitmen
 }
 
 /**
+ * Group chain nullifier rows by their block number. Built once per batch so
+ * the per-block loop can do an O(1) lookup instead of re-filtering the full
+ * array on every iteration.
+ * @param rows - Chain rows from `getNullifiersByBlockRange`.
+ * @returns Map keyed by block number with the nullifier rows that landed there.
+ */
+function groupNullifiersByBlock (rows: DBNullifier[]): Map<bigint, DBNullifier[]> {
+  const groups = new Map<bigint, DBNullifier[]>()
+  for (const row of rows) {
+    const list = groups.get(row.blockNumber)
+    if (list) {
+      list.push(row)
+    } else {
+      groups.set(row.blockNumber, [row])
+    }
+  }
+  return groups
+}
+
+/**
  * Decrypt and persist all notes for a wallet over a block range read from
  * chain.db. Idempotent: re-running over the same range against the same
  * wallet.db is a no-op for inserted notes (commitment is the primary key)
@@ -150,10 +171,9 @@ async function runWalletDecryption (
 
     if (commitmentRows.length > 0) {
       const blockGroups = groupCommitmentsByBlock(commitmentRows)
+      const nullifiersByBlock = groupNullifiersByBlock(nullifierRows)
       for (const [blockNumber, rows] of blockGroups) {
-        // Nullifiers paired with this block's transacts so the rehydrator
-        // can attach them to the right group.
-        const blockNullifiers = nullifierRows.filter(n => n.blockNumber === blockNumber)
+        const blockNullifiers = nullifiersByBlock.get(blockNumber) ?? []
         const { shields, transacts } = rehydrateActions({
           commitments: rows,
           nullifiers: blockNullifiers

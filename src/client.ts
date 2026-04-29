@@ -123,26 +123,24 @@ function resolveWalletMigrationsFolder (): string {
 
 /**
  * Build the engine `onBatch` callback that translates a per-batch
- * `lastBlock` notification into a scan-phase `SyncProgress` event.
- *
- * The engine doesn't surface its resolved start block, so the first
- * notification's `lastBlock` is used as the lower bound for
- * `blocksScanned`. Caller is responsible for guarding the call with
+ * `(startHeight, lastBlock)` notification into a scan-phase `SyncProgress`
+ * event. `startHeight` is the engine's resolved scan start (persisted
+ * `syncState.lastBlockHeight + 1` or the network's deployment block), so
+ * `blocksScanned` reflects the true window — not just blocks since the
+ * first notification. Caller is responsible for guarding the call with
  * `params.onProgress` — this helper assumes it's defined.
  * @param params - Scan params containing `onProgress` and optional `endBlock`.
  * @returns Function compatible with `RailgunEngine.scan({ onBatch })`.
  */
-function makeScanOnBatch (params: ScanParams): (lastBlock: bigint) => void {
+function makeScanOnBatch (params: ScanParams): (startHeight: bigint, lastBlock: bigint) => void {
   const onProgress = params.onProgress!
-  let scanStart: bigint | undefined
-  return (lastBlock: bigint) => {
-    if (scanStart === undefined) scanStart = lastBlock
+  return (startHeight: bigint, lastBlock: bigint) => {
     onProgress({
       phase: 'scan',
-      fromBlock: scanStart,
+      fromBlock: startHeight,
       toBlock: params.endBlock ?? lastBlock,
       currentBlock: lastBlock,
-      blocksScanned: lastBlock - scanStart + 1n,
+      blocksScanned: lastBlock - startHeight + 1n,
       notesAdded: 0,
       notesSpent: 0
     })
@@ -332,11 +330,13 @@ class RailgunClient {
   }
 
   /**
-   * Release any resources owned by this client. Only closes the wallet DB
-   * if it was constructed internally (injected DBs remain the caller's
-   * responsibility).
+   * Release resources owned by this client: tears down the engine (which
+   * closes its chain DB only when it owns it, and destroys the configured
+   * data source when one was set) and closes the wallet DB only when it
+   * was created internally. Injected DBs remain the caller's responsibility.
    */
   close (): void {
+    this.#engine.destroy()
     if (this.#ownsWalletDB) {
       closeWalletDB(this.#walletDB)
     }

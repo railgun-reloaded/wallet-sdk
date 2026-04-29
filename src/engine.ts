@@ -35,9 +35,9 @@ class RailgunEngine {
   #log: (message: string) => void = console.log
 
   /**
-   * Currently selected network
+   * Currently selected network. `undefined` until `setNetwork()` is called.
    */
-  #currentNetwork!: NetworkName
+  #currentNetwork: NetworkName | undefined
 
   /**
    * NetworkConfig for currently selected network
@@ -97,10 +97,31 @@ class RailgunEngine {
   }
 
   /**
-   * Set current network for engine
+   * Set current network for engine.
+   *
+   * Re-setting to the same network is a no-op. *Switching* to a different
+   * network resets the chain DB and the in-memory merkle trees so the next
+   * `scan()` opens its own DB at `<dataDir>/chains/<newChainID>/chain.db`
+   * — without this reset, the next `scan()` would reuse the previous
+   * network's DB and write the new chain's data into the wrong file. The
+   * old chain DB is closed only when the engine owned it; an injected DB is
+   * left untouched (the injector keeps responsibility for it) and the
+   * caller is expected to provide a new one (or none) before the next
+   * `scan()`. The initial `setNetwork()` (when no prior network was set)
+   * does not reset, so an injected chain DB survives the first call.
    * @param networkName - Input Network Name
    */
   setNetwork (networkName: NetworkName) {
+    if (this.#currentNetwork === undefined) {
+      this.#currentNetwork = networkName
+      return
+    }
+    if (this.#currentNetwork === networkName) return
+    if (this.#db && this.#ownsChainDB) {
+      closeChainDB(this.#db)
+    }
+    this.#db = undefined
+    this.#noteCommitmentTree.clear()
     this.#currentNetwork = networkName
   }
 
@@ -123,14 +144,14 @@ class RailgunEngine {
    * @param options.endBlock - Inclusive ceiling; the scan exits after writing
    *   a block at or above this height.
    * @param options.onBatch - Fired after each batch is committed to chain.db
-   *   with the highest block number in that batch. Synchronous; throwing
-   *   aborts the run.
+   *   with the resolved scan start and the highest block number in that
+   *   batch. Synchronous; throwing aborts the run.
    * @returns Last block number written to chain.db, or `undefined` when the
    *   source had nothing to yield.
    */
   async scan (options: {
     endBlock?: bigint | undefined
-    onBatch?: ((lastBlock: bigint) => void) | undefined
+    onBatch?: ((startHeight: bigint, lastBlock: bigint) => void) | undefined
   } = {}): Promise<bigint | undefined> {
     if (!this.#currentNetwork) {
       throw new Error('Scan failed: no network selected')
@@ -158,7 +179,11 @@ class RailgunEngine {
     const lastSyncedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
     const startHeight = lastSyncedBlock ? lastSyncedBlock + 1n : this.#networkConfig.deploymentBlock
 
-    return this.#drainToTip(startHeight, options.endBlock, options.onBatch)
+    const onBatch = options.onBatch
+    const wrappedOnBatch = onBatch
+      ? (lastBlock: bigint) => onBatch(startHeight, lastBlock)
+      : undefined
+    return this.#drainToTip(startHeight, options.endBlock, wrappedOnBatch)
   }
 
   /**
