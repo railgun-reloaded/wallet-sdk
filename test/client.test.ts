@@ -6,7 +6,7 @@ import { createChainDB, createWalletDB, getSyncState } from '@railgun-reloaded/s
 import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
 import { test } from 'brittle'
 
-import { RailgunClient } from '../src/client'
+import { RailgunClient, SyncPhase } from '../src/client'
 import { NetworkName } from '../src/network-config'
 
 import { MNEMONIC, VECTORS } from './fixtures/wallet-vectors'
@@ -225,15 +225,15 @@ test('RailgunClient.sync fires onProgress for both phases in order', async (t) =
   ]
   const aggregator = new SourceAggregator<EVMBlock>([new FakeSource(blocks)])
 
-  const events: { phase: string, currentBlock: bigint, blocksScanned: bigint }[] = []
+  const events: { phase: SyncPhase, currentBlock: bigint, blocksScanned: bigint }[] = []
   /**
    * Capture each sync progress event for downstream assertions.
    * @param p - Progress event emitted by the SDK.
-   * @param p.phase - Either `'scan'` or `'decrypt'`.
+   * @param p.phase - `SyncPhase` value for the emitted phase.
    * @param p.currentBlock - Last block of the batch just finished.
    * @param p.blocksScanned - Running total of blocks processed.
    */
-  const record = (p: { phase: string, currentBlock: bigint, blocksScanned: bigint }) => {
+  const record = (p: { phase: SyncPhase, currentBlock: bigint, blocksScanned: bigint }) => {
     events.push({ phase: p.phase, currentBlock: p.currentBlock, blocksScanned: p.blocksScanned })
   }
   await client.sync(VECTORS[0]!.walletId, key, {
@@ -245,9 +245,9 @@ test('RailgunClient.sync fires onProgress for both phases in order', async (t) =
 
   t.ok(events.length >= 2, 'fired at least once for each phase')
   const phases = events.map(e => e.phase)
-  const firstDecrypt = phases.indexOf('decrypt')
+  const firstDecrypt = phases.indexOf(SyncPhase.Decrypt)
   t.not(firstDecrypt, -1, 'decrypt phase emitted')
-  t.is(phases.slice(0, firstDecrypt).every(p => p === 'scan'), true,
+  t.is(phases.slice(0, firstDecrypt).every(p => p === SyncPhase.Scan), true,
     'scan events all precede the first decrypt event')
 
   let monotonic = true

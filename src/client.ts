@@ -345,5 +345,5 @@ class RailgunClient {
   }
 }
 
-export { RailgunClient }
+export { RailgunClient, SyncPhase }
 export type { DecryptParams, RailgunClientOptions, ScanParams, SyncParams, SyncProgress, SyncSummary }
