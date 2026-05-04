@@ -1,14 +1,14 @@
 import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 
+import type { DataSource, EVMBlock } from '@railgun-reloaded/scanner'
 import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
 import { closeChainDB, createChainDB, getMerkleTree, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
-import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 
-import { denormalizeBlockData } from './sync'
 import { NoteCommitmentTree } from './merkle'
 import type { NetworkConfig, NetworkName } from './network-config'
 import { NETWORK_CONFIG } from './network-config'
+import { denormalizeBlockData } from './sync'
 /**
  * RailgunEngine
  *
@@ -20,14 +20,14 @@ import { NETWORK_CONFIG } from './network-config'
  */
 class RailgunEngine {
 /**
- * The Source Aggregator manages multiple data sources used for data synchronization.
+ * Data source used for blockchain data synchronization.
  *
- * Data sources are organized hierarchically based on retrieval cost.
- * The system prioritizes lower-cost sources (such as Snapshot and Subsquid)
- * and progressively falls back to higher-cost sources (such as RPC)
- * when necessary.
+ * Typically a SourceAggregator that organizes multiple sources hierarchically
+ * based on retrieval cost — prioritizing lower-cost sources (such as Snapshot
+ * and Subsquid) and falling back to higher-cost sources (such as RPC) when
+ * necessary — but any value conforming to the DataSource interface is accepted.
  */
-  #dataSource!: SourceAggregator<EVMBlock>
+  #dataSource!: DataSource<EVMBlock>
 
   /**
    * Optional Logger Function
@@ -65,10 +65,10 @@ class RailgunEngine {
   #shouldStopEventSync = false
 
   /**
-   * Set Aggregated Data Source for the engine
-   * @param dataSource - Input source aggregator
+   * Set the data source used for blockchain synchronization.
+   * @param dataSource - Any value conforming to the DataSource interface (typically a SourceAggregator)
    */
-  setDataSource (dataSource: SourceAggregator<EVMBlock>) {
+  setDataSource (dataSource: DataSource<EVMBlock>) {
     if (this.#dataSource) {
       this.#dataSource.destroy()
     }

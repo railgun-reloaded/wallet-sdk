@@ -1,13 +1,13 @@
 import { bigIntToBytes, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import { poseidon } from '@railgun-reloaded/cryptography'
-import type { Shield, Transact } from '@railgun-reloaded/scanner'
+import type { DataSource, EVMBlock, Shield, SyncOptions, Transact } from '@railgun-reloaded/scanner'
 import type { TokenData, TokenDataGetter } from '@railgun-reloaded/wallet-node'
 import {
   ChainType,
   RailgunWallet,
   ShieldNote,
-  TokenType,
   TXIDVersion,
+  TokenType,
   decryptCommitmentAsReceiverOrSender,
 } from '@railgun-reloaded/wallet-node'
 
@@ -38,10 +38,18 @@ type TokenBalance = {
 }
 
 /**
- * Simple token data getter for ERC20 tokens
- * Extracts token address from the last 20 bytes of the hash
+ * Simple token data getter for ERC20 tokens.
+ * Extracts the token address from the last 20 bytes of the hash.
+ * @returns A TokenDataGetter that resolves token hashes to ERC20 token data.
  */
 const createTokenDataGetter = (): TokenDataGetter => ({
+  /**
+   * Resolve a token hash to ERC20 TokenData by extracting the last 20 bytes as the address.
+   * @param _txidVersion - TXID version (unused; ERC20 resolution is version-agnostic)
+   * @param _chain - Chain identifier (unused; ERC20 resolution is chain-agnostic)
+   * @param tokenHash - 32-byte token hash whose last 20 bytes encode the ERC20 address
+   * @returns TokenData with `tokenType: ERC20`, the extracted address, and a zeroed sub-id.
+   */
   async getTokenDataFromHash (_txidVersion: any, _chain: any, tokenHash: string): Promise<TokenData> {
     const cleanHash = tokenHash.startsWith('0x') ? tokenHash.slice(2) : tokenHash
     const addressHex = cleanHash.slice(24) // last 20 bytes = address
@@ -58,7 +66,6 @@ const createTokenDataGetter = (): TokenDataGetter => ({
  *
  * Provides a clean, viem-like API for RAILGUN privacy protocol operations.
  * Manages wallet creation, note scanning, balance tracking, and future transaction building.
- *
  * @example
  * ```typescript
  * import { RailgunWalletSDK } from '@railgun-reloaded/wallet-sdk'
@@ -87,10 +94,22 @@ const createTokenDataGetter = (): TokenDataGetter => ({
  * provider.destroy()
  * ```
  */
-export class RailgunWalletSDK {
+class RailgunWalletSDK {
+  /**
+   * Underlying RailgunWallet that owns the spending and viewing keys.
+   */
   private wallet: RailgunWallet
+  /**
+   * Chain identifier this wallet is bound to (type + id).
+   */
   private chain: { type: ChainType; id: number }
+  /**
+   * All decrypted notes discovered during scanning, both spent and unspent.
+   */
   private notes: DecryptedNote[] = []
+  /**
+   * Set of nullifier hex strings observed on-chain; used to determine which notes are spent.
+   */
   private spentNullifiers = new Set<string>()
 
   /**
@@ -105,24 +124,26 @@ export class RailgunWalletSDK {
   }
 
   /**
-   * Get the RAILGUN address (master public key in hex format)
-   * This is the public identifier for receiving private transfers
+   * Get the RAILGUN address (master public key in hex format).
+   * This is the public identifier for receiving private transfers.
+   * @returns 0x-prefixed hex string of the master public key.
    */
   getAddress (): string {
     return bytesToHex(this.wallet.getMasterPublicKey(), { prefix: true })
   }
 
   /**
-   * Get the viewing public key in hex format
-   * Used for establishing shared secrets in ECDH encryption
+   * Get the viewing public key in hex format.
+   * Used for establishing shared secrets in ECDH encryption.
+   * @returns 0x-prefixed hex string of the viewing public key.
    */
   getViewingPublicKey (): string {
     return bytesToHex(this.wallet.getViewingPublicKey(), { prefix: true })
   }
 
   /**
-   * Get the spending public key
-   * Used in commitment generation
+   * Get the spending public key (used in commitment generation).
+   * @returns Comma-separated 0x-prefixed hex strings for the two BabyJubJub coordinates.
    */
   getSpendingPublicKey (): string {
     const spk = this.wallet.getSpendingPublicKey()
@@ -134,23 +155,23 @@ export class RailgunWalletSDK {
    *
    * Processes all Shield and Transact actions, attempting to decrypt
    * notes and tracking spent nullifiers for balance calculation.
-   *
-   * @param provider - Data source (Subsquid, RPC, or aggregator)
+   * @param provider - Data source (Subsquid, RPC, snapshot, or any aggregator that conforms to DataSource)
    * @param options - Scan options
    * @param options.startBlock - Starting block number (required)
    * @param options.endBlock - Ending block number (optional, scans to latest if omitted)
    * @param options.onProgress - Progress callback (optional)
    */
   async scan (
-    provider: any, // SubsquidProvider or SourceAggregator
+    provider: DataSource<EVMBlock>,
     options: {
       startBlock: bigint
       endBlock?: bigint
       onProgress?: (blockNumber: bigint, notesFound: number) => void
     }
   ): Promise<void> {
-    const fromOptions: any = {
+    const fromOptions: SyncOptions = {
       startHeight: options.startBlock,
+      liveSync: false,
       chunkSize: 100n
     }
     if (options.endBlock !== undefined) {
@@ -182,7 +203,9 @@ export class RailgunWalletSDK {
   }
 
   /**
-   * Process a shield action - decrypt notes from public→private shields
+   * Process a shield action — decrypt notes from public→private shields.
+   * @param action - Shield commitment event (V1 generated or V2+ encrypted)
+   * @param blockNumber - Block number where the shield was emitted
    */
   private async processShield (action: Shield, blockNumber: bigint): Promise<void> {
     const viewingPrivateKey = this.wallet.getViewingPrivateKey()
@@ -220,7 +243,9 @@ export class RailgunWalletSDK {
   }
 
   /**
-   * Process a transact action - decrypt notes from private→private transfers
+   * Process a transact action — decrypt notes from private→private transfers.
+   * @param action - Transact event containing nullifiers and encrypted commitments
+   * @param blockNumber - Block number where the transact was emitted
    */
   private async processTransact (action: Transact, blockNumber: bigint): Promise<void> {
     const viewingPrivateKey = this.wallet.getViewingPrivateKey()
@@ -273,15 +298,16 @@ export class RailgunWalletSDK {
   }
 
   /**
-   * Get all notes (spent and unspent)
+   * Get all notes (spent and unspent).
+   * @returns A shallow copy of every note discovered during scanning.
    */
   getNotes (): DecryptedNote[] {
     return [...this.notes]
   }
 
   /**
-   * Get unspent notes only
-   * These are notes whose nullifiers have not been seen on-chain
+   * Get unspent notes only — notes whose nullifiers have not been seen on-chain.
+   * @returns Notes filtered to exclude any whose nullifier appears in the spent set.
    */
   getUnspentNotes (): DecryptedNote[] {
     return this.notes.filter(note => !this.spentNullifiers.has(note.nullifier))
@@ -289,10 +315,9 @@ export class RailgunWalletSDK {
 
   /**
    * Get token balances aggregated from unspent notes
-   *
    * @returns Array of token balances with underlying notes
    */
-  getBalances(): TokenBalance[] {
+  getBalances (): TokenBalance[] {
     const unspentNotes = this.getUnspentNotes()
     if (unspentNotes.length === 0) {
       return []
@@ -318,7 +343,6 @@ export class RailgunWalletSDK {
 
   /**
    * Get balance for a specific token
-   *
    * @param tokenAddress - ERC20 token address (case-insensitive)
    * @returns Total unspent balance for the token
    */
@@ -331,7 +355,8 @@ export class RailgunWalletSDK {
   }
 
   /**
-   * Get statistics about the wallet's note set
+   * Get statistics about the wallet's note set.
+   * @returns Total note count, unspent note count, observed nullifier count, and unique token count.
    */
   getStats () {
     return {
@@ -343,5 +368,5 @@ export class RailgunWalletSDK {
   }
 }
 
-export { NoteType }
+export { NoteType, RailgunWalletSDK }
 export type { DecryptedNote, TokenBalance }
