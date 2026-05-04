@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 
+import { bytesToHex } from '@railgun-reloaded/bytes'
 import type { WalletDB } from '@railgun-reloaded/storage'
 import { createWalletDB } from '@railgun-reloaded/storage'
 import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
@@ -13,21 +14,6 @@ import {
 } from '../../../src/services/wallet/errors'
 import { WalletService } from '../../../src/services/wallet/wallet-service'
 import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors'
-
-/**
- * Encode bytes as unprefixed lowercase hex for fixture comparison.
- *
- * TODO: replace with the helper from @railgun-reloaded/bytes when available.
- * @param bytes - Input buffer.
- * @returns Hex representation.
- */
-function toHex (bytes: Uint8Array): string {
-  let hex = ''
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i]!.toString(16).padStart(2, '0')
-  }
-  return hex
-}
 
 /**
  * Build a fresh in-memory WalletService and a random 32-byte encryption key.
@@ -112,9 +98,9 @@ test('loadWallet returns keys matching fixtures', async (t) => {
   t.is(ctx.walletId, VECTORS[0]!.walletId)
   t.is(ctx.name, 'test')
   t.ok(ctx.railgunAddress.startsWith('0zk1'))
-  t.is(toHex(ctx.masterPublicKey), VECTORS[0]!.masterPublicKey)
-  t.is(toHex(ctx.viewingPrivateKey), VECTORS[0]!.viewingPrivateKey)
-  t.is(toHex(ctx.nullifyingKey), VECTORS[0]!.nullifyingKey)
+  t.is(bytesToHex(ctx.masterPublicKey), VECTORS[0]!.masterPublicKey)
+  t.is(bytesToHex(ctx.viewingPrivateKey), VECTORS[0]!.viewingPrivateKey)
+  t.is(bytesToHex(ctx.nullifyingKey), VECTORS[0]!.nullifyingKey)
 })
 
 test('loadWallet with unknown id throws WalletNotFoundError', async (t) => {

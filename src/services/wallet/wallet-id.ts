@@ -1,3 +1,4 @@
+import { bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import { sha256 } from '@railgun-reloaded/cryptography'
 import { Mnemonic } from '@railgun-reloaded/wallet-node'
 
@@ -25,36 +26,6 @@ function generateWalletId (mnemonic: string, index: number = 0): string {
   combined.set(indexBytes, seed.length)
 
   return bytesToHex(sha256(combined))
-}
-
-/**
- * Parse an even-length hex string into a Uint8Array.
- *
- * TODO: extract to @railgun-reloaded/bytes when available.
- * @param hex - Hex string (no `0x` prefix, even length).
- * @returns Decoded bytes.
- */
-function hexToBytes (hex: string): Uint8Array {
-  const out = new Uint8Array(hex.length / 2)
-  for (let i = 0; i < out.length; i++) {
-    out[i] = parseInt(hex.substring(i * 2, i * 2 + 2), 16)
-  }
-  return out
-}
-
-/**
- * Encode a Uint8Array as an unprefixed lowercase hex string.
- *
- * TODO: extract to @railgun-reloaded/bytes when available.
- * @param bytes - Input byte array.
- * @returns Hex representation.
- */
-function bytesToHex (bytes: Uint8Array): string {
-  let hex = ''
-  for (let i = 0; i < bytes.length; i++) {
-    hex += bytes[i]!.toString(16).padStart(2, '0')
-  }
-  return hex
 }
 
 export { generateWalletId }

@@ -1,3 +1,4 @@
+import { combine } from '@railgun-reloaded/bytes'
 import { AES } from '@railgun-reloaded/cryptography'
 
 import { InvalidEncryptionKeyError } from './errors'
@@ -29,7 +30,7 @@ function encryptWalletBlob (blob: WalletBlob, encryptionKey: Uint8Array): Buffer
 
   const plaintext = new TextEncoder().encode(JSON.stringify(blob))
   const { iv, tag, data } = AES.encryptGCM([plaintext], encryptionKey)
-  const ciphertext = concatUint8Arrays(data)
+  const ciphertext = combine(data)
 
   const out = Buffer.alloc(IV_LENGTH + TAG_LENGTH + ciphertext.length)
   out.set(iv, 0)
@@ -63,7 +64,7 @@ function decryptWalletBlob (packed: Uint8Array, encryptionKey: Uint8Array): Wall
   let plaintext: Uint8Array
   try {
     const decrypted = AES.decryptGCM({ iv, tag, data: [ciphertext] }, encryptionKey)
-    plaintext = concatUint8Arrays(decrypted)
+    plaintext = combine(decrypted)
   } catch (cause) {
     throw new InvalidEncryptionKeyError('AES-GCM authentication failed', { cause })
   }
@@ -90,24 +91,6 @@ function assertKeyLength (key: Uint8Array): void {
       `encryptionKey must be 32 bytes, received ${key.length}`
     )
   }
-}
-
-/**
- * Concatenate a list of Uint8Arrays into a single contiguous buffer.
- *
- * TODO: extract to @railgun-reloaded/bytes when available.
- * @param arrays - Input byte arrays.
- * @returns A single Uint8Array containing the concatenation.
- */
-function concatUint8Arrays (arrays: Uint8Array[]): Uint8Array {
-  const total = arrays.reduce((acc, a) => acc + a.length, 0)
-  const out = new Uint8Array(total)
-  let offset = 0
-  for (const a of arrays) {
-    out.set(a, offset)
-    offset += a.length
-  }
-  return out
 }
 
 export { encryptWalletBlob, decryptWalletBlob }
