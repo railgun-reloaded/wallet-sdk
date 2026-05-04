@@ -37,7 +37,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             blockNumber,
             treeNumber,
             treePosition,
-            hash: padBytesLeft(hash, 32),
+            hash: padBytesLeft(hash, 32, { strict: true }),
             commitmentType: CommitmentType.Shield,
             commitment: {
               preimage,
@@ -57,7 +57,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             blockNumber,
             treeNumber,
             treePosition,
-            hash: padBytesLeft(hash, 32),
+            hash: padBytesLeft(hash, 32, { strict: true }),
             commitmentType: CommitmentType.Shield,
             commitment: {
               preimage,
@@ -85,7 +85,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             transactionHash,
             blockNumber,
             treeNumber: c.treeNumber,
-            hash: padBytesLeft(c.hash, 32),
+            hash: padBytesLeft(c.hash, 32, { strict: true }),
             treePosition: c.treePosition,
             commitmentType: CommitmentType.Transact,
             commitment: {
@@ -111,7 +111,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             transactionHash,
             blockNumber,
             treeNumber: c.treeNumber,
-            hash: padBytesLeft(c.hash, 32),
+            hash: padBytesLeft(c.hash, 32, { strict: true }),
             treePosition: c.treePosition,
             commitmentType: CommitmentType.Transact,
             commitment: {
