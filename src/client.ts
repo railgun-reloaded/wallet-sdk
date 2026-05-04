@@ -2,7 +2,7 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
-import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
+import type { DataSource, EVMBlock } from '@railgun-reloaded/scanner'
 import type { ChainDB, WalletDB } from '@railgun-reloaded/storage'
 import {
   closeWalletDB,
@@ -26,7 +26,7 @@ import { runWalletDecryption, SyncPhase } from './sync/wallet-decryptor'
  */
 type ScanParams = {
   network: NetworkName
-  dataSource: SourceAggregator<EVMBlock>
+  dataSource: DataSource<EVMBlock>
   endBlock?: bigint
   /** Fired per batch with `phase: 'scan'`. Synchronous; throwing aborts the run. */
   onProgress?: (progress: SyncProgress) => void
@@ -55,7 +55,7 @@ type DecryptParams = {
  */
 type SyncParams = {
   network: NetworkName
-  dataSource: SourceAggregator<EVMBlock>
+  dataSource: DataSource<EVMBlock>
   /** Inclusive ceiling on chain ingestion. */
   endBlock?: bigint
   /** Override the wallet decryption cursor; defaults to scanState + 1. */
