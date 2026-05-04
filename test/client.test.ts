@@ -195,13 +195,14 @@ test('RailgunClient.getNotes maps all and unspent notes', async (t) => {
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
+  const tokenMixed = '0xA0b86991C6218b36c1d19D4a2e9Eb0cE3606eB48'
   const spentTxid = filledBytes(33)
 
   seedNotes(walletDB, wallet.walletId, [
     noteFixture({
       commitment: filledBytes(30),
       nullifier: filledBytes(31),
-      token,
+      token: tokenMixed,
       amount: 10n,
       blockNumber: 100n,
       treeNumber: 2,
@@ -211,7 +212,7 @@ test('RailgunClient.getNotes maps all and unspent notes', async (t) => {
     noteFixture({
       commitment: filledBytes(32),
       nullifier: filledBytes(34),
-      token,
+      token: tokenMixed,
       amount: 20n,
       spent: true,
       spentTxid
