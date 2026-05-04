@@ -1,11 +1,13 @@
 export { RailgunClient } from './client'
 export type {
+  DecryptedNote,
   DecryptParams,
   RailgunClientOptions,
   ScanParams,
   SyncParams,
   SyncProgress,
-  SyncSummary
+  SyncSummary,
+  TokenBalance
 } from './client'
 
 export type { DecryptSummary } from './sync/wallet-decryptor'
