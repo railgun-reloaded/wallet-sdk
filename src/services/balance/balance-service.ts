@@ -58,19 +58,31 @@ function mapBalanceRow (row: DBBalance): TokenBalance {
  * @returns Public-facing DecryptedNote.
  */
 function mapNoteRow (row: DBNote): DecryptedNote {
+  const {
+    commitment,
+    nullifier,
+    token,
+    amount,
+    blockNumber,
+    treeNumber,
+    treePosition,
+    spent,
+    spentTxid,
+    decryptedAt
+  } = row
   return {
-    commitment: uint8ArrayToHex(row.commitment),
-    nullifier: uint8ArrayToHex(row.nullifier),
-    token: row.token.toLowerCase(),
-    amount: row.amount,
-    blockNumber: row.blockNumber,
-    treeNumber: row.treeNumber,
-    leafIndex: BigInt(row.treePosition),
-    spent: row.spent,
-    spentTxid: row.spentTxid === null
+    commitment: uint8ArrayToHex(commitment),
+    nullifier: uint8ArrayToHex(nullifier),
+    token: token.toLowerCase(),
+    amount,
+    blockNumber,
+    treeNumber,
+    leafIndex: BigInt(treePosition),
+    spent,
+    spentTxid: spentTxid === null
       ? null
-      : uint8ArrayToHex(row.spentTxid),
-    decryptedAt: row.decryptedAt
+      : uint8ArrayToHex(spentTxid),
+    decryptedAt
   }
 }
 
