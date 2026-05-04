@@ -13,13 +13,18 @@ import { RailgunEngine } from './engine'
 import type { NetworkName } from './network-config'
 import { NETWORK_CONFIG } from './network-config'
 import type {
+  DecryptedNote,
+  TokenBalance
+} from './services/balance/balance-service'
+import { BalanceService } from './services/balance/balance-service'
+import type {
   CreateWalletParams,
   WalletContext,
   WalletInfo
 } from './services/wallet/wallet-service'
 import { WalletService } from './services/wallet/wallet-service'
 import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor'
-import { runWalletDecryption, SyncPhase } from './sync/wallet-decryptor'
+import { SyncPhase, runWalletDecryption } from './sync/wallet-decryptor'
 
 /**
  * Inputs for `RailgunClient.scan()`.
@@ -159,6 +164,9 @@ class RailgunClient {
   /** Underlying wallet-service instance. */
   readonly #walletService: WalletService
 
+  /** Read API over cached wallet balances and notes. */
+  readonly #balanceService: BalanceService
+
   /** The wallet DB in use (either injected or auto-created). */
   readonly #walletDB: WalletDB
 
@@ -193,6 +201,7 @@ class RailgunClient {
     }
 
     this.#walletService = new WalletService(this.#walletDB)
+    this.#balanceService = new BalanceService(this.#walletDB)
     this.#engine = new RailgunEngine(
       options.chainDB ? { chainDB: options.chainDB } : { dataDir }
     )
@@ -232,6 +241,42 @@ class RailgunClient {
    */
   deleteWallet (walletId: string): Promise<void> {
     return this.#walletService.deleteWallet(walletId)
+  }
+
+  /**
+   * Read all cached ERC-20 balances for a wallet.
+   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
+   * @returns Token balances from wallet.db.balances.
+   */
+  getBalances (walletId: string): Promise<TokenBalance[]> {
+    return this.#balanceService.getBalances(walletId)
+  }
+
+  /**
+   * Read one cached ERC-20 token balance for a wallet.
+   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
+   * @param tokenAddress - ERC-20 token address. Lookup is case-insensitive.
+   * @returns Balance amount, or 0n when no cached balance exists.
+   */
+  getTokenBalance (
+    walletId: string,
+    tokenAddress: string
+  ): Promise<bigint> {
+    return this.#balanceService.getTokenBalance(walletId, tokenAddress)
+  }
+
+  /**
+   * Read decrypted notes for a wallet.
+   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
+   * @param options - Optional note filtering.
+   * @param options.unspent - When true, only return unspent notes.
+   * @returns Decrypted notes from wallet.db.notes.
+   */
+  getNotes (
+    walletId: string,
+    options?: { unspent?: boolean }
+  ): Promise<DecryptedNote[]> {
+    return this.#balanceService.getNotes(walletId, options)
   }
 
   /**
@@ -346,4 +391,13 @@ class RailgunClient {
 }
 
 export { RailgunClient, SyncPhase }
-export type { DecryptParams, RailgunClientOptions, ScanParams, SyncParams, SyncProgress, SyncSummary }
+export type {
+  DecryptedNote,
+  DecryptParams,
+  RailgunClientOptions,
+  ScanParams,
+  SyncParams,
+  SyncProgress,
+  SyncSummary,
+  TokenBalance
+}

@@ -37,6 +37,7 @@
   "dependencies": {
     "@railgun-reloaded/0zk-addresses": "workspace:*",
     "@railgun-reloaded/balance-scanner": "workspace:*",
+    "@railgun-reloaded/bytes": "workspace:*",
     "@railgun-reloaded/cryptography": "workspace:*",
     "@railgun-reloaded/merkle-tree": "workspace:*",
     "@railgun-reloaded/storage": "workspace:*",
