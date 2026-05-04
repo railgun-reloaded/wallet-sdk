@@ -2,6 +2,7 @@ import {
   decryptActions,
   storeDecryptedNotes
 } from '@railgun-reloaded/balance-scanner'
+import { bytesToHex } from '@railgun-reloaded/bytes'
 import type {
   ChainDB,
   DBCommitment,
@@ -19,7 +20,7 @@ import {
   updateScanState
 } from '@railgun-reloaded/storage'
 import type { Chain } from '@railgun-reloaded/wallet-node'
-import { ChainType, uint8ArrayToHex } from '@railgun-reloaded/wallet-node'
+import { ChainType } from '@railgun-reloaded/wallet-node'
 
 import type { WalletContext } from '../services/wallet/wallet-service'
 
@@ -210,14 +211,14 @@ async function runWalletDecryption (
       if (ownedNotes.length > 0) {
         const ownedByNullifier = new Map<string, Uint8Array>()
         for (const note of ownedNotes) {
-          ownedByNullifier.set(uint8ArrayToHex(note.nullifier), note.commitment)
+          ownedByNullifier.set(bytesToHex(note.nullifier), note.commitment)
         }
 
         const spendsByTxid = new Map<string, { txHash: Uint8Array, commitments: Uint8Array[] }>()
         for (const row of nullifierRows) {
-          const commitment = ownedByNullifier.get(uint8ArrayToHex(row.nullifier))
+          const commitment = ownedByNullifier.get(bytesToHex(row.nullifier))
           if (!commitment) continue
-          const txKey = uint8ArrayToHex(row.transactionHash)
+          const txKey = bytesToHex(row.transactionHash)
           const bucket = spendsByTxid.get(txKey)
           if (bucket) {
             bucket.commitments.push(commitment)

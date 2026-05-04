@@ -1,5 +1,6 @@
+import { hexToBytes } from '@railgun-reloaded/bytes'
 import type { TokenDataGetter } from '@railgun-reloaded/wallet-node'
-import { TokenType, hexToUint8Array } from '@railgun-reloaded/wallet-node'
+import { TokenType } from '@railgun-reloaded/wallet-node'
 
 /**
  * ERC-20-only TokenDataGetter. The token hash for an ERC-20 is the address
@@ -22,7 +23,7 @@ const erc20TokenDataGetter: TokenDataGetter = {
     const addressHex = cleanHash.slice(24)
     return {
       tokenType: TokenType.ERC20,
-      tokenAddress: hexToUint8Array(addressHex),
+      tokenAddress: hexToBytes(addressHex),
       tokenSubID: new Uint8Array(32),
     }
   }

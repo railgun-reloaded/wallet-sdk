@@ -1,10 +1,9 @@
-import { bytesToHex, hexToBytes } from '@railgun-reloaded/cryptography'
+import { bigIntToBytes, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import type { MerkleProof } from '@railgun-reloaded/merkle-tree/types'
 import { test } from 'brittle'
 
 import { COMMITMENT_TREE_ZERO_ELEMENT, NoteCommitmentTree } from '../../src/merkle/note-commitment-tree'
 
-import { numberStringToUint8Array } from './helper'
 import { TEST_COMMITMENTS, TEST_COMMITMENTS_LARGE } from './test-vectors'
 
 test('Should be a valid Railgun Commitment Tree Zero Element', (assert) => {
@@ -25,21 +24,21 @@ test('Should allocate enough memory for the tree', (assert) => {
 
 test('Should create commitment tree and verify root', async (assert) => {
   const tree = new NoteCommitmentTree()
-  const testVectorArray = TEST_COMMITMENTS.map(c => numberStringToUint8Array(c.toString(), 32))
+  const testVectorArray = TEST_COMMITMENTS.map(c => bigIntToBytes(BigInt(c), 32))
   tree.insert(0, testVectorArray)
   assert.is(bytesToHex(tree.root()), '0e3b07998d280047024f4d67facae9799b942ce862a955bf88108b42ac662460', 'Root is valid')
 })
 
 test('Should create commitment tree and verify root for large number of commitments', async (assert) => {
   const tree = new NoteCommitmentTree()
-  const testVectorArray = TEST_COMMITMENTS_LARGE.map(c => numberStringToUint8Array(c.toString(), 32))
+  const testVectorArray = TEST_COMMITMENTS_LARGE.map(c => bigIntToBytes(BigInt(c), 32))
   tree.append(testVectorArray)
   assert.is(bytesToHex(tree.root()), '17bf531e8e541b60c80b12bb1ea3e49e0a775bf5b04e29cf665b90d98e96b14a', 'Root is valid')
 })
 
 test('Should generate valid merkle proofs', (assert) => {
   const tree = new NoteCommitmentTree()
-  const testVectorArray = TEST_COMMITMENTS_LARGE.map(c => numberStringToUint8Array(c.toString(), 32))
+  const testVectorArray = TEST_COMMITMENTS_LARGE.map(c => bigIntToBytes(BigInt(c), 32))
   tree.append(testVectorArray)
 
   const actual = tree.proof(741)
@@ -64,7 +63,7 @@ test('Should generate valid merkle proofs', (assert) => {
       '2726c22ad3d9e23414887e8233ee83cc51603f58c48a9c9e33cb1f306d4365c0',
       '08c5bd0f85cef2f8c3c1412a2b69ee943c6925ecf79798bb2b84e1b76d26871f',
       '27f7c465045e0a4d8bec7c13e41d793734c50006ca08920732ce8c3096261435'
-    ].map(hexToBytes)
+    ].map((b) => hexToBytes(b))
   }
   assert.alike(actual, expected)
 })
