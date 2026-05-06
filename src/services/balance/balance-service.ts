@@ -37,15 +37,13 @@ type DecryptedNote = {
 }
 
 /**
- * Map a stored balance row to the public `TokenBalance` type. Lowercases the
- * token address so the public surface is case-stable regardless of how the
- * write path stored it.
+ * Map a stored balance row to the public `TokenBalance` type.
  * @param row - Row from `getAllBalances`.
  * @returns Public-facing TokenBalance.
  */
 function mapBalanceRow (row: DBBalance): TokenBalance {
   return {
-    token: row.token.toLowerCase(),
+    token: row.token,
     balance: row.amount
   }
 }
@@ -53,7 +51,7 @@ function mapBalanceRow (row: DBBalance): TokenBalance {
 /**
  * Map a stored note row to the public `DecryptedNote` type. Bytes columns
  * become 0x-prefixed lowercase hex; `treePosition` is widened to bigint and
- * exposed as `leafIndex`; `token` is lowercased.
+ * exposed as `leafIndex`.
  * @param row - Row from `getAllNotes` / `getUnspentNotes`.
  * @returns Public-facing DecryptedNote.
  */
@@ -73,7 +71,7 @@ function mapNoteRow (row: DBNote): DecryptedNote {
   return {
     commitment: uint8ArrayToHex(commitment),
     nullifier: uint8ArrayToHex(nullifier),
-    token: token.toLowerCase(),
+    token,
     amount,
     blockNumber,
     treeNumber,
@@ -136,7 +134,7 @@ class BalanceService {
     tokenAddress: string
   ): Promise<bigint> {
     this.#assertWalletExists(walletId)
-    return getBalance(this.#db, walletId, tokenAddress.toLowerCase())?.amount ?? 0n
+    return getBalance(this.#db, walletId, tokenAddress)?.amount ?? 0n
   }
 
   /**
