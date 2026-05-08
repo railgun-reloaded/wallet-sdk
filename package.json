@@ -9,6 +9,7 @@
     "fix": "eslint --fix",
     "build": "tsc --build",
     "clean": "tsc --build --clean",
+    "prepare": "tsc --build",
     "postinstall": "patch-package && sh postinstall.sh",
     "pretest": "npm run build",
     "test": "NODE_OPTIONS=--enable-source-maps brittle \"test/**/*.test.js\"",
