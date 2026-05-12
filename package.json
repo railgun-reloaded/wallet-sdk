@@ -9,7 +9,6 @@
     "fix": "eslint --fix",
     "build": "tsc --build",
     "clean": "tsc --build --clean",
-    "postinstall": "patch-package && sh postinstall.sh",
     "pretest": "npm run build",
     "test": "NODE_OPTIONS=--enable-source-maps brittle \"test/**/*.test.js\"",
     "db:generate:chain": "db-generate-chain"
@@ -31,8 +30,7 @@
     "@railgun-reloaded/tsconfig": "^1.2.0",
     "@types/brittle": "^3.5.0",
     "brittle": "^3.19.1",
-    "ethers": "^6.16.0",
-    "patch-package": "^8.0.1"
+    "ethers": "^6.16.0"
   },
   "dependencies": {
     "@railgun-reloaded/0zk-addresses": "workspace:*",
