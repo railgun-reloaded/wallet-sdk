@@ -1,13 +1,15 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
 import { bigIntToBytes, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import type { MerkleProof } from '@railgun-reloaded/merkle-tree'
-import { test } from 'brittle'
 
 import { COMMITMENT_TREE_ZERO_ELEMENT, NoteCommitmentTree } from '../../src/merkle/note-commitment-tree'
 
 import { TEST_COMMITMENTS, TEST_COMMITMENTS_LARGE } from './test-vectors'
 
-test('Should be a valid Railgun Commitment Tree Zero Element', (assert) => {
-  assert.alike(COMMITMENT_TREE_ZERO_ELEMENT, new Uint8Array([
+test('Should be a valid Railgun Commitment Tree Zero Element', () => {
+  assert.deepEqual(COMMITMENT_TREE_ZERO_ELEMENT, new Uint8Array([
     4, 136, 248, 155, 37, 188, 112,
     17, 234, 246, 165, 237, 206, 113,
     174, 175, 185, 254, 112, 111, 170,
@@ -15,28 +17,28 @@ test('Should be a valid Railgun Commitment Tree Zero Element', (assert) => {
     174, 59, 159, 252]))
 })
 
-test('Should allocate enough memory for the tree', (assert) => {
+test('Should allocate enough memory for the tree', () => {
   const tree = new NoteCommitmentTree()
   const capacity = tree.merkleTree.capacity
 
-  assert.is(capacity, 131071)
+  assert.equal(capacity, 131071)
 })
 
-test('Should create commitment tree and verify root', async (assert) => {
+test('Should create commitment tree and verify root', async () => {
   const tree = new NoteCommitmentTree()
   const testVectorArray = TEST_COMMITMENTS.map(c => bigIntToBytes(BigInt(c), 32))
   tree.insert(0, testVectorArray)
-  assert.is(bytesToHex(tree.root()), '0e3b07998d280047024f4d67facae9799b942ce862a955bf88108b42ac662460', 'Root is valid')
+  assert.equal(bytesToHex(tree.root()), '0e3b07998d280047024f4d67facae9799b942ce862a955bf88108b42ac662460', 'Root is valid')
 })
 
-test('Should create commitment tree and verify root for large number of commitments', async (assert) => {
+test('Should create commitment tree and verify root for large number of commitments', async () => {
   const tree = new NoteCommitmentTree()
   const testVectorArray = TEST_COMMITMENTS_LARGE.map(c => bigIntToBytes(BigInt(c), 32))
   tree.append(testVectorArray)
-  assert.is(bytesToHex(tree.root()), '17bf531e8e541b60c80b12bb1ea3e49e0a775bf5b04e29cf665b90d98e96b14a', 'Root is valid')
+  assert.equal(bytesToHex(tree.root()), '17bf531e8e541b60c80b12bb1ea3e49e0a775bf5b04e29cf665b90d98e96b14a', 'Root is valid')
 })
 
-test('Should generate valid merkle proofs', (assert) => {
+test('Should generate valid merkle proofs', () => {
   const tree = new NoteCommitmentTree()
   const testVectorArray = TEST_COMMITMENTS_LARGE.map(c => bigIntToBytes(BigInt(c), 32))
   tree.append(testVectorArray)
@@ -65,10 +67,10 @@ test('Should generate valid merkle proofs', (assert) => {
       '27f7c465045e0a4d8bec7c13e41d793734c50006ca08920732ce8c3096261435'
     ].map((b) => hexToBytes(b))
   }
-  assert.alike(actual, expected)
+  assert.deepEqual(actual, expected)
 })
 
-test('Should serialize/deserialize tree', (assert) => {
+test('Should serialize/deserialize tree', () => {
   // Create a tree by inserting leaf n times
   const tree = new NoteCommitmentTree()
   const leaves = Array(1000).fill(hexToBytes('27f7c465045e0a4d8bec7c13e41d793734c50006ca08920732ce8c3096261435'))
@@ -84,5 +86,5 @@ test('Should serialize/deserialize tree', (assert) => {
   })
 
   const actualRoot = deserializedTree.root()
-  assert.alike(expectedRoot, actualRoot)
+  assert.deepEqual(expectedRoot, actualRoot)
 })

@@ -1,4 +1,6 @@
+import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
+import { test } from 'node:test'
 
 import type { EVMBlock } from '@railgun-reloaded/scanner'
 import { SourceAggregator } from '@railgun-reloaded/scanner'
@@ -11,7 +13,6 @@ import {
   recalculateAllBalances
 } from '@railgun-reloaded/storage'
 import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
-import { test } from 'brittle'
 
 import { RailgunClient, SyncPhase } from '../src/client'
 import { NetworkName } from '../src/network-config'
@@ -76,43 +77,43 @@ function seedNotes (
   recalculateAllBalances(walletDB, walletId)
 }
 
-test('RailgunClient delegates createWallet / listWallets / deleteWallet', async (t) => {
+test('RailgunClient delegates createWallet / listWallets / deleteWallet', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
 
   const info = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
-  t.is(info.walletId, VECTORS[0]!.walletId)
+  assert.equal(info.walletId, VECTORS[0]!.walletId)
 
   const list = await client.listWallets()
-  t.is(list.length, 1)
+  assert.equal(list.length, 1)
 
   await client.deleteWallet(info.walletId)
-  t.is((await client.listWallets()).length, 0)
+  assert.equal((await client.listWallets()).length, 0)
 
   client.close()
-  t.pass('close did not throw')
+  assert.ok(true, 'close did not throw')
 })
 
-test('RailgunClient close() does not close injected walletDB', async (t) => {
+test('RailgunClient close() does not close injected walletDB', async () => {
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   client.close()
   // If close() had closed the injected DB, this query would throw.
   const rows = walletDB.$client.prepare('SELECT 1 as one').all() as { one: number }[]
-  t.is(rows[0]!.one, 1)
+  assert.equal(rows[0]!.one, 1)
 })
 
-test('RailgunClient exposes engine property', async (t) => {
+test('RailgunClient exposes engine property', async () => {
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
-  t.ok(client.engine)
-  t.is(typeof client.engine.setNetwork, 'function')
+  assert.ok(client.engine)
+  assert.equal(typeof client.engine.setNetwork, 'function')
   client.close()
 })
 
-test('RailgunClient.getBalances returns cached aggregated balances', async (t) => {
+test('RailgunClient.getBalances returns cached aggregated balances', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
@@ -129,13 +130,13 @@ test('RailgunClient.getBalances returns cached aggregated balances', async (t) =
   ])
 
   const balances = await client.getBalances(wallet.walletId)
-  t.is(balances.length, 2)
-  t.is(balances.find(balance => balance.token === usdc)?.balance, 300n)
-  t.is(balances.find(balance => balance.token === dai)?.balance, 500n)
+  assert.equal(balances.length, 2)
+  assert.equal(balances.find(balance => balance.token === usdc)?.balance, 300n)
+  assert.equal(balances.find(balance => balance.token === dai)?.balance, 500n)
   client.close()
 })
 
-test('RailgunClient.getBalances omits zero balance rows', async (t) => {
+test('RailgunClient.getBalances omits zero balance rows', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
@@ -153,25 +154,25 @@ test('RailgunClient.getBalances omits zero balance rows', async (t) => {
     })
   ])
 
-  t.alike(await client.getBalances(wallet.walletId), [])
-  t.is(await client.getTokenBalance(wallet.walletId, token), 0n)
+  assert.deepEqual(await client.getBalances(wallet.walletId), [])
+  assert.equal(await client.getTokenBalance(wallet.walletId, token), 0n)
   client.close()
 })
 
-test('RailgunClient balance API returns empty values for an empty wallet', async (t) => {
+test('RailgunClient balance API returns empty values for an empty wallet', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
 
-  t.alike(await client.getBalances(wallet.walletId), [])
-  t.is(await client.getTokenBalance(wallet.walletId, '0x0000000000000000000000000000000000000000'), 0n)
-  t.alike(await client.getNotes(wallet.walletId), [])
+  assert.deepEqual(await client.getBalances(wallet.walletId), [])
+  assert.equal(await client.getTokenBalance(wallet.walletId, '0x0000000000000000000000000000000000000000'), 0n)
+  assert.deepEqual(await client.getNotes(wallet.walletId), [])
   client.close()
 })
 
-test('RailgunClient.getTokenBalance lowercases token input', async (t) => {
+test('RailgunClient.getTokenBalance lowercases token input', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
@@ -183,12 +184,12 @@ test('RailgunClient.getTokenBalance lowercases token input', async (t) => {
     noteFixture({ commitment: filledBytes(20), nullifier: filledBytes(21), token, amount: 123n })
   ])
 
-  t.is(await client.getTokenBalance(wallet.walletId, token.toUpperCase()), 123n)
-  t.is(await client.getTokenBalance(wallet.walletId, '0x1111111111111111111111111111111111111111'), 0n)
+  assert.equal(await client.getTokenBalance(wallet.walletId, token.toUpperCase()), 123n)
+  assert.equal(await client.getTokenBalance(wallet.walletId, '0x1111111111111111111111111111111111111111'), 0n)
   client.close()
 })
 
-test('RailgunClient.getNotes maps all and unspent notes', async (t) => {
+test('RailgunClient.getNotes maps all and unspent notes', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
@@ -225,20 +226,20 @@ test('RailgunClient.getNotes maps all and unspent notes', async (t) => {
   const first = all.find(note => note.amount === 10n)
   const spent = all.find(note => note.spent)
 
-  t.is(all.length, 2, 'default returns all notes')
-  t.is(allExplicit.length, 2, 'unspent false returns all notes')
-  t.is(unspent.length, 1, 'unspent true excludes spent notes')
-  t.ok(first)
-  t.is(first?.commitment, `0x${'1e'.repeat(32)}`)
-  t.is(first?.nullifier, `0x${'1f'.repeat(32)}`)
-  t.is(first?.token, token)
-  t.is(first?.leafIndex, 7n)
-  t.is(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
-  t.is(spent?.spentTxid, `0x${'21'.repeat(32)}`)
+  assert.equal(all.length, 2, 'default returns all notes')
+  assert.equal(allExplicit.length, 2, 'unspent false returns all notes')
+  assert.equal(unspent.length, 1, 'unspent true excludes spent notes')
+  assert.ok(first)
+  assert.equal(first?.commitment, `0x${'1e'.repeat(32)}`)
+  assert.equal(first?.nullifier, `0x${'1f'.repeat(32)}`)
+  assert.equal(first?.token, token)
+  assert.equal(first?.leafIndex, 7n)
+  assert.equal(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
+  assert.equal(spent?.spentTxid, `0x${'21'.repeat(32)}`)
   client.close()
 })
 
-test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', async (t) => {
+test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', async () => {
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const unknown = 'missing-wallet'
@@ -250,11 +251,11 @@ test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', 
   ]) {
     try {
       await action()
-      t.fail('expected WalletNotFoundError')
+      assert.fail('expected WalletNotFoundError')
     } catch (err: unknown) {
-      t.ok(err instanceof WalletNotFoundError)
+      assert.ok(err instanceof WalletNotFoundError)
       if (err instanceof WalletNotFoundError) {
-        t.is(err.walletId, unknown)
+        assert.equal(err.walletId, unknown)
       }
     }
   }
@@ -322,7 +323,7 @@ class FakeSource {
   destroy () {}
 }
 
-test('RailgunClient.scan drains a fake source into chain.db', async (t) => {
+test('RailgunClient.scan drains a fake source into chain.db', async () => {
   const walletDB = memDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -339,25 +340,25 @@ test('RailgunClient.scan drains a fake source into chain.db', async (t) => {
     endBlock: 5784867n
   })
 
-  t.is(last, 5784867n, 'returns the last block written')
+  assert.equal(last, 5784867n, 'returns the last block written')
   const cursor = getSyncState(chainDB, 11155111)?.lastBlockHeight
-  t.is(cursor, 5784867n, 'sync cursor advanced to tip')
+  assert.equal(cursor, 5784867n, 'sync cursor advanced to tip')
 
   client.close()
 })
 
-test('RailgunClient.decrypt throws when chain DB is uninitialized', async (t) => {
+test('RailgunClient.decrypt throws when chain DB is uninitialized', async () => {
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
 
-  await t.exception(() => client.decrypt(VECTORS[0]!.walletId, key, { chainId: 11155111 }),
+  await assert.rejects(() => client.decrypt(VECTORS[0]!.walletId, key, { chainId: 11155111 }),
     /chain DB not initialized/)
   client.close()
 })
 
-test('RailgunClient.decrypt is a no-op when chain has no commitments', async (t) => {
+test('RailgunClient.decrypt is a no-op when chain has no commitments', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const chainDB = memChainDB()
@@ -376,15 +377,15 @@ test('RailgunClient.decrypt is a no-op when chain has no commitments', async (t)
   })
 
   const summary = await client.decrypt(VECTORS[0]!.walletId, key, { chainId: 11155111 })
-  t.is(summary.walletId, VECTORS[0]!.walletId)
-  t.is(summary.chainId, 11155111)
-  t.is(summary.notesAdded, 0, 'no commitments to decrypt')
-  t.is(summary.notesSpent, 0, 'no nullifiers to match')
+  assert.equal(summary.walletId, VECTORS[0]!.walletId)
+  assert.equal(summary.chainId, 11155111)
+  assert.equal(summary.notesAdded, 0, 'no commitments to decrypt')
+  assert.equal(summary.notesSpent, 0, 'no nullifiers to match')
 
   client.close()
 })
 
-test('RailgunClient.sync composes scan() then decrypt()', async (t) => {
+test('RailgunClient.sync composes scan() then decrypt()', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const chainDB = memChainDB()
@@ -404,17 +405,17 @@ test('RailgunClient.sync composes scan() then decrypt()', async (t) => {
     endBlock: 5784867n
   })
 
-  t.is(summary.scan.lastBlock, 5784867n, 'scan reached the requested tip')
-  t.is(summary.decrypt.chainId, 11155111, 'decrypt chainId derived from network')
-  t.is(summary.decrypt.notesAdded, 0, 'no commitments → no notes added')
-  t.is(summary.decrypt.notesSpent, 0, 'no nullifiers → no notes spent')
-  t.is(getSyncState(chainDB, 11155111)?.lastBlockHeight, 5784867n,
+  assert.equal(summary.scan.lastBlock, 5784867n, 'scan reached the requested tip')
+  assert.equal(summary.decrypt.chainId, 11155111, 'decrypt chainId derived from network')
+  assert.equal(summary.decrypt.notesAdded, 0, 'no commitments → no notes added')
+  assert.equal(summary.decrypt.notesSpent, 0, 'no nullifiers → no notes spent')
+  assert.equal(getSyncState(chainDB, 11155111)?.lastBlockHeight, 5784867n,
     'chain cursor advanced through scan()')
 
   client.close()
 })
 
-test('RailgunClient.sync fires onProgress for both phases in order', async (t) => {
+test('RailgunClient.sync fires onProgress for both phases in order', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const chainDB = memChainDB()
@@ -446,11 +447,11 @@ test('RailgunClient.sync fires onProgress for both phases in order', async (t) =
     onProgress: record
   })
 
-  t.ok(events.length >= 2, 'fired at least once for each phase')
+  assert.ok(events.length >= 2, 'fired at least once for each phase')
   const phases = events.map(e => e.phase)
   const firstDecrypt = phases.indexOf(SyncPhase.Decrypt)
-  t.not(firstDecrypt, -1, 'decrypt phase emitted')
-  t.is(phases.slice(0, firstDecrypt).every(p => p === SyncPhase.Scan), true,
+  assert.notEqual(firstDecrypt, -1, 'decrypt phase emitted')
+  assert.equal(phases.slice(0, firstDecrypt).every(p => p === SyncPhase.Scan), true,
     'scan events all precede the first decrypt event')
 
   let monotonic = true
@@ -461,12 +462,12 @@ test('RailgunClient.sync fires onProgress for both phases in order', async (t) =
       break
     }
   }
-  t.ok(monotonic, 'currentBlock monotonic within each phase')
+  assert.ok(monotonic, 'currentBlock monotonic within each phase')
 
   client.close()
 })
 
-test('RailgunClient loadWallet returns correct keys', async (t) => {
+test('RailgunClient loadWallet returns correct keys', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
@@ -475,9 +476,9 @@ test('RailgunClient loadWallet returns correct keys', async (t) => {
   await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
   const ctx = await client.loadWallet(VECTORS[0]!.walletId, key)
 
-  t.is(ctx.walletId, VECTORS[0]!.walletId)
-  t.is(ctx.name, 'primary')
-  t.ok(ctx.railgunAddress.startsWith('0zk1'))
+  assert.equal(ctx.walletId, VECTORS[0]!.walletId)
+  assert.equal(ctx.name, 'primary')
+  assert.ok(ctx.railgunAddress.startsWith('0zk1'))
 
   client.close()
 })

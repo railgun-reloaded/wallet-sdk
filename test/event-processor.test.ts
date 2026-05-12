@@ -1,15 +1,17 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
 import type { DBNewCommitment, DBNewNullifier } from '@railgun-reloaded/storage'
-import { test } from 'brittle'
 
 import { CommitmentType, denormalizeBlockData } from '../src/sync'
 
 import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } from './test-vector'
 
-test('Should properly denormalize shield action', (assert) => {
+test('Should properly denormalize shield action', () => {
   const { nullifiers, unshields, commitments } = denormalizeBlockData(TEST_VECTOR_SHIELD)
-  assert.is(nullifiers.length, 0)
-  assert.is(unshields.length, 0)
-  assert.is(commitments.length, 1)
+  assert.equal(nullifiers.length, 0)
+  assert.equal(unshields.length, 0)
+  assert.equal(commitments.length, 1)
 
   const actual : DBNewCommitment = {
     transactionHash: new Uint8Array([255, 208, 145, 7, 185, 59, 157, 185, 63, 72, 154, 148, 96, 245, 28, 29, 81, 76, 219, 183, 177, 161, 127, 166, 74, 130, 108, 186, 197, 172, 175, 33]),
@@ -38,14 +40,14 @@ test('Should properly denormalize shield action', (assert) => {
       fee: undefined
     }
   }
-  assert.alike.coercively(commitments[0], actual)
+  assert.deepEqual(commitments[0], actual)
 })
 
-test('Should properly denormalize mixed actions', (assert) => {
+test('Should properly denormalize mixed actions', () => {
   const { nullifiers, unshields, commitments } = denormalizeBlockData(TEST_VECTOR_ALL_ACTIONS)
-  assert.is(nullifiers.length, 1)
-  assert.is(unshields.length, 1)
-  assert.is(commitments.length, 1)
+  assert.equal(nullifiers.length, 1)
+  assert.equal(unshields.length, 1)
+  assert.equal(commitments.length, 1)
 
   const actualNullifiers : DBNewNullifier = {
     nullifier: new Uint8Array([15, 192, 28, 71, 2, 118, 53, 254, 253, 174, 194, 22, 119, 216, 107, 134, 10, 114, 133, 234, 108, 43, 133, 4, 11, 250, 98, 119, 210, 62, 221, 98]),
@@ -54,7 +56,7 @@ test('Should properly denormalize mixed actions', (assert) => {
     treeNumber: 0
   }
 
-  assert.alike(nullifiers[0], actualNullifiers)
+  assert.deepEqual(nullifiers[0], actualNullifiers)
 
   const actualCommitments: DBNewCommitment = {
     transactionHash: new Uint8Array([234, 149, 46, 123, 242, 66, 194, 35, 21, 18, 152, 127, 30, 49, 191, 64, 203, 81, 26, 238, 91, 114, 252, 237, 167, 88, 149, 143, 23, 31, 20, 246]),
@@ -84,13 +86,13 @@ test('Should properly denormalize mixed actions', (assert) => {
     }
   }
 
-  assert.alike.coercively(commitments[0]?.transactionHash, actualCommitments.transactionHash)
+  assert.deepEqual(commitments[0]?.transactionHash, actualCommitments.transactionHash)
 })
 
-test('Should properly denormalize transact action', (assert) => {
+test('Should properly denormalize transact action', () => {
   const { nullifiers, commitments } = denormalizeBlockData(TEST_VECTOR_TRANSACT)
-  assert.is(nullifiers.length, 2)
-  assert.is(commitments.length, 2)
+  assert.equal(nullifiers.length, 2)
+  assert.equal(commitments.length, 2)
 
   const actualNullifiers : DBNewNullifier[] = [
     {
@@ -106,7 +108,7 @@ test('Should properly denormalize transact action', (assert) => {
       treeNumber: 0
     }
   ]
-  assert.alike(nullifiers, actualNullifiers)
+  assert.deepEqual(nullifiers, actualNullifiers)
 
   const actualCommitments : DBNewCommitment[] = [
     {
@@ -160,5 +162,5 @@ test('Should properly denormalize transact action', (assert) => {
       }
     }
   ]
-  assert.alike(commitments, actualCommitments)
+  assert.deepEqual(commitments, actualCommitments)
 })

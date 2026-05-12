@@ -1,5 +1,7 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
 import { SourceAggregator, SubsquidProvider } from '@railgun-reloaded/scanner'
-import { test } from 'brittle'
 import { Contract, JsonRpcProvider } from 'ethers'
 
 import { RailgunEngine } from '../src/engine'
@@ -10,8 +12,7 @@ const CONTRACT_ROOT_HISTORY_ABI = [
 ]
 const networkName = NetworkName.EthereumSepolia
 
-test('Should create NoteCommitmentTree and verify root', async (t) => {
-  t.timeout(60_000)
+test('Should create NoteCommitmentTree and verify root', { timeout: 60_000 }, async () => {
   const engine = new RailgunEngine()
   const aggregator = new SourceAggregator([
     new SubsquidProvider('https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql')
@@ -31,6 +32,6 @@ test('Should create NoteCommitmentTree and verify root', async (t) => {
   for (const [key, val] of noteCommitmentTrees) {
     const root = `0x${Buffer.from(val.root()).toString('hex')}`
     // @ts-ignore should be always present for valid ABI
-    t.is(await contract.rootHistory(key, root), true)
+    assert.equal(await contract.rootHistory(key, root), true)
   }
 })
