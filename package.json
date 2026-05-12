@@ -33,13 +33,13 @@
     "ethers": "^6.16.0"
   },
   "dependencies": {
-    "@railgun-reloaded/0zk-addresses": "workspace:*",
-    "@railgun-reloaded/balance-scanner": "workspace:*",
-    "@railgun-reloaded/bytes": "workspace:*",
-    "@railgun-reloaded/cryptography": "workspace:*",
-    "@railgun-reloaded/merkle-tree": "workspace:*",
-    "@railgun-reloaded/storage": "workspace:*",
-    "@railgun-reloaded/scanner": "workspace:*",
-    "@railgun-reloaded/wallet-node": "workspace:*"
+    "@railgun-reloaded/0zk-addresses": "git+https://github.com/railgun-reloaded/0zk-addresses.git#main",
+    "@railgun-reloaded/balance-scanner": "git+https://github.com/railgun-reloaded/balance-scanner.git#dev",
+    "@railgun-reloaded/bytes": "git+https://github.com/railgun-reloaded/bytes.git#dev",
+    "@railgun-reloaded/cryptography": "git+https://github.com/railgun-reloaded/cryptography.git#main",
+    "@railgun-reloaded/merkle-tree": "git+https://github.com/railgun-reloaded/merkle-tree.git#main",
+    "@railgun-reloaded/storage": "git+https://github.com/railgun-reloaded/storage.git#dev",
+    "@railgun-reloaded/scanner": "git+https://github.com/railgun-reloaded/scanner.git#dev",
+    "@railgun-reloaded/wallet-node": "git+https://github.com/railgun-reloaded/wallet-node.git#main"
   }
 }
