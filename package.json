@@ -30,7 +30,9 @@
     "@railgun-reloaded/tsconfig": "^1.2.0",
     "@types/brittle": "^3.5.0",
     "brittle": "^3.19.1",
-    "ethers": "^6.16.0"
+    "eslint": "^9.24.0",
+    "ethers": "^6.16.0",
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "@railgun-reloaded/0zk-addresses": "git+https://github.com/railgun-reloaded/0zk-addresses.git#main",
