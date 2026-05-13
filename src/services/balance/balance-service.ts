@@ -25,13 +25,17 @@ type BalanceMode = 'spendable' | 'all' | WalletBalanceBucket
 /**
  * A note owned by a wallet. Bytes columns are exposed as 0x-prefixed lowercase
  * hex; the leaf index is widened to bigint for uniformity with `blockNumber`
- * and `amount`.
+ * and `amount`. `tokenType` is the integer token-class enum
+ * (0 = ERC20, 1 = ERC721, 2 = ERC1155); `tokenSubID` is the 32-byte
+ * sub-identifier (zero hex for ERC20).
  */
 type DecryptedNote = {
   commitment: string
   nullifier: string
   token: string
   amount: bigint
+  tokenType: number
+  tokenSubID: string
   blockNumber: bigint
   treeNumber: number
   leafIndex: bigint
@@ -53,6 +57,8 @@ function mapNoteRow (row: DBNote): DecryptedNote {
     nullifier,
     token,
     amount,
+    tokenType,
+    tokenSubID,
     blockNumber,
     treeNumber,
     treePosition,
@@ -65,6 +71,8 @@ function mapNoteRow (row: DBNote): DecryptedNote {
     nullifier: bytesToHex(nullifier, { prefix: true }),
     token,
     amount,
+    tokenType,
+    tokenSubID: bytesToHex(tokenSubID, { prefix: true }),
     blockNumber,
     treeNumber,
     leafIndex: BigInt(treePosition),
