@@ -1,3 +1,4 @@
+import { bytesToHex } from '@railgun-reloaded/bytes'
 import type { DBBalance, DBNote, WalletDB } from '@railgun-reloaded/storage'
 import {
   getAllBalances,
@@ -6,7 +7,6 @@ import {
   getUnspentNotes,
   getWallet
 } from '@railgun-reloaded/storage'
-import { uint8ArrayToHex } from '@railgun-reloaded/wallet-node'
 
 import { WalletNotFoundError } from '../wallet/errors'
 
@@ -69,8 +69,8 @@ function mapNoteRow (row: DBNote): DecryptedNote {
     decryptedAt
   } = row
   return {
-    commitment: uint8ArrayToHex(commitment),
-    nullifier: uint8ArrayToHex(nullifier),
+    commitment: bytesToHex(commitment, { prefix: true }),
+    nullifier: bytesToHex(nullifier, { prefix: true }),
     token,
     amount,
     blockNumber,
@@ -79,7 +79,7 @@ function mapNoteRow (row: DBNote): DecryptedNote {
     spent,
     spentTxid: spentTxid === null
       ? null
-      : uint8ArrayToHex(spentTxid),
+      : bytesToHex(spentTxid, { prefix: true }),
     decryptedAt
   }
 }
