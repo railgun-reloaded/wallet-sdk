@@ -1,4 +1,5 @@
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import { NetworkName } from '../../src/network-config'
 import {
@@ -59,7 +60,7 @@ function oneCommitment () {
   }]
 }
 
-test('PoiNodeClient batches getPOIsPerList at 1000 commitments', async (t) => {
+test('PoiNodeClient batches getPOIsPerList at 1000 commitments', async () => {
   const calls: CapturedCall[] = []
   const fetchFn: FetchLike = async (url, request) => {
     const payload = parsePayload(request)
@@ -88,22 +89,22 @@ test('PoiNodeClient batches getPOIsPerList at 1000 commitments', async (t) => {
     blindedCommitmentDatas
   })
 
-  t.is(calls.length, 3)
-  t.alike(
+  assert.equal(calls.length, 3)
+  assert.deepEqual(
     calls.map(call => (call.payload.params as GetPOIsPerListWireParams)
       .blindedCommitmentDatas.length),
     [1000, 1000, 500]
   )
-  t.alike(calls.map(call => call.payload.method), [
+  assert.deepEqual(calls.map(call => call.payload.method), [
     POIJSONRPCMethod.POIsPerList,
     POIJSONRPCMethod.POIsPerList,
     POIJSONRPCMethod.POIsPerList
   ])
-  t.is(Object.keys(result).length, 2500)
-  t.is(result[blindedCommitmentDatas[0]!.blindedCommitment]?.[LIST_KEY], POIStatus.Valid)
+  assert.equal(Object.keys(result).length, 2500)
+  assert.equal(result[blindedCommitmentDatas[0]!.blindedCommitment]?.[LIST_KEY], POIStatus.Valid)
 })
 
-test('PoiNodeClient failover is deterministic and first success wins', async (t) => {
+test('PoiNodeClient failover is deterministic and first success wins', async () => {
   const calls: string[] = []
   const fetchFn: FetchLike = async (url, request) => {
     calls.push(url)
@@ -128,10 +129,10 @@ test('PoiNodeClient failover is deterministic and first success wins', async (t)
     blindedCommitmentDatas: oneCommitment()
   })
 
-  t.alike(calls, ['https://bad.example', 'https://good.example'])
+  assert.deepEqual(calls, ['https://bad.example', 'https://good.example'])
 })
 
-test('PoiNodeClient all-URL failure includes attempted URLs', async (t) => {
+test('PoiNodeClient all-URL failure includes attempted URLs', async () => {
   const fetchFn: FetchLike = async (url) => {
     throw new Error(`offline ${url}`)
   }
@@ -150,20 +151,20 @@ test('PoiNodeClient all-URL failure includes attempted URLs', async (t) => {
       ...COMMON_PARAMS,
       blindedCommitmentDatas: oneCommitment()
     })
-    t.fail('expected all URLs to fail')
+    assert.fail('expected all URLs to fail')
   } catch (error) {
-    t.ok(error instanceof PoiNodeAllUrlsFailedError)
+    assert.ok(error instanceof PoiNodeAllUrlsFailedError)
     if (error instanceof PoiNodeAllUrlsFailedError) {
-      t.alike(error.attemptedUrls, [
+      assert.deepEqual(error.attemptedUrls, [
         'https://bad-a.example',
         'https://bad-b.example'
       ])
-      t.is(error.errors.length, 2)
+      assert.equal(error.errors.length, 2)
     }
   }
 })
 
-test('PoiNodeClient maps JSON-RPC errors', async (t) => {
+test('PoiNodeClient maps JSON-RPC errors', async () => {
   const fetchFn: FetchLike = async (_url, request) => {
     const payload = parsePayload(request)
     return jsonResponse({
@@ -186,18 +187,18 @@ test('PoiNodeClient maps JSON-RPC errors', async (t) => {
       ...COMMON_PARAMS,
       blindedCommitmentDatas: oneCommitment()
     })
-    t.fail('expected JSON-RPC error')
+    assert.fail('expected JSON-RPC error')
   } catch (error) {
-    t.ok(error instanceof PoiNodeRpcError)
+    assert.ok(error instanceof PoiNodeRpcError)
     if (error instanceof PoiNodeRpcError) {
-      t.is(error.code, -32602)
-      t.is(error.message, 'Invalid params')
-      t.alike(error.data, { field: 'listKeys' })
+      assert.equal(error.code, -32602)
+      assert.equal(error.message, 'Invalid params')
+      assert.deepEqual(error.data, { field: 'listKeys' })
     }
   }
 })
 
-test('PoiNodeClient maps HTTP errors to network errors', async (t) => {
+test('PoiNodeClient maps HTTP errors to network errors', async () => {
   const fetchFn: FetchLike = async () => {
     return jsonResponse({ error: 'unavailable' }, 503, 'Service Unavailable')
   }
@@ -211,17 +212,17 @@ test('PoiNodeClient maps HTTP errors to network errors', async (t) => {
       ...COMMON_PARAMS,
       blindedCommitmentDatas: oneCommitment()
     })
-    t.fail('expected HTTP error')
+    assert.fail('expected HTTP error')
   } catch (error) {
-    t.ok(error instanceof PoiNodeNetworkError)
+    assert.ok(error instanceof PoiNodeNetworkError)
     if (error instanceof PoiNodeNetworkError) {
-      t.is(error.status, 503)
-      t.is(error.url, 'https://poi.example')
+      assert.equal(error.status, 503)
+      assert.equal(error.url, 'https://poi.example')
     }
   }
 })
 
-test('PoiNodeClient public API excludes deferred proof and TXID routes', (t) => {
+test('PoiNodeClient public API excludes deferred proof and TXID routes', () => {
   const client = new PoiNodeClient({ poiNodeUrls: {} })
   const publicClient = client as unknown as {
     getPOIsPerBlindedCommitment?: unknown
@@ -234,12 +235,12 @@ test('PoiNodeClient public API excludes deferred proof and TXID routes', (t) => 
     submitSingleCommitmentProofs?: unknown
   }
 
-  t.is(publicClient.getPOIsPerBlindedCommitment, undefined)
-  t.is(publicClient.getMerkleProofs, undefined)
-  t.is(publicClient.getValidatedTxid, undefined)
-  t.is(publicClient.validateTxidMerkleroot, undefined)
-  t.is(publicClient.validatePoiMerkleroots, undefined)
-  t.is(publicClient.submitTransactProof, undefined)
-  t.is(publicClient.submitLegacyTransactProofs, undefined)
-  t.is(publicClient.submitSingleCommitmentProofs, undefined)
+  assert.equal(publicClient.getPOIsPerBlindedCommitment, undefined)
+  assert.equal(publicClient.getMerkleProofs, undefined)
+  assert.equal(publicClient.getValidatedTxid, undefined)
+  assert.equal(publicClient.validateTxidMerkleroot, undefined)
+  assert.equal(publicClient.validatePoiMerkleroots, undefined)
+  assert.equal(publicClient.submitTransactProof, undefined)
+  assert.equal(publicClient.submitLegacyTransactProofs, undefined)
+  assert.equal(publicClient.submitSingleCommitmentProofs, undefined)
 })

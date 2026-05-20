@@ -17,8 +17,7 @@ import { RailgunClient, SyncPhase } from '../src/client'
 import { NetworkName } from '../src/network-config'
 import {
   CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
-  POIStatus,
-  WalletBalanceBucket
+  POIStatus
 } from '../src/poi'
 import { WalletNotFoundError } from '../src/services/wallet/errors'
 
@@ -146,7 +145,7 @@ test('RailgunClient.getBalances returns cached aggregated balances', async () =>
     })
   ])
 
-  const balances = await client.getBalances(wallet.walletId)
+  const balances = await client.getBalances(wallet.walletId, 11155111)
   assert.equal(balances.length, 2)
   assert.equal(balances.find(balance => balance.token === usdc)?.balance, 300n)
   assert.equal(balances.find(balance => balance.token === dai)?.balance, 500n)
@@ -171,8 +170,8 @@ test('RailgunClient.getBalances omits zero balance rows', async () => {
     })
   ])
 
-  assert.deepEqual(await client.getBalances(wallet.walletId), [])
-  assert.equal(await client.getTokenBalance(wallet.walletId, token), 0n)
+  const balances = await client.getBalances(wallet.walletId, 11155111)
+  assert.deepEqual(balances, [])
   client.close()
 })
 
@@ -183,13 +182,13 @@ test('RailgunClient balance API returns empty values for an empty wallet', async
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
 
-  assert.deepEqual(await client.getBalances(wallet.walletId), [])
-  assert.equal(await client.getTokenBalance(wallet.walletId, '0x0000000000000000000000000000000000000000'), 0n)
-  assert.deepEqual(await client.getNotes(wallet.walletId), [])
+  const balances = await client.getBalances(wallet.walletId, 11155111)
+  assert.deepEqual(balances, [])
+  assert.deepEqual(await client.getNotes(wallet.walletId, 11155111), [])
   client.close()
 })
 
-test('RailgunClient.getTokenBalance lowercases token input', async () => {
+test('RailgunClient.getBalances lowercases token values', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
@@ -201,8 +200,9 @@ test('RailgunClient.getTokenBalance lowercases token input', async () => {
     noteFixture({ commitment: filledBytes(20), nullifier: filledBytes(21), token, amount: 123n })
   ])
 
-  assert.equal(await client.getTokenBalance(wallet.walletId, token.toUpperCase()), 123n)
-  assert.equal(await client.getTokenBalance(wallet.walletId, '0x1111111111111111111111111111111111111111'), 0n)
+  const balances = await client.getBalances(wallet.walletId, 11155111, 'all')
+  assert.equal(balances.find(balance => balance.token === token)?.balance, 123n)
+  assert.equal(balances.some(balance => balance.token === token.toUpperCase()), false)
   client.close()
 })
 

@@ -1,4 +1,5 @@
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import { NetworkName } from '../../src/network-config'
 import {
@@ -28,7 +29,7 @@ function jsonResponse (request: FetchRequest, result: unknown): FetchResponse {
   }
 }
 
-test('PoiNodeClient read-side payload fixture matches PPOI wire format', async (t) => {
+test('PoiNodeClient read-side payload fixture matches PPOI wire format', async () => {
   const payloads: Array<JsonRpcRequest<unknown>> = []
   const fetchFn: FetchLike = async (_url, request) => {
     const payload = JSON.parse(request.body) as JsonRpcRequest<unknown>
@@ -51,10 +52,10 @@ test('PoiNodeClient read-side payload fixture matches PPOI wire format', async (
     blindedCommitmentDatas
   })
 
-  t.alike(payloads.map(payload => payload.method), [
+  assert.deepEqual(payloads.map(payload => payload.method), [
     POIJSONRPCMethod.POIsPerList
   ])
-  t.alike(payloads[0]!.params, {
+  assert.deepEqual(payloads[0]!.params, {
     chainType: '0',
     chainID: '11155111',
     txidVersion: TXIDVersion.V2_PoseidonMerkle,

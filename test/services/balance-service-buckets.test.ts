@@ -4,7 +4,8 @@ import {
   createWalletDB,
   insertNotesBatch
 } from '@railgun-reloaded/storage'
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import { POIStatus, WalletBalanceBucket } from '../../src/poi'
 import { BalanceService } from '../../src/services/balance/balance-service'
@@ -88,7 +89,7 @@ function sumBucketBalances (
   return [...sums.entries()].map(([token, balance]) => ({ token, balance }))
 }
 
-test('BalanceService.getBalancesByBucket aggregates unspent notes by bucket and token', async (t) => {
+test('BalanceService.getBalancesByBucket aggregates unspent notes by bucket and token', async () => {
   const db = memWalletDB()
   seedWallet(db)
   seedNotes(db, [
@@ -137,21 +138,21 @@ test('BalanceService.getBalancesByBucket aggregates unspent notes by bucket and 
   const service = new BalanceService(db)
   const byBucket = await service.getBalancesByBucket(WALLET_ID, CHAIN_ID)
 
-  t.is(balanceOf(byBucket[WalletBalanceBucket.Spendable], USDC), 125n)
-  t.is(balanceOf(byBucket[WalletBalanceBucket.ShieldPending], USDC), 50n)
-  t.is(balanceOf(byBucket[WalletBalanceBucket.ShieldBlocked], USDC), 7n)
-  t.is(balanceOf(byBucket[WalletBalanceBucket.ProofSubmitted], DAI), 9n)
-  t.is(balanceOf(byBucket[WalletBalanceBucket.MissingInternalPOI], DAI), 11n)
-  t.is(balanceOf(byBucket[WalletBalanceBucket.MissingExternalPOI], DAI), 13n)
-  t.alike(byBucket[WalletBalanceBucket.Spent], [])
+  assert.equal(balanceOf(byBucket[WalletBalanceBucket.Spendable], USDC), 125n)
+  assert.equal(balanceOf(byBucket[WalletBalanceBucket.ShieldPending], USDC), 50n)
+  assert.equal(balanceOf(byBucket[WalletBalanceBucket.ShieldBlocked], USDC), 7n)
+  assert.equal(balanceOf(byBucket[WalletBalanceBucket.ProofSubmitted], DAI), 9n)
+  assert.equal(balanceOf(byBucket[WalletBalanceBucket.MissingInternalPOI], DAI), 11n)
+  assert.equal(balanceOf(byBucket[WalletBalanceBucket.MissingExternalPOI], DAI), 13n)
+  assert.deepEqual(byBucket[WalletBalanceBucket.Spent], [])
 
   const total = await service.getBalances(WALLET_ID, CHAIN_ID, 'all')
-  t.alike(sortBalances(sumBucketBalances(byBucket)), sortBalances(total))
-  t.alike(
+  assert.deepEqual(sortBalances(sumBucketBalances(byBucket)), sortBalances(total))
+  assert.deepEqual(
     sortBalances(await service.getBalances(WALLET_ID, CHAIN_ID)),
     sortBalances(byBucket[WalletBalanceBucket.Spendable])
   )
-  t.alike(
+  assert.deepEqual(
     await service.getBalances(WALLET_ID, CHAIN_ID, WalletBalanceBucket.Spent),
     []
   )

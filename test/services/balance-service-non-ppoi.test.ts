@@ -4,7 +4,8 @@ import {
   createWalletDB,
   insertNotesBatch
 } from '@railgun-reloaded/storage'
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import { POIStatus, WalletBalanceBucket } from '../../src/poi'
 import { BalanceService } from '../../src/services/balance/balance-service'
@@ -58,7 +59,7 @@ function sortBalances (balances: TokenBalance[]): TokenBalance[] {
   return [...balances].sort((a, b) => a.token.localeCompare(b.token))
 }
 
-test('BalanceService treats every unspent note as Spendable on non-PPOI networks', async (t) => {
+test('BalanceService treats every unspent note as Spendable on non-PPOI networks', async () => {
   const db = memWalletDB()
   createWallet(db, {
     id: WALLET_ID,
@@ -95,11 +96,11 @@ test('BalanceService treats every unspent note as Spendable on non-PPOI networks
   const all = await service.getBalances(WALLET_ID, CHAIN_ID, 'all')
   const byBucket = await service.getBalancesByBucket(WALLET_ID, CHAIN_ID)
 
-  t.alike(sortBalances(total), sortBalances(all))
-  t.alike(sortBalances(byBucket[WalletBalanceBucket.Spendable]), sortBalances(total))
+  assert.deepEqual(sortBalances(total), sortBalances(all))
+  assert.deepEqual(sortBalances(byBucket[WalletBalanceBucket.Spendable]), sortBalances(total))
   for (const bucket of Object.values(WalletBalanceBucket)) {
     if (bucket !== WalletBalanceBucket.Spendable) {
-      t.alike(byBucket[bucket], [])
+      assert.deepEqual(byBucket[bucket], [])
     }
   }
 })

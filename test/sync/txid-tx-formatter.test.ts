@@ -5,7 +5,8 @@ import {
   getRailgunTransactionsByBlockRange,
   insertRailgunTransactions
 } from '@railgun-reloaded/storage'
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import {
   formatRailgunTransactions,
@@ -36,32 +37,47 @@ function bytesEqual (a: Uint8Array, b: Uint8Array): boolean {
   return Buffer.from(a).equals(Buffer.from(b))
 }
 
-test('formatRailgunTransactions formats a complete Transact fixture', (t) => {
+function normalizeByteValues (value: unknown): unknown {
+  if (value instanceof Uint8Array) {
+    return Buffer.from(value).toString('hex')
+  }
+  if (Array.isArray(value)) {
+    return value.map(normalizeByteValues)
+  }
+  if (value !== null && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, normalizeByteValues(entry)])
+    )
+  }
+  return value
+}
+
+test('formatRailgunTransactions formats a complete Transact fixture', () => {
   const [row] = formatRailgunTransactions(TEST_VECTOR_TRANSACT)
   const tx = TEST_VECTOR_TRANSACT.transactions[0]!
   const transact = tx.actions[0]![0] as Transact
 
-  t.ok(row)
-  t.is(row!.txidVersion, RailgunTransactionTxidVersion.V2)
-  t.ok(bytesEqual(row!.railgunTxid, transact.txID))
-  t.ok(bytesEqual(row!.chainTxid, tx.hash))
-  t.is(row!.blockNumber, TEST_VECTOR_TRANSACT.number)
-  t.is(row!.timestamp, TEST_VECTOR_TRANSACT.timestamp)
-  t.alike(row!.nullifiers, transact.nullifiers)
-  t.alike(row!.commitments, transact.commitments.map(commitment => commitment.hash))
-  t.ok(bytesEqual(row!.boundParamsHash, transact.boundParamsHash))
-  t.is(row!.hasUnshield, false)
-  t.is(row!.unshield, null)
-  t.is(row!.utxoTreeIn, transact.utxoTreeIn)
-  t.is(row!.utxoTreeOut, transact.utxoTreeOut)
-  t.is(row!.utxoBatchStartPositionOut, transact.utxoBatchStartPositionOut)
+  assert.ok(row)
+  assert.equal(row!.txidVersion, RailgunTransactionTxidVersion.V2)
+  assert.ok(bytesEqual(row!.railgunTxid, transact.txID))
+  assert.ok(bytesEqual(row!.chainTxid, tx.hash))
+  assert.equal(row!.blockNumber, TEST_VECTOR_TRANSACT.number)
+  assert.equal(row!.timestamp, TEST_VECTOR_TRANSACT.timestamp)
+  assert.deepEqual(row!.nullifiers, transact.nullifiers)
+  assert.deepEqual(row!.commitments, transact.commitments.map(commitment => commitment.hash))
+  assert.ok(bytesEqual(row!.boundParamsHash, transact.boundParamsHash))
+  assert.equal(row!.hasUnshield, false)
+  assert.equal(row!.unshield, null)
+  assert.equal(row!.utxoTreeIn, transact.utxoTreeIn)
+  assert.equal(row!.utxoTreeOut, transact.utxoTreeOut)
+  assert.equal(row!.utxoBatchStartPositionOut, transact.utxoBatchStartPositionOut)
 })
 
-test('formatRailgunTransactions round-trips through chain.db', (t) => {
+test('formatRailgunTransactions round-trips through chain.db', () => {
   const db = memChainDB()
   const rows = formatRailgunTransactions(TEST_VECTOR_TRANSACT)
 
-  t.is(insertRailgunTransactions(db, rows), 1)
+  assert.equal(insertRailgunTransactions(db, rows), 1)
 
   const byTxid = getRailgunTransactionByTxid(db, rows[0]!.railgunTxid)
   const byBlock = getRailgunTransactionsByBlockRange(
@@ -70,25 +86,25 @@ test('formatRailgunTransactions round-trips through chain.db', (t) => {
     TEST_VECTOR_TRANSACT.number
   )
 
-  t.alike.coercively(byTxid, rows[0])
-  t.alike.coercively(byBlock, rows)
+  assert.deepEqual(normalizeByteValues(byTxid), normalizeByteValues(rows[0]))
+  assert.deepEqual(normalizeByteValues(byBlock), normalizeByteValues(rows))
 })
 
-test('formatRailgunTransactions includes unshield metadata', (t) => {
+test('formatRailgunTransactions includes unshield metadata', () => {
   const [row] = formatRailgunTransactions(TEST_VECTOR_ALL_ACTIONS)
   const transact = TEST_VECTOR_ALL_ACTIONS.transactions[0]!.actions[1]![0] as Transact
 
-  t.ok(row)
-  t.is(row!.hasUnshield, true)
-  t.alike(row!.commitments, [])
-  t.alike(row!.unshield, {
+  assert.ok(row)
+  assert.equal(row!.hasUnshield, true)
+  assert.deepEqual(row!.commitments, [])
+  assert.deepEqual(row!.unshield, {
     to: transact.unshieldToAddress,
     token: transact.unshieldToken,
     value: transact.unshieldValue,
   })
 })
 
-test('formatRailgunTransactions skips incomplete RPC-style Transact data', (t) => {
+test('formatRailgunTransactions skips incomplete RPC-style Transact data', () => {
   const tx = TEST_VECTOR_TRANSACT.transactions[0]!
   const transact = tx.actions[0]![0] as Transact
   const incompleteBlock: EVMBlock = {
@@ -102,5 +118,5 @@ test('formatRailgunTransactions skips incomplete RPC-style Transact data', (t) =
     }],
   }
 
-  t.alike(formatRailgunTransactions(incompleteBlock), [])
+  assert.deepEqual(formatRailgunTransactions(incompleteBlock), [])
 })

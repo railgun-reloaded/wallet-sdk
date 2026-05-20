@@ -12,7 +12,8 @@ import {
   insertNotesBatch
 } from '@railgun-reloaded/storage'
 import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import {
   CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
@@ -129,7 +130,7 @@ function installPoiFetchFixture (): () => void {
   }
 }
 
-test('RailgunClient.sync fires PoiRefresh on PPOI networks by default', async (t) => {
+test('RailgunClient.sync fires PoiRefresh on PPOI networks by default', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -149,8 +150,8 @@ test('RailgunClient.sync fires PoiRefresh on PPOI networks by default', async (t
     onProgress: progress => phases.push(progress.phase)
   })
 
-  t.ok(phases.includes(SyncPhase.PoiRefresh))
-  t.alike(summary.poi, {
+  assert.ok(phases.includes(SyncPhase.PoiRefresh))
+  assert.deepEqual(summary.poi, {
     checked: 0,
     updated: 0,
     skipped: 0,
@@ -159,7 +160,7 @@ test('RailgunClient.sync fires PoiRefresh on PPOI networks by default', async (t
   client.close()
 })
 
-test('RailgunClient.sync skips PoiRefresh when refreshPoi is false', async (t) => {
+test('RailgunClient.sync skips PoiRefresh when refreshPoi is false', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -180,12 +181,12 @@ test('RailgunClient.sync skips PoiRefresh when refreshPoi is false', async (t) =
     onProgress: progress => phases.push(progress.phase)
   })
 
-  t.absent(phases.includes(SyncPhase.PoiRefresh))
-  t.is(summary.poi, undefined)
+  assert.equal(phases.includes(SyncPhase.PoiRefresh), false)
+  assert.equal(summary.poi, undefined)
   client.close()
 })
 
-test('RailgunClient.refreshPoiStatus works without a preceding sync', async (t) => {
+test('RailgunClient.refreshPoiStatus works without a preceding sync', async () => {
   const restoreFetch = installPoiFetchFixture()
   const walletDB = memWalletDB()
   const walletId = 'manual-refresh-wallet'
@@ -204,13 +205,13 @@ test('RailgunClient.refreshPoiStatus works without a preceding sync', async (t) 
   try {
     const summary = await client.refreshPoiStatus(walletId, CHAIN_ID)
 
-    t.alike(summary, {
+    assert.deepEqual(summary, {
       checked: 1,
       updated: 1,
       skipped: 0,
       failed: 0
     })
-    t.alike(
+    assert.deepEqual(
       getNoteByCommitment(walletDB, note.commitment as Uint8Array)?.poisPerList,
       { [LIST_KEY]: POIStatus.Valid }
     )
@@ -220,7 +221,7 @@ test('RailgunClient.refreshPoiStatus works without a preceding sync', async (t) 
   }
 })
 
-test('RailgunClient requires PPOI node URLs for PPOI-aware sync', async (t) => {
+test('RailgunClient requires PPOI node URLs for PPOI-aware sync', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -234,11 +235,11 @@ test('RailgunClient requires PPOI node URLs for PPOI-aware sync', async (t) => {
       dataSource: emptySepoliaSource(),
       endBlock: 5784866n
     })
-    t.fail('expected missing PPOI node URL error')
+    assert.fail('expected missing PPOI node URL error')
   } catch (error) {
-    t.ok(error instanceof PoiNodeUrlsRequiredError)
+    assert.ok(error instanceof PoiNodeUrlsRequiredError)
     if (error instanceof PoiNodeUrlsRequiredError) {
-      t.is(error.network, NetworkName.EthereumSepolia)
+      assert.equal(error.network, NetworkName.EthereumSepolia)
     }
   } finally {
     client.close()
