@@ -6,10 +6,18 @@ import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { ChainDB, WalletDB } from '@railgun-reloaded/storage'
 import {
   closeWalletDB,
-  createWalletDB
+  createWalletDB,
+  getSyncState
 } from '@railgun-reloaded/storage'
 
 import { RailgunEngine } from './engine'
+import { EventBus } from './events'
+import type {
+  EventFilter,
+  EventHandler,
+  RailgunEventMap,
+  SyncProgressEvent
+} from './events'
 import { NETWORK_CONFIG, NetworkName } from './network-config'
 import type {
   BalanceMode,
@@ -222,6 +230,12 @@ class RailgunClient {
   /** PPOI node URLs passed at construction, validated lazily per network. */
   readonly #poiNodeUrls: Partial<Record<NetworkName, string[]>>
 
+  /** In-process lifecycle event bus for this client instance. */
+  readonly #bus = new EventBus()
+
+  /** True after `close()` removes listeners. Future subscriptions are inert. */
+  #closed = false
+
   /**
    * Construct a RailgunClient.
    * @param options - Optional `{ dataDir?, walletDB?, chainDB? }`. Injected
@@ -345,6 +359,25 @@ class RailgunClient {
   }
 
   /**
+   * Subscribe to client lifecycle events. Returns an idempotent unsubscribe
+   * function. After `close()`, subscriptions are accepted but never fire.
+   * @param event - Event name.
+   * @param handler - Synchronous event handler.
+   * @param filter - Optional wallet/chain filter.
+   * @returns Unsubscribe function.
+   */
+  on<E extends keyof RailgunEventMap> (
+    event: E,
+    handler: EventHandler<E>,
+    filter?: EventFilter
+  ): () => void {
+    if (this.#closed) {
+      return () => {}
+    }
+    return this.#bus.on(event, handler, filter)
+  }
+
+  /**
    * Refresh persisted PPOI status for received notes without running scan or
    * decrypt first.
    * @param walletId - Wallet ID returned from `createWallet` / `listWallets`.
@@ -378,11 +411,47 @@ class RailgunClient {
    *   source had nothing to yield.
    */
   scan (params: ScanParams): Promise<bigint | undefined> {
+    const chainId = NETWORK_CONFIG[params.network].chainID
     this.#engine.setDataSource(params.dataSource)
     this.#engine.setNetwork(params.network)
+    const fromBlock = this.#resolveScanStart(params.network)
+    const startedAt = Date.now()
+
+    this.#emit('sync:start', {
+      chainId,
+      phase: 'scan',
+      fromBlock,
+      ...(params.endBlock !== undefined && { toBlock: params.endBlock }),
+      timestamp: new Date()
+    })
+
+    const onBatch = makeScanOnBatch((progress) => {
+      params.onProgress?.(progress)
+      this.#emitProgress(progress, chainId)
+    }, params.endBlock)
+
     return this.#engine.scan({
       endBlock: params.endBlock,
-      ...(params.onProgress && { onBatch: makeScanOnBatch(params.onProgress, params.endBlock) })
+      onBatch
+    }).then((lastBlock) => {
+      this.#emit('sync:complete', {
+        chainId,
+        phase: 'scan',
+        blocksScanned: scanBlocksScanned(fromBlock, lastBlock),
+        notesAdded: 0,
+        notesSpent: 0,
+        durationMs: Date.now() - startedAt,
+        timestamp: new Date()
+      })
+      return lastBlock
+    }).catch((err: unknown) => {
+      this.#emit('sync:error', {
+        chainId,
+        phase: 'scan',
+        error: toError(err),
+        timestamp: new Date()
+      })
+      throw err
     })
   }
 
@@ -408,16 +477,65 @@ class RailgunClient {
       throw new Error('Decrypt failed: chain DB not initialized — call scan() first')
     }
     const walletContext = await this.#walletService.loadWallet(walletId, encryptionKey)
-    return runWalletDecryption({
-      chainDb,
-      walletDb: this.#walletDB,
-      walletContext,
+    const startedAt = Date.now()
+
+    this.#emit('sync:start', {
+      walletId,
       chainId: params.chainId,
+      phase: 'decrypt',
       ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
       ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
-      ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
-      ...(params.onProgress !== undefined && { onProgress: params.onProgress })
+      timestamp: new Date()
     })
+
+    try {
+      const summary = await runWalletDecryption({
+        chainDb,
+        walletDb: this.#walletDB,
+        walletContext,
+        chainId: params.chainId,
+        ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
+        ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
+        ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
+        onProgress: (progress) => {
+          params.onProgress?.(progress)
+          this.#emitProgress(progress, params.chainId, walletId)
+        }
+      })
+
+      if (summary.notesAdded > 0 || summary.notesSpent > 0) {
+        this.#emit('balance:update', {
+          walletId,
+          chainId: params.chainId,
+          balances: await this.#balanceService.getBalances(walletId, params.chainId, 'all'),
+          notesAdded: summary.notesAdded,
+          notesSpent: summary.notesSpent,
+          timestamp: new Date()
+        })
+      }
+
+      this.#emit('sync:complete', {
+        walletId,
+        chainId: params.chainId,
+        phase: 'decrypt',
+        blocksScanned: summary.blocksScanned,
+        notesAdded: summary.notesAdded,
+        notesSpent: summary.notesSpent,
+        durationMs: Date.now() - startedAt,
+        timestamp: new Date()
+      })
+
+      return summary
+    } catch (err) {
+      this.#emit('sync:error', {
+        walletId,
+        chainId: params.chainId,
+        phase: 'decrypt',
+        error: toError(err),
+        timestamp: new Date()
+      })
+      throw err
+    }
   }
 
   /**
@@ -435,34 +553,68 @@ class RailgunClient {
     encryptionKey: Uint8Array,
     params: SyncParams
   ): Promise<SyncSummary> {
-    const lastBlock = await this.scan({
-      network: params.network,
-      dataSource: params.dataSource,
-      ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
-      ...(params.onProgress !== undefined && { onProgress: params.onProgress })
-    })
-    const decrypt = await this.decrypt(walletId, encryptionKey, {
-      chainId: NETWORK_CONFIG[params.network].chainID,
+    const chainId = NETWORK_CONFIG[params.network].chainID
+    const startedAt = Date.now()
+
+    this.#emit('sync:start', {
+      walletId,
+      chainId,
+      phase: 'sync',
       ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
       ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
-      ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
-      ...(params.onProgress !== undefined && { onProgress: params.onProgress })
+      timestamp: new Date()
     })
 
-    const poi = NETWORK_CONFIG[params.network].poi !== undefined &&
-      params.refreshPoi !== false
-      ? await this.#refreshPoiStatusForNetwork(
-        walletId,
-        NETWORK_CONFIG[params.network].chainID,
-        params.network,
-        params.onProgress
-      )
-      : undefined
+    try {
+      const lastBlock = await this.scan({
+        network: params.network,
+        dataSource: params.dataSource,
+        ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
+        ...(params.onProgress !== undefined && { onProgress: params.onProgress })
+      })
+      const decrypt = await this.decrypt(walletId, encryptionKey, {
+        chainId,
+        ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
+        ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
+        ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
+        ...(params.onProgress !== undefined && { onProgress: params.onProgress })
+      })
 
-    return {
-      scan: { lastBlock },
-      decrypt,
-      ...(poi !== undefined && { poi })
+      const poi = NETWORK_CONFIG[params.network].poi !== undefined &&
+        params.refreshPoi !== false
+        ? await this.#refreshPoiStatusForNetwork(
+          walletId,
+          chainId,
+          params.network,
+          params.onProgress
+        )
+        : undefined
+
+      this.#emit('sync:complete', {
+        walletId,
+        chainId,
+        phase: 'sync',
+        blocksScanned: decrypt.blocksScanned,
+        notesAdded: decrypt.notesAdded,
+        notesSpent: decrypt.notesSpent,
+        durationMs: Date.now() - startedAt,
+        timestamp: new Date()
+      })
+
+      return {
+        scan: { lastBlock },
+        decrypt,
+        ...(poi !== undefined && { poi })
+      }
+    } catch (err) {
+      this.#emit('sync:error', {
+        walletId,
+        chainId,
+        phase: 'sync',
+        error: toError(err),
+        timestamp: new Date()
+      })
+      throw err
     }
   }
 
@@ -499,11 +651,70 @@ class RailgunClient {
    * was created internally. Injected DBs remain the caller's responsibility.
    */
   close (): void {
+    this.#closed = true
+    this.#bus.removeAllListeners()
     this.#engine.destroy()
     if (this.#ownsWalletDB) {
       closeWalletDB(this.#walletDB)
     }
   }
+
+  #resolveScanStart (network: NetworkName): bigint {
+    const chainId = NETWORK_CONFIG[network].chainID
+    const lastSyncedBlock = this.#engine.db !== undefined
+      ? getSyncState(this.#engine.db, chainId)?.lastBlockHeight
+      : undefined
+
+    return lastSyncedBlock !== undefined
+      ? lastSyncedBlock + 1n
+      : NETWORK_CONFIG[network].deploymentBlock
+  }
+
+  #emit<E extends keyof RailgunEventMap> (
+    event: E,
+    payload: RailgunEventMap[E]
+  ): void {
+    if (this.#closed) return
+    this.#bus.emit(event, payload)
+  }
+
+  #emitProgress (
+    progress: SyncProgress,
+    chainId: number,
+    walletId?: string
+  ): void {
+    if (progress.phase === SyncPhase.PoiRefresh) {
+      return
+    }
+
+    const payload: SyncProgressEvent = {
+      ...(walletId !== undefined && { walletId }),
+      chainId,
+      phase: progress.phase === SyncPhase.Scan ? 'scan' : 'decrypt',
+      fromBlock: progress.fromBlock,
+      toBlock: progress.toBlock,
+      currentBlock: progress.currentBlock,
+      blocksScanned: progress.blocksScanned,
+      notesAdded: progress.notesAdded,
+      notesSpent: progress.notesSpent,
+      timestamp: new Date()
+    }
+    this.#emit('sync:progress', payload)
+  }
+}
+
+function scanBlocksScanned (
+  fromBlock: bigint,
+  lastBlock: bigint | undefined
+): bigint {
+  if (lastBlock === undefined || lastBlock < fromBlock) {
+    return 0n
+  }
+  return lastBlock - fromBlock + 1n
+}
+
+function toError (err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err))
 }
 
 export { RailgunClient, SyncPhase }
