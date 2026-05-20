@@ -6,7 +6,8 @@ import {
   getAllNotes,
   insertNotesBatch
 } from '@railgun-reloaded/storage'
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import { NetworkName } from '../../src/network-config'
 import {
@@ -89,7 +90,7 @@ function fixtureNotes (): DBNewNote[] {
   ]
 }
 
-test('PoiStatusService fixture locks getPOIsPerList payload and persisted statuses', async (t) => {
+test('PoiStatusService fixture locks getPOIsPerList payload and persisted statuses', async () => {
   const db = memWalletDB()
   createWallet(db, {
     id: WALLET_ID,
@@ -125,15 +126,15 @@ test('PoiStatusService fixture locks getPOIsPerList payload and persisted status
 
   const summary = await service.refresh(WALLET_ID, CHAIN_ID)
 
-  t.alike(summary, {
+  assert.deepEqual(summary, {
     checked: 2,
     updated: 2,
     skipped: 0,
     failed: 0
   })
-  t.is(payloads.length, 1)
-  t.is(payloads[0]!.method, POIJSONRPCMethod.POIsPerList)
-  t.alike(
+  assert.equal(payloads.length, 1)
+  assert.equal(payloads[0]!.method, POIJSONRPCMethod.POIsPerList)
+  assert.deepEqual(
     {
       ...payloads[0]!.params,
       blindedCommitmentDatas: [...payloads[0]!.params.blindedCommitmentDatas]
@@ -160,6 +161,6 @@ test('PoiStatusService fixture locks getPOIsPerList payload and persisted status
   const rows = getAllNotes(db, WALLET_ID, CHAIN_ID)
   for (const row of rows) {
     const blindedCommitment = bytesToHex(row.blindedCommitment!, { prefix: true })
-    t.alike(row.poisPerList, expectedResponse[blindedCommitment])
+    assert.deepEqual(row.poisPerList, expectedResponse[blindedCommitment])
   }
 })

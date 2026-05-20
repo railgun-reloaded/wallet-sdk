@@ -1,4 +1,5 @@
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import {
   BlindedCommitmentType,
@@ -7,15 +8,15 @@ import {
   WalletBalanceBucket
 } from '../../src/poi'
 
-test('PPOI enum values match wire fixtures', (t) => {
-  t.alike(POIStatus, {
+test('PPOI enum values match wire fixtures', () => {
+  assert.deepEqual(POIStatus, {
     Valid: 'Valid',
     Missing: 'Missing',
     ShieldBlocked: 'ShieldBlocked',
     ProofSubmitted: 'ProofSubmitted'
   })
 
-  t.alike(WalletBalanceBucket, {
+  assert.deepEqual(WalletBalanceBucket, {
     Spendable: 'Spendable',
     ShieldPending: 'ShieldPending',
     ShieldBlocked: 'ShieldBlocked',
@@ -25,13 +26,13 @@ test('PPOI enum values match wire fixtures', (t) => {
     Spent: 'Spent'
   })
 
-  t.alike(BlindedCommitmentType, {
+  assert.deepEqual(BlindedCommitmentType, {
     Shield: 'Shield',
     Transact: 'Transact',
     Unshield: 'Unshield'
   })
 
-  t.alike(POIListType, {
+  assert.deepEqual(POIListType, {
     Active: 'Active',
     Gather: 'Gather'
   })

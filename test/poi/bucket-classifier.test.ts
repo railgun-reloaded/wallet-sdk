@@ -1,5 +1,6 @@
 import type { DBNote } from '@railgun-reloaded/storage'
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import type { NetworkConfig } from '../../src/network-config'
 import { classifyNote, POIStatus, WalletBalanceBucket } from '../../src/poi'
@@ -64,8 +65,8 @@ function noteFixture (overrides: Partial<DBNote> = {}): DBNote {
   }
 }
 
-test('classifyNote returns Spent before every POI branch', (t) => {
-  t.is(
+test('classifyNote returns Spent before every POI branch', () => {
+  assert.equal(
     classifyNote(noteFixture({
       spent: true,
       commitmentType: SHIELD_COMMITMENT_TYPE,
@@ -75,8 +76,8 @@ test('classifyNote returns Spent before every POI branch', (t) => {
   )
 })
 
-test('classifyNote treats non-PPOI networks as Spendable', (t) => {
-  t.is(
+test('classifyNote treats non-PPOI networks as Spendable', () => {
+  assert.equal(
     classifyNote(noteFixture({
       commitmentType: SHIELD_COMMITMENT_TYPE,
       poisPerList: null
@@ -85,8 +86,8 @@ test('classifyNote treats non-PPOI networks as Spendable', (t) => {
   )
 })
 
-test('classifyNote maps missing shield POIs to ShieldPending', (t) => {
-  t.is(
+test('classifyNote maps missing shield POIs to ShieldPending', () => {
+  assert.equal(
     classifyNote(noteFixture({
       commitmentType: SHIELD_COMMITMENT_TYPE,
       poisPerList: null
@@ -95,8 +96,8 @@ test('classifyNote maps missing shield POIs to ShieldPending', (t) => {
   )
 })
 
-test('classifyNote maps missing change POIs to MissingInternalPOI', (t) => {
-  t.is(
+test('classifyNote maps missing change POIs to MissingInternalPOI', () => {
+  assert.equal(
     classifyNote(noteFixture({
       outputType: OUTPUT_TYPE_CHANGE,
       poisPerList: null
@@ -105,8 +106,8 @@ test('classifyNote maps missing change POIs to MissingInternalPOI', (t) => {
   )
 })
 
-test('classifyNote maps missing transfer POIs to MissingExternalPOI', (t) => {
-  t.is(
+test('classifyNote maps missing transfer POIs to MissingExternalPOI', () => {
+  assert.equal(
     classifyNote(noteFixture({
       outputType: OUTPUT_TYPE_TRANSFER,
       poisPerList: null
@@ -115,8 +116,8 @@ test('classifyNote maps missing transfer POIs to MissingExternalPOI', (t) => {
   )
 })
 
-test('classifyNote maps ShieldBlocked required-list status to ShieldBlocked', (t) => {
-  t.is(
+test('classifyNote maps ShieldBlocked required-list status to ShieldBlocked', () => {
+  assert.equal(
     classifyNote(noteFixture({
       poisPerList: {
         [LIST_A]: POIStatus.ShieldBlocked,
@@ -127,8 +128,8 @@ test('classifyNote maps ShieldBlocked required-list status to ShieldBlocked', (t
   )
 })
 
-test('classifyNote maps non-valid shield POIs to ShieldPending before ProofSubmitted', (t) => {
-  t.is(
+test('classifyNote maps non-valid shield POIs to ShieldPending before ProofSubmitted', () => {
+  assert.equal(
     classifyNote(noteFixture({
       commitmentType: SHIELD_COMMITMENT_TYPE,
       poisPerList: {
@@ -140,8 +141,8 @@ test('classifyNote maps non-valid shield POIs to ShieldPending before ProofSubmi
   )
 })
 
-test('classifyNote maps ProofSubmitted required-list status to ProofSubmitted', (t) => {
-  t.is(
+test('classifyNote maps ProofSubmitted required-list status to ProofSubmitted', () => {
+  assert.equal(
     classifyNote(noteFixture({
       poisPerList: {
         [LIST_A]: POIStatus.Valid,
@@ -152,8 +153,8 @@ test('classifyNote maps ProofSubmitted required-list status to ProofSubmitted', 
   )
 })
 
-test('classifyNote maps all valid required-list statuses to Spendable', (t) => {
-  t.is(
+test('classifyNote maps all valid required-list statuses to Spendable', () => {
+  assert.equal(
     classifyNote(noteFixture({
       poisPerList: {
         [LIST_A]: POIStatus.Valid,
@@ -164,8 +165,8 @@ test('classifyNote maps all valid required-list statuses to Spendable', (t) => {
   )
 })
 
-test('classifyNote falls back from non-valid change POIs to MissingInternalPOI', (t) => {
-  t.is(
+test('classifyNote falls back from non-valid change POIs to MissingInternalPOI', () => {
+  assert.equal(
     classifyNote(noteFixture({
       outputType: OUTPUT_TYPE_CHANGE,
       poisPerList: {
@@ -177,8 +178,8 @@ test('classifyNote falls back from non-valid change POIs to MissingInternalPOI',
   )
 })
 
-test('classifyNote falls back from non-valid transfer POIs to MissingExternalPOI', (t) => {
-  t.is(
+test('classifyNote falls back from non-valid transfer POIs to MissingExternalPOI', () => {
+  assert.equal(
     classifyNote(noteFixture({
       outputType: OUTPUT_TYPE_TRANSFER,
       poisPerList: {
@@ -190,8 +191,8 @@ test('classifyNote falls back from non-valid transfer POIs to MissingExternalPOI
   )
 })
 
-test('classifyNote treats missing required-list keys as missing POIs', (t) => {
-  t.is(
+test('classifyNote treats missing required-list keys as missing POIs', () => {
+  assert.equal(
     classifyNote(noteFixture({
       outputType: OUTPUT_TYPE_CHANGE,
       poisPerList: {

@@ -4,7 +4,8 @@ import {
   createWalletDB,
   insertNotesBatch
 } from '@railgun-reloaded/storage'
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import {
   CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
@@ -108,7 +109,7 @@ function sumBalances (balances: TokenBalance[]): bigint {
   return balances.reduce((sum, balance) => sum + balance.balance, 0n)
 }
 
-test('BalanceService.getBalances default equals hand-counted spendable bucket', async (t) => {
+test('BalanceService.getBalances default equals hand-counted spendable bucket', async () => {
   const db = memWalletDB()
   seedWalletWithMixedPoiStates(db)
   const service = new BalanceService(db)
@@ -116,8 +117,8 @@ test('BalanceService.getBalances default equals hand-counted spendable bucket', 
   const spendable = await service.getBalances(WALLET_ID, CHAIN_ID)
   const total = await service.getBalances(WALLET_ID, CHAIN_ID, 'all')
 
-  t.is(balanceOf(spendable, USDC), 100n)
-  t.is(balanceOf(spendable, DAI), 5n)
-  t.is(sumBalances(spendable), 105n)
-  t.ok(sumBalances(total) > sumBalances(spendable), 'mixed POI states keep total greater than spendable')
+  assert.equal(balanceOf(spendable, USDC), 100n)
+  assert.equal(balanceOf(spendable, DAI), 5n)
+  assert.equal(sumBalances(spendable), 105n)
+  assert.ok(sumBalances(total) > sumBalances(spendable), 'mixed POI states keep total greater than spendable')
 })

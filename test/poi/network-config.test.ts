@@ -1,4 +1,5 @@
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import type { RailgunClientOptions } from '../../src/client'
 import {
@@ -12,29 +13,29 @@ import {
   isPOIRequired
 } from '../../src/poi'
 
-test('PPOI requirement boundary follows Sepolia launch block', (t) => {
+test('PPOI requirement boundary follows Sepolia launch block', () => {
   const launchBlock = SEPOLIA_POI_CONFIG.launchBlock
 
-  t.is(isPOIRequired(NetworkName.EthereumSepolia, launchBlock - 1n), false)
-  t.is(isPOIRequired(NetworkName.EthereumSepolia, launchBlock), true)
-  t.is(isPOIRequired(NetworkName.EthereumSepolia, launchBlock + 1n), true)
+  assert.equal(isPOIRequired(NetworkName.EthereumSepolia, launchBlock - 1n), false)
+  assert.equal(isPOIRequired(NetworkName.EthereumSepolia, launchBlock), true)
+  assert.equal(isPOIRequired(NetworkName.EthereumSepolia, launchBlock + 1n), true)
 })
 
-test('non-PPOI networks never require PPOI', (t) => {
-  t.is(isPOIRequired(NetworkName.Ethereum, 0n), false)
-  t.is(isPOIRequired(NetworkName.Ethereum, 1_000_000_000n), false)
-  t.alike(getRequiredListKeys(NetworkName.Ethereum), [])
+test('non-PPOI networks never require PPOI', () => {
+  assert.equal(isPOIRequired(NetworkName.Ethereum, 0n), false)
+  assert.equal(isPOIRequired(NetworkName.Ethereum, 1_000_000_000n), false)
+  assert.deepEqual(getRequiredListKeys(NetworkName.Ethereum), [])
 })
 
-test('Sepolia exposes PPOI config and required list keys', (t) => {
-  t.is(NETWORK_CONFIG[NetworkName.EthereumSepolia].poi, SEPOLIA_POI_CONFIG)
-  t.alike(getRequiredListKeys(NetworkName.EthereumSepolia), [
+test('Sepolia exposes PPOI config and required list keys', () => {
+  assert.equal(NETWORK_CONFIG[NetworkName.EthereumSepolia].poi, SEPOLIA_POI_CONFIG)
+  assert.deepEqual(getRequiredListKeys(NetworkName.EthereumSepolia), [
     CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY
   ])
 })
 
-test('RailgunClient options do not require PPOI URLs at construction', (t) => {
+test('RailgunClient options do not require PPOI URLs at construction', () => {
   const options: RailgunClientOptions = {}
 
-  t.alike(options, {})
+  assert.deepEqual(options, {})
 })
