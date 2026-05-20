@@ -1,9 +1,43 @@
 import { padBytesLeft } from '@railgun-reloaded/bytes'
-import type { EVMBlock, EncryptedCommitment, GeneratedCommitment, Shield, ShieldCommitment, Transact, TransactCommitment, Unshield } from '@railgun-reloaded/scanner'
-import { ActionType } from '@railgun-reloaded/scanner'
+import type {
+  EVMBlock,
+  EncryptedCommitment,
+  GeneratedCommitment,
+  ScannedRailgunTransaction,
+  Shield,
+  ShieldCommitment,
+  Transact,
+  TransactCommitment,
+  Unshield
+} from '@railgun-reloaded/scanner'
+import { ActionType, extractRailgunTransactions } from '@railgun-reloaded/scanner'
 import type { DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
 
-import { formatRailgunTransactions } from './txid-tx-formatter'
+/**
+ * Map a scanner Railgun-tx DTO onto the storage row shape. graphID and
+ * verificationHash are not modeled by scanner; we persist them as null.
+ * @param dto - Scanner Railgun-tx DTO.
+ * @returns Storage row for chain.db.
+ */
+function toDBRow (dto: ScannedRailgunTransaction): DBNewRailgunTransaction {
+  return {
+    railgunTxid: dto.railgunTxid,
+    txidVersion: dto.txidVersion,
+    chainTxid: dto.chainTxid,
+    graphID: null,
+    blockNumber: dto.blockNumber,
+    timestamp: dto.timestamp,
+    nullifiers: dto.nullifiers,
+    commitments: dto.commitments,
+    boundParamsHash: dto.boundParamsHash,
+    hasUnshield: dto.hasUnshield,
+    unshield: dto.unshield,
+    utxoTreeIn: dto.utxoTreeIn,
+    utxoTreeOut: dto.utxoTreeOut,
+    utxoBatchStartPositionOut: dto.utxoBatchStartPositionOut,
+    verificationHash: null,
+  }
+}
 
 enum CommitmentType {
   Shield = 0,
@@ -36,7 +70,7 @@ function denormalizeBlockData (block : EVMBlock) : {
   const nullifiers = new Array<DBNewNullifier>()
   const commitments = new Array<DBNewCommitment>()
   const unshields = new Array<DBNewUnshield>()
-  const railgunTransactions = formatRailgunTransactions(block)
+  const railgunTransactions = extractRailgunTransactions(block).map(toDBRow)
 
   const blockNumber = block.number
   for (const tx of block.transactions) {

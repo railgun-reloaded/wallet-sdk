@@ -1,66 +1,43 @@
-import {
-  createChainDB,
-  getRailgunTransactionsByBlockRange,
-  getSyncState,
-  getTxidSyncCursor,
-  insertRailgunTransactions,
-  setTxidSyncCursor,
-  updateSyncState
-} from '@railgun-reloaded/storage'
+import type { Transact } from '@railgun-reloaded/scanner'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { denormalizeBlockData } from '../../src/sync'
-import { NETWORK_CONFIG, NetworkName } from '../../src/network-config'
 
 import { TEST_VECTOR_TRANSACT } from '../test-vector'
 
 /**
- * Build a fresh in-memory chain DB for event-processor tests.
- * @returns ChainDB with migrations applied.
+ * Compare two byte arrays by byte content only.
+ * @param a - First byte array.
+ * @param b - Second byte array.
+ * @returns True when byte content matches.
  */
-function memChainDB () {
-  return createChainDB({
-    path: ':memory:',
-    runMigrations: true,
-    migrationsFolder: '../storage/drizzle/chain'
-  })
+function bytesEqual (a: Uint8Array, b: Uint8Array): boolean {
+  return Buffer.from(a).equals(Buffer.from(b))
 }
 
-test('event processor exposes Railgun TXID rows without advancing cursor by itself', () => {
-  const chainDB = memChainDB()
-  const chainID = NETWORK_CONFIG[NetworkName.EthereumSepolia].chainID
+test('denormalizeBlockData yields one railgun-tx row per ppoi-complete Transact', () => {
   const { railgunTransactions } = denormalizeBlockData(TEST_VECTOR_TRANSACT)
-
   assert.equal(railgunTransactions.length, 1)
-
-  updateSyncState(chainDB, chainID, TEST_VECTOR_TRANSACT.number)
-
-  assert.equal(getSyncState(chainDB, chainID)?.lastBlockHeight, TEST_VECTOR_TRANSACT.number)
-  assert.equal(getTxidSyncCursor(chainDB, chainID), 0n)
-  assert.deepEqual(getRailgunTransactionsByBlockRange(
-    chainDB,
-    TEST_VECTOR_TRANSACT.number,
-    TEST_VECTOR_TRANSACT.number
-  ), [])
 })
 
-test('event processor TXID rows persist and advance independent cursor when inserted', () => {
-  const chainDB = memChainDB()
-  const chainID = NETWORK_CONFIG[NetworkName.EthereumSepolia].chainID
+test('denormalizeBlockData carries scanner Transact fields onto the row, with null graphID/verificationHash', () => {
   const { railgunTransactions } = denormalizeBlockData(TEST_VECTOR_TRANSACT)
+  const row = railgunTransactions[0]!
+  const tx = TEST_VECTOR_TRANSACT.transactions[0]!
+  const transact = tx.actions[0]![0] as Transact
 
-  assert.equal(insertRailgunTransactions(chainDB, railgunTransactions), 1)
-  assert.equal(setTxidSyncCursor(chainDB, chainID, TEST_VECTOR_TRANSACT.number), 1)
-  updateSyncState(chainDB, chainID, TEST_VECTOR_TRANSACT.number + 10n)
-
-  const rows = getRailgunTransactionsByBlockRange(
-    chainDB,
-    TEST_VECTOR_TRANSACT.number,
-    TEST_VECTOR_TRANSACT.number
-  )
-
-  assert.equal(rows.length, 1)
-  assert.equal(getSyncState(chainDB, chainID)?.lastBlockHeight, TEST_VECTOR_TRANSACT.number + 10n)
-  assert.equal(getTxidSyncCursor(chainDB, chainID), TEST_VECTOR_TRANSACT.number)
+  assert.ok(bytesEqual(row.railgunTxid, transact.txID))
+  assert.ok(bytesEqual(row.chainTxid, tx.hash))
+  assert.equal(row.blockNumber, TEST_VECTOR_TRANSACT.number)
+  assert.equal(row.timestamp, TEST_VECTOR_TRANSACT.timestamp)
+  assert.deepEqual(row.nullifiers, transact.nullifiers)
+  assert.ok(bytesEqual(row.boundParamsHash, transact.boundParamsHash))
+  assert.equal(row.hasUnshield, false)
+  assert.equal(row.unshield, null)
+  assert.equal(row.utxoTreeIn, transact.utxoTreeIn)
+  assert.equal(row.utxoTreeOut, transact.utxoTreeOut)
+  assert.equal(row.utxoBatchStartPositionOut, transact.utxoBatchStartPositionOut)
+  assert.equal(row.graphID, null)
+  assert.equal(row.verificationHash, null)
 })
