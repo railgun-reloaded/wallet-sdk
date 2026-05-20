@@ -9,13 +9,17 @@ import {
   createChainDB,
   createWalletDB,
   getSyncState,
-  insertNotesBatch,
-  recalculateAllBalances
+  insertNotesBatch
 } from '@railgun-reloaded/storage'
 import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
 
 import { RailgunClient, SyncPhase } from '../src/client'
 import { NetworkName } from '../src/network-config'
+import {
+  CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
+  POIStatus,
+  WalletBalanceBucket
+} from '../src/poi'
 import { WalletNotFoundError } from '../src/services/wallet/errors'
 
 import { MNEMONIC, VECTORS } from './fixtures/wallet-vectors'
@@ -65,7 +69,7 @@ function noteFixture (overrides: Partial<DBNewNote>): DBNewNote {
 }
 
 /**
- * Seed wallet notes and refresh the cached balances table.
+ * Seed wallet notes.
  * @param walletDB - Wallet DB to seed.
  * @param walletId - Existing wallet ID.
  * @param notes - Notes to insert.
@@ -76,7 +80,6 @@ function seedNotes (
   notes: DBNewNote[]
 ): void {
   insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
-  recalculateAllBalances(walletDB, walletId, 11155111)
 }
 
 test('RailgunClient delegates createWallet / listWallets / deleteWallet', async () => {
@@ -123,12 +126,24 @@ test('RailgunClient.getBalances returns cached aggregated balances', async () =>
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const usdc = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
   const dai = '0x6b175474e89094c44da98b954eedeac495271d0f'
+  const validPoi = {
+    [CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY]: POIStatus.Valid
+  }
 
   seedNotes(walletDB, wallet.walletId, [
-    noteFixture({ commitment: filledBytes(10), nullifier: filledBytes(11), token: usdc, amount: 100n }),
-    noteFixture({ commitment: filledBytes(12), nullifier: filledBytes(13), token: usdc, amount: 200n }),
+    noteFixture({ commitment: filledBytes(10), nullifier: filledBytes(11), token: usdc, amount: 100n, poisPerList: validPoi }),
+    noteFixture({ commitment: filledBytes(12), nullifier: filledBytes(13), token: usdc, amount: 200n, poisPerList: validPoi }),
     noteFixture({ commitment: filledBytes(14), nullifier: filledBytes(15), token: usdc, amount: 50n, spent: true }),
-    noteFixture({ commitment: filledBytes(16), nullifier: filledBytes(17), token: dai, amount: 500n })
+    noteFixture({ commitment: filledBytes(16), nullifier: filledBytes(17), token: dai, amount: 500n, poisPerList: validPoi }),
+    noteFixture({
+      commitment: filledBytes(18),
+      nullifier: filledBytes(19),
+      token: dai,
+      amount: 7n,
+      commitmentType: 1,
+      outputType: 0,
+      poisPerList: null
+    })
   ])
 
   const balances = await client.getBalances(wallet.walletId)
@@ -248,7 +263,7 @@ test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', 
 
   for (const action of [
     () => client.getBalances(unknown, 11155111),
-    () => client.getTokenBalance(unknown, 11155111, '0x0000000000000000000000000000000000000000'),
+    () => client.getBalancesByBucket(unknown, 11155111),
     () => client.getNotes(unknown, 11155111)
   ]) {
     try {

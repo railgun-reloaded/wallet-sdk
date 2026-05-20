@@ -28,13 +28,7 @@ class BlindedCommitmentInputError extends Error {
   }
 }
 
-type ShieldBlindedCommitmentInput = {
-  commitment: Uint8Array
-  npk: bigint
-  treePosition: bigint
-}
-
-type TransactBlindedCommitmentInput = {
+type ShieldOrTransactBlindedCommitmentInput = {
   commitment: Uint8Array
   npk: bigint
   globalTreePosition: bigint
@@ -47,8 +41,8 @@ type UnshieldBlindedCommitmentInput = {
 }
 
 type BlindedCommitmentInput =
-  | ({ type: BlindedCommitmentType.Shield } & ShieldBlindedCommitmentInput)
-  | ({ type: BlindedCommitmentType.Transact } & TransactBlindedCommitmentInput)
+  | ({ type: BlindedCommitmentType.Shield } & ShieldOrTransactBlindedCommitmentInput)
+  | ({ type: BlindedCommitmentType.Transact } & ShieldOrTransactBlindedCommitmentInput)
   | ({ type: BlindedCommitmentType.Unshield } & UnshieldBlindedCommitmentInput)
 
 function assertBytesLength (
@@ -84,29 +78,8 @@ function assertNonNegativeBigInt (value: bigint, field: string): bigint {
   return value
 }
 
-function getBlindedCommitmentForShield (
-  input: ShieldBlindedCommitmentInput
-): Uint8Array {
-  const commitment = assertBytesLength(
-    input.commitment,
-    'commitment',
-    BYTES_32_LENGTH
-  )
-  const npk = assertNonNegativeBigInt(input.npk, 'npk')
-  const treePosition = assertNonNegativeBigInt(
-    input.treePosition,
-    'treePosition'
-  )
-
-  return poseidonFunc([
-    bytesToBigInt(commitment),
-    npk,
-    treePosition
-  ])
-}
-
-function getBlindedCommitmentForTransact (
-  input: TransactBlindedCommitmentInput
+function getBlindedCommitmentForShieldOrTransact (
+  input: ShieldOrTransactBlindedCommitmentInput
 ): Uint8Array {
   const commitment = assertBytesLength(
     input.commitment,
@@ -123,7 +96,7 @@ function getBlindedCommitmentForTransact (
     bytesToBigInt(commitment),
     npk,
     globalTreePosition
-  ])
+  ]) as Uint8Array
 }
 
 function getBlindedCommitmentForUnshield (
@@ -145,9 +118,8 @@ function getBlindedCommitment (
 ): Uint8Array {
   switch (input.type) {
     case BlindedCommitmentType.Shield:
-      return getBlindedCommitmentForShield(input)
     case BlindedCommitmentType.Transact:
-      return getBlindedCommitmentForTransact(input)
+      return getBlindedCommitmentForShieldOrTransact(input)
     case BlindedCommitmentType.Unshield:
       return getBlindedCommitmentForUnshield(input)
     default:
@@ -162,14 +134,12 @@ function getBlindedCommitment (
 export {
   BlindedCommitmentInputError,
   getBlindedCommitment,
-  getBlindedCommitmentForShield,
-  getBlindedCommitmentForTransact,
+  getBlindedCommitmentForShieldOrTransact,
   getBlindedCommitmentForUnshield
 }
 export type {
   BlindedCommitmentInput,
   BlindedCommitmentInputErrorCode,
-  ShieldBlindedCommitmentInput,
-  TransactBlindedCommitmentInput,
+  ShieldOrTransactBlindedCommitmentInput,
   UnshieldBlindedCommitmentInput
 }

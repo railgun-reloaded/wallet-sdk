@@ -17,15 +17,13 @@ export { classifyNote } from './bucket-classifier'
 export {
   BlindedCommitmentInputError,
   getBlindedCommitment,
-  getBlindedCommitmentForShield,
-  getBlindedCommitmentForTransact,
+  getBlindedCommitmentForShieldOrTransact,
   getBlindedCommitmentForUnshield
 } from './blinded-commitment'
 export type {
   BlindedCommitmentInput,
   BlindedCommitmentInputErrorCode,
-  ShieldBlindedCommitmentInput,
-  TransactBlindedCommitmentInput,
+  ShieldOrTransactBlindedCommitmentInput,
   UnshieldBlindedCommitmentInput
 } from './blinded-commitment'
 

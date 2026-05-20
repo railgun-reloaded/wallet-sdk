@@ -27,8 +27,8 @@ const SEPOLIA_REQUIRED_LIST_KEYS = SEPOLIA_REQUIRED_POI_LISTS
   .map(list => list.key)
 
 const SEPOLIA_POI_CONFIG: NetworkPoiConfig = {
-  launchBlock: 9802000n,
-  launchTimestamp: 1380794400,
+  launchBlock: 5944700n,
+  launchTimestamp: 1716309480,
   requiredListKeys: SEPOLIA_REQUIRED_LIST_KEYS
 }
 

@@ -1,7 +1,7 @@
 import { bytesToBigInt, bytesToHex } from '@railgun-reloaded/bytes'
 import type { DBNote, NotePoiStatusUpdate, WalletDB } from '@railgun-reloaded/storage'
 import {
-  getNotesNeedingPoiRefresh,
+  getAllNotes,
   updateNotePoiStatusBatch
 } from '@railgun-reloaded/storage'
 
@@ -9,10 +9,7 @@ import type { NetworkName } from '../network-config'
 import { SyncPhase } from '../sync/wallet-decryptor'
 import type { SyncProgress } from '../sync/wallet-decryptor'
 
-import {
-  getBlindedCommitmentForShield,
-  getBlindedCommitmentForTransact
-} from './blinded-commitment'
+import { getBlindedCommitmentForShieldOrTransact } from './blinded-commitment'
 import { GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS } from './node-client'
 import type { PoiNodeClient } from './node-client'
 import {
@@ -22,7 +19,7 @@ import {
 import { getRequiredListKeys } from './network-config'
 import type { GetPOIsPerListParams } from './node-client-types'
 import type { RequiredListKey } from './types'
-import { BlindedCommitmentType, TXIDVersion } from './types'
+import { BlindedCommitmentType, POIStatus, TXIDVersion } from './types'
 
 type RefreshSummary = {
   checked: number
@@ -78,7 +75,8 @@ class PoiStatusService {
     chainId: number,
     options: RefreshOptions = {}
   ): Promise<RefreshSummary> {
-    const candidates = getNotesNeedingPoiRefresh(this.#walletDb, walletId, chainId)
+    const candidates = getAllNotes(this.#walletDb, walletId, chainId)
+      .filter(note => shouldRefreshPoiStatus(note, this.#listKeys))
     const summary: RefreshSummary = {
       checked: candidates.length,
       updated: 0,
@@ -169,10 +167,25 @@ class PoiStatusService {
   }
 }
 
+function shouldRefreshPoiStatus (
+  note: DBNote,
+  listKeys: RequiredListKey[]
+): boolean {
+  if (note.poisPerList == null) {
+    return true
+  }
+  if (listKeys.length === 0) {
+    return false
+  }
+
+  const poisPerList = note.poisPerList as Record<string, string | undefined>
+  return listKeys.some(key => poisPerList[key] !== POIStatus.Valid)
+}
+
 function noteToRefreshEntry (note: DBNote): RefreshEntry {
   const type = getBlindedCommitmentType(note.commitmentType)
   const blindedCommitment = note.blindedCommitment ??
-    deriveBlindedCommitment(note, type)
+    deriveBlindedCommitment(note)
 
   return {
     commitment: note.commitment,
@@ -195,23 +208,12 @@ function getBlindedCommitmentType (
   throw new Error(`Unsupported commitment type: ${commitmentType}`)
 }
 
-function deriveBlindedCommitment (
-  note: DBNote,
-  type: BlindedCommitmentType.Shield | BlindedCommitmentType.Transact
-): Uint8Array {
+function deriveBlindedCommitment (note: DBNote): Uint8Array {
   if (note.npk === null) {
     throw new Error('Cannot derive blinded commitment without npk')
   }
 
-  if (type === BlindedCommitmentType.Shield) {
-    return getBlindedCommitmentForShield({
-      commitment: note.commitment,
-      npk: bytesToBigInt(note.npk),
-      treePosition: BigInt(note.treePosition)
-    })
-  }
-
-  return getBlindedCommitmentForTransact({
+  return getBlindedCommitmentForShieldOrTransact({
     commitment: note.commitment,
     npk: bytesToBigInt(note.npk),
     globalTreePosition: BigInt(note.treeNumber) * TREE_LEAF_COUNT +

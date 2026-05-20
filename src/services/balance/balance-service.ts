@@ -1,9 +1,7 @@
 import { bytesToHex } from '@railgun-reloaded/bytes'
-import type { DBBalance, DBNote, WalletDB } from '@railgun-reloaded/storage'
+import type { DBNote, WalletDB } from '@railgun-reloaded/storage'
 import {
-  getAllBalances,
   getAllNotes,
-  getBalance,
   getUnspentNotes,
   getWallet
 } from '@railgun-reloaded/storage'
@@ -21,6 +19,8 @@ type TokenBalance = {
   token: string
   balance: bigint
 }
+
+type BalanceMode = 'spendable' | 'all' | WalletBalanceBucket
 
 /**
  * A note owned by a wallet. Bytes columns are exposed as 0x-prefixed lowercase
@@ -42,18 +42,6 @@ type DecryptedNote = {
   spent: boolean
   spentTxid: string | null
   decryptedAt: Date
-}
-
-/**
- * Map a stored balance row to the public `TokenBalance` type.
- * @param row - Row from `getAllBalances`.
- * @returns Public-facing TokenBalance.
- */
-function mapBalanceRow (row: DBBalance): TokenBalance {
-  return {
-    token: row.token,
-    balance: row.amount
-  }
 }
 
 /**
@@ -205,29 +193,47 @@ class BalanceService {
   }
 
   /**
-   * Read all cached ERC-20 balances for a wallet on a given chain.
+   * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
+   * The default mode is the user-facing Monorail parity balance: spendable only
+   * on PPOI networks, and all unspent notes on non-PPOI networks.
    * @param walletId - Wallet ID returned by `createWallet`.
    * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
-   * @returns Public token balances from wallet.db.balances.
+   * @param mode - Balance mode: default spendable, all unspent, or one bucket.
+   * @returns Public token balances grouped by token.
    */
-  async getBalances (walletId: string, chainId: number): Promise<TokenBalance[]> {
-    this.#assertWalletExists(walletId)
-    return getAllBalances(this.#db, walletId, chainId)
-      .filter(row => row.amount > 0n)
-      .map(mapBalanceRow)
-  }
-
-  /**
-   * Read spendable ERC-20 balances for a wallet on a given chain.
-   * @param walletId - Wallet ID returned by `createWallet`.
-   * @param chainId - Chain id to scope the lookup to.
-   * @returns Token balances classified into `WalletBalanceBucket.Spendable`.
-   */
-  async getSpendableBalances (
+  async getBalances (
     walletId: string,
-    chainId: number
+    chainId: number,
+    mode: BalanceMode = 'spendable'
   ): Promise<TokenBalance[]> {
-    return (await this.getBalancesByBucket(walletId, chainId))[WalletBalanceBucket.Spendable]
+    this.#assertWalletExists(walletId)
+    const notes = getUnspentNotes(this.#db, walletId, chainId)
+    if (notes.length === 0) {
+      return []
+    }
+
+    const network = getNetworkConfigByChainId(chainId)
+    const balances = new Map<string, bigint>()
+
+    if (mode === 'all' || (mode === 'spendable' && network.poi === undefined)) {
+      for (const note of notes) {
+        addNoteBalance(balances, note)
+      }
+      return mapBalanceAccumulator(balances)
+    }
+
+    const targetBucket = mode === 'spendable'
+      ? WalletBalanceBucket.Spendable
+      : mode
+
+    for (const note of notes) {
+      const bucket = classifyNote(note, network)
+      if (bucket === targetBucket) {
+        addNoteBalance(balances, note)
+      }
+    }
+
+    return mapBalanceAccumulator(balances)
   }
 
   /**
@@ -257,22 +263,6 @@ class BalanceService {
   }
 
   /**
-   * Read one cached ERC-20 balance for a wallet on a given chain.
-   * @param walletId - Wallet ID returned by `createWallet`.
-   * @param chainId - Chain id to scope the lookup to.
-   * @param tokenAddress - ERC-20 token address. Lookup is case-insensitive.
-   * @returns Balance amount, or 0n when no cached balance exists.
-   */
-  async getTokenBalance (
-    walletId: string,
-    chainId: number,
-    tokenAddress: string
-  ): Promise<bigint> {
-    this.#assertWalletExists(walletId)
-    return getBalance(this.#db, walletId, chainId, tokenAddress)?.amount ?? 0n
-  }
-
-  /**
    * Read decrypted notes for a wallet on a given chain.
    * @param walletId - Wallet ID returned by `createWallet`.
    * @param chainId - Chain id to scope the lookup to.
@@ -293,5 +283,5 @@ class BalanceService {
   }
 }
 
-export { BalanceService, mapBalanceRow, mapNoteRow }
-export type { DecryptedNote, TokenBalance }
+export { BalanceService, mapNoteRow }
+export type { BalanceMode, DecryptedNote, TokenBalance }
