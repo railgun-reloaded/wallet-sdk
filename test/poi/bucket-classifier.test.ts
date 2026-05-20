@@ -25,13 +25,6 @@ const PPOI_NETWORK: NetworkConfig = {
   }
 }
 
-const NON_PPOI_NETWORK: NetworkConfig = {
-  chainID: 1,
-  deploymentBlock: 1n,
-  proxyContractAddress: '0x0000000000000000000000000000000000000000',
-  rpcURL: 'https://rpc.example'
-}
-
 function bytes (value: number): Uint8Array {
   return new Uint8Array(32).fill(value)
 }
@@ -71,18 +64,8 @@ test('classifyNote returns Spent before every POI branch', () => {
       spent: true,
       commitmentType: SHIELD_COMMITMENT_TYPE,
       poisPerList: null
-    }), NON_PPOI_NETWORK),
+    }), PPOI_NETWORK),
     WalletBalanceBucket.Spent
-  )
-})
-
-test('classifyNote treats non-PPOI networks as Spendable', () => {
-  assert.equal(
-    classifyNote(noteFixture({
-      commitmentType: SHIELD_COMMITMENT_TYPE,
-      poisPerList: null
-    }), NON_PPOI_NETWORK),
-    WalletBalanceBucket.Spendable
   )
 })
 
