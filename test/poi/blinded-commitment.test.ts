@@ -1,48 +1,47 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
 import { bytesToBigInt, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
-import { test } from 'brittle'
 
 import {
   BlindedCommitmentInputError,
   BlindedCommitmentType,
   getBlindedCommitment,
-  getBlindedCommitmentForShield,
-  getBlindedCommitmentForTransact,
+  getBlindedCommitmentForShieldOrTransact,
   getBlindedCommitmentForUnshield
 } from '../../src/poi'
 import type {
-  ShieldBlindedCommitmentInput,
-  TransactBlindedCommitmentInput,
+  ShieldOrTransactBlindedCommitmentInput,
   UnshieldBlindedCommitmentInput
 } from '../../src/poi'
 
-type ShieldFixture = ShieldBlindedCommitmentInput & { expected: string }
-type TransactFixture = TransactBlindedCommitmentInput & { expected: string }
+type ShieldOrTransactFixture = ShieldOrTransactBlindedCommitmentInput & { expected: string }
 type UnshieldFixture = UnshieldBlindedCommitmentInput & { expected: string }
 
 const ADDRESS = hexToBytes('1234567890abcdef1234567890abcdef12345678')
 
-const SHIELD_FIXTURES: ShieldFixture[] = [
+const SHIELD_FIXTURES: ShieldOrTransactFixture[] = [
   {
     commitment: hexToBytes('13e2a79bbff0e43a0ca22a956f72e94441129d188ac129104fd894b4b61ce6db'),
     npk: bytesToBigInt(hexToBytes('10febc94c4a77ec233da9835ec7a0b5aefc1c9c73e811120579574bbe97af566')),
-    treePosition: 6n,
+    globalTreePosition: 6n,
     expected: '242b01e85c7bb5faaa2db9d9a36e1c4c111e1310e4fdd1b020346243b4725861'
   },
   {
     commitment: hexToBytes('2f9e80d50ebfef1d141569591e48dbc7e5509fc5200423848e814017ccd1f973'),
     npk: bytesToBigInt(hexToBytes('0e4ab90e6c9561b69a86023f7f157d29a0beadd72d0d74a364e68d0110d9f4fb')),
-    treePosition: 12n,
+    globalTreePosition: 12n,
     expected: '065efbda58e0bf666df4b0b0498945eaef261458f9145f30f114c59c67395fbc'
   },
   {
     commitment: hexToBytes('00112233445566778899aabbccddeeff102132435465768798a9babbdcddfeff'),
     npk: bytesToBigInt(hexToBytes('0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef')),
-    treePosition: 65535n,
+    globalTreePosition: 65535n,
     expected: '2d75b77cfccff63cab64041c7a3c512012de4303eeb650cba0f98573e78ee931'
   }
 ]
 
-const TRANSACT_FIXTURES: TransactFixture[] = [
+const TRANSACT_FIXTURES: ShieldOrTransactFixture[] = [
   {
     commitment: hexToBytes('0abe78bd80209aec15b1e99cbdfc289a055c7d7f726275e016d5164f97934215'),
     npk: bytesToBigInt(hexToBytes('3f12ddc5c3646d474a94a31afa22bf4392e317bb9a51bd0ee886d4290da2613b')),
@@ -84,95 +83,103 @@ const UNSHIELD_FIXTURES: UnshieldFixture[] = [
   }
 ]
 
-function assertHex (t: { is: (actual: unknown, expected: unknown, message?: string) => void }, actual: Uint8Array, expected: string): void {
-  t.is(actual.length, 32)
-  t.is(bytesToHex(actual), expected)
+function assertHex (actual: Uint8Array, expected: string): void {
+  assert.strictEqual(actual.length, 32)
+  assert.strictEqual(bytesToHex(actual), expected)
 }
 
-function assertInputError (
-  t: { ok: (value: unknown, message?: string) => void, is: (actual: unknown, expected: unknown, message?: string) => void, fail: (message?: string) => void },
-  fn: () => void,
-  field: string
-): void {
+function assertInputError (fn: () => void, field: string): void {
   try {
     fn()
-    t.fail('expected input error')
+    assert.fail('expected input error')
   } catch (error) {
-    t.ok(error instanceof BlindedCommitmentInputError)
-    if (error instanceof BlindedCommitmentInputError) {
-      t.is(error.field, field)
-    }
+    assert.ok(error instanceof BlindedCommitmentInputError)
+    assert.strictEqual((error as BlindedCommitmentInputError).field, field)
   }
 }
 
-test('blinded commitment helpers match pinned community fixtures', (t) => {
+test('blinded commitment helpers match pinned community fixtures', () => {
   for (const fixture of SHIELD_FIXTURES) {
-    assertHex(t, getBlindedCommitmentForShield(fixture), fixture.expected)
+    assertHex(getBlindedCommitmentForShieldOrTransact(fixture), fixture.expected)
   }
   for (const fixture of TRANSACT_FIXTURES) {
-    assertHex(t, getBlindedCommitmentForTransact(fixture), fixture.expected)
+    assertHex(getBlindedCommitmentForShieldOrTransact(fixture), fixture.expected)
   }
   for (const fixture of UNSHIELD_FIXTURES) {
-    assertHex(t, getBlindedCommitmentForUnshield(fixture), fixture.expected)
+    assertHex(getBlindedCommitmentForUnshield(fixture), fixture.expected)
   }
 })
 
-test('blinded commitment derivation is deterministic across 1000 invocations', (t) => {
+test('blinded commitment derivation is deterministic across 1000 invocations', () => {
   const fixture = TRANSACT_FIXTURES[2]!
-  const expected = bytesToHex(getBlindedCommitmentForTransact(fixture))
+  const expected = bytesToHex(getBlindedCommitmentForShieldOrTransact(fixture))
 
   for (let i = 0; i < 1000; i += 1) {
-    t.is(bytesToHex(getBlindedCommitmentForTransact(fixture)), expected)
+    assert.strictEqual(bytesToHex(getBlindedCommitmentForShieldOrTransact(fixture)), expected)
   }
 })
 
-test('blinded commitment helpers throw typed errors for invalid input', (t) => {
-  assertInputError(t, () => {
-    getBlindedCommitmentForShield({
+test('blinded commitment helpers throw typed errors for invalid input', () => {
+  assertInputError(() => {
+    getBlindedCommitmentForShieldOrTransact({
       ...SHIELD_FIXTURES[0]!,
       commitment: new Uint8Array(31)
     })
   }, 'commitment')
 
-  assertInputError(t, () => {
+  assertInputError(() => {
     getBlindedCommitmentForUnshield({
       ...UNSHIELD_FIXTURES[0]!,
       toAddress: new Uint8Array(19)
     })
   }, 'toAddress')
 
-  assertInputError(t, () => {
-    getBlindedCommitmentForTransact({
+  assertInputError(() => {
+    getBlindedCommitmentForShieldOrTransact({
       ...TRANSACT_FIXTURES[0]!,
       globalTreePosition: Number.POSITIVE_INFINITY as unknown as bigint
     })
   }, 'globalTreePosition')
 })
 
-test('blinded commitment dispatch helper matches direct helpers', (t) => {
+test('blinded commitment dispatch helper matches direct helpers', () => {
   const shield = SHIELD_FIXTURES[0]!
   const transact = TRANSACT_FIXTURES[0]!
   const unshield = UNSHIELD_FIXTURES[0]!
 
-  t.is(
+  assert.strictEqual(
     bytesToHex(getBlindedCommitment({
       type: BlindedCommitmentType.Shield,
       ...shield
     })),
-    bytesToHex(getBlindedCommitmentForShield(shield))
+    bytesToHex(getBlindedCommitmentForShieldOrTransact(shield))
   )
-  t.is(
+  assert.strictEqual(
     bytesToHex(getBlindedCommitment({
       type: BlindedCommitmentType.Transact,
       ...transact
     })),
-    bytesToHex(getBlindedCommitmentForTransact(transact))
+    bytesToHex(getBlindedCommitmentForShieldOrTransact(transact))
   )
-  t.is(
+  assert.strictEqual(
     bytesToHex(getBlindedCommitment({
       type: BlindedCommitmentType.Unshield,
       ...unshield
     })),
     bytesToHex(getBlindedCommitmentForUnshield(unshield))
   )
+})
+
+test('shield blinded commitment uses global tree position (tree > 0 differs from per-tree)', () => {
+  // Synthetic fixture: same (commitment, npk) in tree 1 vs tree 0.
+  // Per-tree formula would produce identical blindeds; global formula must not.
+  const commitment = hexToBytes('13e2a79bbff0e43a0ca22a956f72e94441129d188ac129104fd894b4b61ce6db')
+  const npk = bytesToBigInt(hexToBytes('10febc94c4a77ec233da9835ec7a0b5aefc1c9c73e811120579574bbe97af566'))
+  const TREE_LEAF_COUNT = 65536n
+  const treePosition = 6n
+
+  const tree0Global = getBlindedCommitmentForShieldOrTransact({ commitment, npk, globalTreePosition: treePosition })
+  const tree1Global = getBlindedCommitmentForShieldOrTransact({ commitment, npk, globalTreePosition: TREE_LEAF_COUNT + treePosition })
+
+  assert.notStrictEqual(bytesToHex(tree0Global), bytesToHex(tree1Global))
 })

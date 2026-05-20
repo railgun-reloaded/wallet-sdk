@@ -38,7 +38,6 @@ export {
 export type { NetworkPoiConfig } from './network-config'
 
 export {
-  GET_MERKLE_PROOFS_MAX_BLINDED_COMMITMENTS,
   GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS,
   POI_NODE_CLIENT_DEFAULT_TIMEOUT_MS,
   PoiNodeClient
@@ -55,39 +54,13 @@ export type {
   FetchLike,
   FetchRequest,
   FetchResponse,
-  GetMerkleProofsParams,
-  GetMerkleProofsWireParams,
-  GetPOIsPerBlindedCommitmentParams,
-  GetPOIsPerBlindedCommitmentWireParams,
   GetPOIsPerListParams,
   GetPOIsPerListWireParams,
-  GetValidatedTxidParams,
-  GetValidatedTxidWireParams,
   JsonRpcErrorPayload,
   JsonRpcRequest,
   JsonRpcSuccess,
-  LegacyTransactProofData,
-  MerkleProof,
-  MerkleProofsResponse,
-  POIsPerBlindedCommitmentResponse,
   POIsPerListResponse,
-  PoiNodeClientOptions,
-  PreTransactionPOI,
-  PreTransactionPOIsPerTxidLeafPerList,
-  SingleCommitmentProofsData,
-  SnarkProof,
-  SubmitLegacyTransactProofsParams,
-  SubmitLegacyTransactProofsWireParams,
-  SubmitSingleCommitmentProofsParams,
-  SubmitSingleCommitmentProofsWireParams,
-  SubmitTransactProofParams,
-  SubmitTransactProofWireParams,
-  TransactProofData,
-  ValidatePoiMerklerootsParams,
-  ValidatePoiMerklerootsWireParams,
-  ValidateTxidMerklerootParams,
-  ValidateTxidMerklerootWireParams,
-  ValidatedTxidResponse
+  PoiNodeClientOptions
 } from './node-client-types'
 export type {
   PoiStatusClient,

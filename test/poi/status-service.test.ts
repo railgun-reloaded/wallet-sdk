@@ -1,3 +1,6 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
 import { bigIntToBytes, bytesToBigInt, bytesToHex } from '@railgun-reloaded/bytes'
 import type { DBNewNote, WalletDB } from '@railgun-reloaded/storage'
 import {
@@ -6,7 +9,6 @@ import {
   getNoteByCommitment,
   insertNotesBatch
 } from '@railgun-reloaded/storage'
-import { test } from 'brittle'
 
 import { NetworkName } from '../../src/network-config'
 import { SyncPhase } from '../../src/sync'
@@ -15,8 +17,7 @@ import {
   CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
   POIStatus,
   PoiStatusService,
-  getBlindedCommitmentForShield,
-  getBlindedCommitmentForTransact
+  getBlindedCommitmentForShieldOrTransact
 } from '../../src/poi'
 import type {
   GetPOIsPerListParams,
@@ -113,15 +114,7 @@ function serviceFor (
 }
 
 function expectedBlindedCommitment (note: DBNewNote): Uint8Array {
-  if (note.commitmentType === 0) {
-    return getBlindedCommitmentForShield({
-      commitment: note.commitment as Uint8Array,
-      npk: bytesToBigInt(note.npk as Uint8Array),
-      treePosition: BigInt(note.treePosition as number)
-    })
-  }
-
-  return getBlindedCommitmentForTransact({
+  return getBlindedCommitmentForShieldOrTransact({
     commitment: note.commitment as Uint8Array,
     npk: bytesToBigInt(note.npk as Uint8Array),
     globalTreePosition: BigInt(note.treeNumber as number) * 65536n +
@@ -134,14 +127,13 @@ function expectedBlindedCommitmentHex (note: DBNewNote): string {
 }
 
 function assertSummary (
-  t: { alike: (actual: unknown, expected: unknown, message?: string) => void },
   actual: RefreshSummary,
   expected: RefreshSummary
 ): void {
-  t.alike(actual, expected)
+  assert.deepStrictEqual(actual, expected)
 }
 
-test('PoiStatusService refreshes mixed Shield and Transact notes', async (t) => {
+test('PoiStatusService refreshes mixed Shield and Transact notes', async () => {
   const db = memWalletDB()
   seedWallet(db)
   const shield = noteFixture(1, {
@@ -160,29 +152,29 @@ test('PoiStatusService refreshes mixed Shield and Transact notes', async (t) => 
   const poiNodeClient = new MockPoiStatusClient()
   const summary = await serviceFor(db, poiNodeClient).refresh(WALLET_ID, CHAIN_ID)
 
-  assertSummary(t, summary, {
+  assertSummary(summary, {
     checked: 2,
     updated: 2,
     skipped: 0,
     failed: 0
   })
-  t.is(poiNodeClient.calls.length, 1)
-  t.alike(
+  assert.strictEqual(poiNodeClient.calls.length, 1)
+  assert.deepStrictEqual(
     poiNodeClient.calls[0]!.blindedCommitmentDatas.map(data => data.type),
     [BlindedCommitmentType.Shield, BlindedCommitmentType.Transact]
   )
 
   for (const note of [shield, transact]) {
     const stored = getNoteByCommitment(db, note.commitment as Uint8Array)
-    t.alike(stored?.poisPerList, { [LIST_KEY]: POIStatus.Valid })
-    t.is(
+    assert.deepStrictEqual(stored?.poisPerList, { [LIST_KEY]: POIStatus.Valid })
+    assert.strictEqual(
       bytesToHex(stored!.blindedCommitment!, { prefix: true }),
       expectedBlindedCommitmentHex(note)
     )
   }
 })
 
-test('PoiStatusService calls getPOIsPerList in 1000-note batches', async (t) => {
+test('PoiStatusService calls getPOIsPerList in 1000-note batches', async () => {
   const db = memWalletDB()
   seedWallet(db)
   const notes = Array.from({ length: 2500 }, (_, index) => noteFixture(index))
@@ -191,20 +183,20 @@ test('PoiStatusService calls getPOIsPerList in 1000-note batches', async (t) => 
   const poiNodeClient = new MockPoiStatusClient()
   const summary = await serviceFor(db, poiNodeClient).refresh(WALLET_ID, CHAIN_ID)
 
-  assertSummary(t, summary, {
+  assertSummary(summary, {
     checked: 2500,
     updated: 2500,
     skipped: 0,
     failed: 0
   })
-  t.is(poiNodeClient.calls.length, 3)
-  t.alike(
+  assert.strictEqual(poiNodeClient.calls.length, 3)
+  assert.deepStrictEqual(
     poiNodeClient.calls.map(call => call.blindedCommitmentDatas.length),
     [1000, 1000, 500]
   )
 })
 
-test('PoiStatusService keeps failed commitments pending while updating others', async (t) => {
+test('PoiStatusService keeps failed commitments pending while updating others', async () => {
   const db = memWalletDB()
   seedWallet(db)
   const goodShield = noteFixture(10, { commitmentType: 0 })
@@ -228,25 +220,60 @@ test('PoiStatusService keeps failed commitments pending while updating others', 
     onProgress: progressEvent => progress.push(progressEvent)
   })
 
-  assertSummary(t, summary, {
+  assertSummary(summary, {
     checked: 3,
     updated: 2,
     skipped: 0,
     failed: 1
   })
-  t.ok(progress.some(event =>
+  assert.ok(progress.some(event =>
     event.phase === SyncPhase.PoiRefresh && event.error instanceof Error
   ))
 
   for (const note of [goodShield, goodTransact]) {
     const stored = getNoteByCommitment(db, note.commitment as Uint8Array)
-    t.alike(stored?.poisPerList, { [LIST_KEY]: POIStatus.Valid })
+    assert.deepStrictEqual(stored?.poisPerList, { [LIST_KEY]: POIStatus.Valid })
   }
 
   const failed = getNoteByCommitment(db, badTransact.commitment as Uint8Array)
-  t.is(failed?.poisPerList, null)
-  t.is(
+  assert.strictEqual(failed?.poisPerList, null)
+  assert.strictEqual(
     bytesToHex(failed!.blindedCommitment!, { prefix: true }),
     expectedBlindedCommitmentHex(badTransact)
   )
+})
+
+test('PoiStatusService rechecks stored non-valid POI statuses', async () => {
+  const db = memWalletDB()
+  seedWallet(db)
+  const missingPoiNote = noteFixture(20, {
+    commitmentType: 1,
+    treeNumber: 1,
+    treePosition: 20,
+    poisPerList: { [LIST_KEY]: POIStatus.Missing }
+  })
+  const validPoiNote = noteFixture(21, {
+    commitmentType: 1,
+    treeNumber: 1,
+    treePosition: 21,
+    poisPerList: { [LIST_KEY]: POIStatus.Valid }
+  })
+  insertNotesBatch(db, [missingPoiNote, validPoiNote])
+
+  const poiNodeClient = new MockPoiStatusClient()
+  const summary = await serviceFor(db, poiNodeClient).refresh(WALLET_ID, CHAIN_ID)
+
+  assertSummary(summary, {
+    checked: 1,
+    updated: 1,
+    skipped: 0,
+    failed: 0
+  })
+  assert.strictEqual(poiNodeClient.calls.length, 1)
+  assert.strictEqual(poiNodeClient.calls[0]!.blindedCommitmentDatas.length, 1)
+
+  const refreshed = getNoteByCommitment(db, missingPoiNote.commitment as Uint8Array)
+  const untouched = getNoteByCommitment(db, validPoiNote.commitment as Uint8Array)
+  assert.deepStrictEqual(refreshed?.poisPerList, { [LIST_KEY]: POIStatus.Valid })
+  assert.deepStrictEqual(untouched?.poisPerList, { [LIST_KEY]: POIStatus.Valid })
 })

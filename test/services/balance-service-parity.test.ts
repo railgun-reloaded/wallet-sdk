@@ -2,8 +2,7 @@ import type { DBNewNote, WalletDB } from '@railgun-reloaded/storage'
 import {
   createWallet,
   createWalletDB,
-  insertNotesBatch,
-  recalculateAllBalances
+  insertNotesBatch
 } from '@railgun-reloaded/storage'
 import { test } from 'brittle'
 
@@ -99,7 +98,6 @@ function seedWalletWithMixedPoiStates (db: WalletDB): void {
       spent: true
     })
   ])
-  recalculateAllBalances(db, WALLET_ID, CHAIN_ID)
 }
 
 function balanceOf (balances: TokenBalance[], token: string): bigint {
@@ -110,13 +108,13 @@ function sumBalances (balances: TokenBalance[]): bigint {
   return balances.reduce((sum, balance) => sum + balance.balance, 0n)
 }
 
-test('BalanceService.getSpendableBalances equals hand-counted spendable bucket', async (t) => {
+test('BalanceService.getBalances default equals hand-counted spendable bucket', async (t) => {
   const db = memWalletDB()
   seedWalletWithMixedPoiStates(db)
   const service = new BalanceService(db)
 
-  const spendable = await service.getSpendableBalances(WALLET_ID, CHAIN_ID)
-  const total = await service.getBalances(WALLET_ID, CHAIN_ID)
+  const spendable = await service.getBalances(WALLET_ID, CHAIN_ID)
+  const total = await service.getBalances(WALLET_ID, CHAIN_ID, 'all')
 
   t.is(balanceOf(spendable, USDC), 100n)
   t.is(balanceOf(spendable, DAI), 5n)

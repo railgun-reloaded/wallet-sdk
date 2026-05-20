@@ -3,7 +3,6 @@ import { test } from 'brittle'
 import { NetworkName } from '../../src/network-config'
 import {
   BlindedCommitmentType,
-  GET_MERKLE_PROOFS_MAX_BLINDED_COMMITMENTS,
   POIJSONRPCMethod,
   POIStatus,
   PoiNodeAllUrlsFailedError,
@@ -22,6 +21,11 @@ import type {
 } from '../../src/poi'
 
 const LIST_KEY = 'efc6ddb59c098a13fb2b618fdae94c1c3a807abc8fb1837c93620c9143ee9e88'
+const COMMON_PARAMS = {
+  network: NetworkName.EthereumSepolia,
+  txidVersion: TXIDVersion.V2_PoseidonMerkle,
+  listKeys: [LIST_KEY]
+}
 
 type CapturedCall = {
   url: string
@@ -46,6 +50,13 @@ function jsonResponse (
 
 function parsePayload (request: FetchRequest): JsonRpcRequest<unknown> {
   return JSON.parse(request.body) as JsonRpcRequest<unknown>
+}
+
+function oneCommitment () {
+  return [{
+    blindedCommitment: `0x${'01'.repeat(32)}`,
+    type: BlindedCommitmentType.Transact
+  }]
 }
 
 test('PoiNodeClient batches getPOIsPerList at 1000 commitments', async (t) => {
@@ -73,9 +84,7 @@ test('PoiNodeClient batches getPOIsPerList at 1000 commitments', async (t) => {
   }))
 
   const result = await client.getPOIsPerList({
-    network: NetworkName.EthereumSepolia,
-    txidVersion: TXIDVersion.V2_PoseidonMerkle,
-    listKeys: [LIST_KEY],
+    ...COMMON_PARAMS,
     blindedCommitmentDatas
   })
 
@@ -102,7 +111,7 @@ test('PoiNodeClient failover is deterministic and first success wins', async (t)
     if (url === 'https://bad.example') {
       throw new Error('offline')
     }
-    return jsonResponse({ jsonrpc: '2.0', id: payload.id, result: true })
+    return jsonResponse({ jsonrpc: '2.0', id: payload.id, result: {} })
   }
   const client = new PoiNodeClient({
     poiNodeUrls: {
@@ -114,15 +123,11 @@ test('PoiNodeClient failover is deterministic and first success wins', async (t)
     fetchFn
   })
 
-  const result = await client.validateTxidMerkleroot({
-    network: NetworkName.EthereumSepolia,
-    txidVersion: TXIDVersion.V2_PoseidonMerkle,
-    tree: 0,
-    index: 1,
-    merkleroot: '0xroot'
+  await client.getPOIsPerList({
+    ...COMMON_PARAMS,
+    blindedCommitmentDatas: oneCommitment()
   })
 
-  t.is(result, true)
   t.alike(calls, ['https://bad.example', 'https://good.example'])
 })
 
@@ -141,11 +146,9 @@ test('PoiNodeClient all-URL failure includes attempted URLs', async (t) => {
   })
 
   try {
-    await client.validatePoiMerkleroots({
-      network: NetworkName.EthereumSepolia,
-      txidVersion: TXIDVersion.V2_PoseidonMerkle,
-      listKey: LIST_KEY,
-      poiMerkleroots: ['0xroot']
+    await client.getPOIsPerList({
+      ...COMMON_PARAMS,
+      blindedCommitmentDatas: oneCommitment()
     })
     t.fail('expected all URLs to fail')
   } catch (error) {
@@ -169,7 +172,7 @@ test('PoiNodeClient maps JSON-RPC errors', async (t) => {
       error: {
         code: -32602,
         message: 'Invalid params',
-        data: { field: 'listKey' }
+        data: { field: 'listKeys' }
       }
     }, 400, 'Bad Request')
   }
@@ -179,9 +182,9 @@ test('PoiNodeClient maps JSON-RPC errors', async (t) => {
   })
 
   try {
-    await client.getValidatedTxid({
-      network: NetworkName.EthereumSepolia,
-      txidVersion: TXIDVersion.V2_PoseidonMerkle
+    await client.getPOIsPerList({
+      ...COMMON_PARAMS,
+      blindedCommitmentDatas: oneCommitment()
     })
     t.fail('expected JSON-RPC error')
   } catch (error) {
@@ -189,7 +192,7 @@ test('PoiNodeClient maps JSON-RPC errors', async (t) => {
     if (error instanceof PoiNodeRpcError) {
       t.is(error.code, -32602)
       t.is(error.message, 'Invalid params')
-      t.alike(error.data, { field: 'listKey' })
+      t.alike(error.data, { field: 'listKeys' })
     }
   }
 })
@@ -204,9 +207,9 @@ test('PoiNodeClient maps HTTP errors to network errors', async (t) => {
   })
 
   try {
-    await client.getValidatedTxid({
-      network: NetworkName.EthereumSepolia,
-      txidVersion: TXIDVersion.V2_PoseidonMerkle
+    await client.getPOIsPerList({
+      ...COMMON_PARAMS,
+      blindedCommitmentDatas: oneCommitment()
     })
     t.fail('expected HTTP error')
   } catch (error) {
@@ -218,45 +221,25 @@ test('PoiNodeClient maps HTTP errors to network errors', async (t) => {
   }
 })
 
-test('PoiNodeClient rejects oversized merkle proof requests before HTTP', async (t) => {
-  let called = false
-  const fetchFn: FetchLike = async () => {
-    called = true
-    return jsonResponse({ jsonrpc: '2.0', id: 1, result: [] })
-  }
-  const client = new PoiNodeClient({
-    poiNodeUrls: { [NetworkName.EthereumSepolia]: ['https://poi.example'] },
-    fetchFn
-  })
-
-  try {
-    await client.getMerkleProofs({
-      network: NetworkName.EthereumSepolia,
-      txidVersion: TXIDVersion.V2_PoseidonMerkle,
-      listKey: LIST_KEY,
-      blindedCommitments: Array.from(
-        { length: GET_MERKLE_PROOFS_MAX_BLINDED_COMMITMENTS + 1 },
-        (_, index) => `0x${index}`
-      )
-    })
-    t.fail('expected merkle proof limit error')
-  } catch (error) {
-    t.ok(error instanceof RangeError)
-    t.is(called, false)
-  }
-})
-
-test('PoiNodeClient public API excludes aggregator routes', (t) => {
+test('PoiNodeClient public API excludes deferred proof and TXID routes', (t) => {
   const client = new PoiNodeClient({ poiNodeUrls: {} })
   const publicClient = client as unknown as {
-    getPoiEvents?: unknown
-    getPOIMerkletreeLeaves?: unknown
-    getBlockedShields?: unknown
-    getNodeStatus?: unknown
+    getPOIsPerBlindedCommitment?: unknown
+    getMerkleProofs?: unknown
+    getValidatedTxid?: unknown
+    validateTxidMerkleroot?: unknown
+    validatePoiMerkleroots?: unknown
+    submitTransactProof?: unknown
+    submitLegacyTransactProofs?: unknown
+    submitSingleCommitmentProofs?: unknown
   }
 
-  t.is(publicClient.getPoiEvents, undefined)
-  t.is(publicClient.getPOIMerkletreeLeaves, undefined)
-  t.is(publicClient.getBlockedShields, undefined)
-  t.is(publicClient.getNodeStatus, undefined)
+  t.is(publicClient.getPOIsPerBlindedCommitment, undefined)
+  t.is(publicClient.getMerkleProofs, undefined)
+  t.is(publicClient.getValidatedTxid, undefined)
+  t.is(publicClient.validateTxidMerkleroot, undefined)
+  t.is(publicClient.validatePoiMerkleroots, undefined)
+  t.is(publicClient.submitTransactProof, undefined)
+  t.is(publicClient.submitLegacyTransactProofs, undefined)
+  t.is(publicClient.submitSingleCommitmentProofs, undefined)
 })

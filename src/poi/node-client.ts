@@ -1,48 +1,28 @@
 import { NETWORK_CONFIG } from '../network-config'
+import type { NetworkName } from '../network-config'
 
 import {
   PoiNodeAllUrlsFailedError,
   PoiNodeNetworkError,
   PoiNodeRpcError
 } from './node-client-errors'
-import {
-  POIJSONRPCMethod
-} from './node-client-types'
+import { POIJSONRPCMethod } from './node-client-types'
 import type {
   FetchLike,
   FetchRequest,
   FetchResponse,
-  GetMerkleProofsParams,
-  GetMerkleProofsWireParams,
-  GetPOIsPerBlindedCommitmentParams,
-  GetPOIsPerBlindedCommitmentWireParams,
   GetPOIsPerListParams,
   GetPOIsPerListWireParams,
-  GetValidatedTxidParams,
-  GetValidatedTxidWireParams,
   JsonRpcErrorPayload,
   JsonRpcRequest,
   JsonRpcSuccess,
-  MerkleProofsResponse,
-  POIsPerBlindedCommitmentResponse,
   POIsPerListResponse,
-  PoiNodeClientOptions,
-  SubmitLegacyTransactProofsParams,
-  SubmitLegacyTransactProofsWireParams,
-  SubmitSingleCommitmentProofsParams,
-  SubmitSingleCommitmentProofsWireParams,
-  SubmitTransactProofParams,
-  SubmitTransactProofWireParams,
-  ValidatePoiMerklerootsParams,
-  ValidatePoiMerklerootsWireParams,
-  ValidateTxidMerklerootParams,
-  ValidateTxidMerklerootWireParams,
-  ValidatedTxidResponse
+  PoiNodeClientOptions
 } from './node-client-types'
+import type { TXIDVersion } from './types'
 
 const POI_NODE_CLIENT_DEFAULT_TIMEOUT_MS = 15_000
 const GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS = 1000
-const GET_MERKLE_PROOFS_MAX_BLINDED_COMMITMENTS = 13
 const EVM_CHAIN_TYPE = '0'
 
 class PoiNodeClient {
@@ -86,133 +66,8 @@ class PoiNodeClient {
     return response
   }
 
-  async getPOIsPerBlindedCommitment (
-    params: GetPOIsPerBlindedCommitmentParams
-  ): Promise<POIsPerBlindedCommitmentResponse> {
-    assertMaxLength(
-      params.blindedCommitmentDatas.length,
-      GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS,
-      'blindedCommitmentDatas'
-    )
-    if (params.blindedCommitmentDatas.length === 0) return {}
-
-    return this.#request<
-      GetPOIsPerBlindedCommitmentWireParams,
-      POIsPerBlindedCommitmentResponse
-    >(
-      params.network,
-      POIJSONRPCMethod.POIsPerBlindedCommitment,
-      {
-        ...this.#chainParams(params),
-        listKey: params.listKey,
-        blindedCommitmentDatas: params.blindedCommitmentDatas
-      }
-    )
-  }
-
-  async getMerkleProofs (
-    params: GetMerkleProofsParams
-  ): Promise<MerkleProofsResponse> {
-    assertMaxLength(
-      params.blindedCommitments.length,
-      GET_MERKLE_PROOFS_MAX_BLINDED_COMMITMENTS,
-      'blindedCommitments'
-    )
-    if (params.blindedCommitments.length === 0) return []
-
-    return this.#request<GetMerkleProofsWireParams, MerkleProofsResponse>(
-      params.network,
-      POIJSONRPCMethod.MerkleProofs,
-      {
-        ...this.#chainParams(params),
-        listKey: params.listKey,
-        blindedCommitments: params.blindedCommitments
-      }
-    )
-  }
-
-  async getValidatedTxid (
-    params: GetValidatedTxidParams
-  ): Promise<ValidatedTxidResponse> {
-    return this.#request<GetValidatedTxidWireParams, ValidatedTxidResponse>(
-      params.network,
-      POIJSONRPCMethod.ValidatedTXID,
-      this.#chainParams(params)
-    )
-  }
-
-  async validateTxidMerkleroot (
-    params: ValidateTxidMerklerootParams
-  ): Promise<boolean> {
-    return this.#request<ValidateTxidMerklerootWireParams, boolean>(
-      params.network,
-      POIJSONRPCMethod.ValidateTXIDMerkleroot,
-      {
-        ...this.#chainParams(params),
-        tree: params.tree,
-        index: params.index,
-        merkleroot: params.merkleroot
-      }
-    )
-  }
-
-  async validatePoiMerkleroots (
-    params: ValidatePoiMerklerootsParams
-  ): Promise<boolean> {
-    return this.#request<ValidatePoiMerklerootsWireParams, boolean>(
-      params.network,
-      POIJSONRPCMethod.ValidatePOIMerkleroots,
-      {
-        ...this.#chainParams(params),
-        listKey: params.listKey,
-        poiMerkleroots: params.poiMerkleroots
-      }
-    )
-  }
-
-  async submitTransactProof (
-    params: SubmitTransactProofParams
-  ): Promise<void> {
-    await this.#request<SubmitTransactProofWireParams, unknown>(
-      params.network,
-      POIJSONRPCMethod.SubmitTransactProof,
-      {
-        ...this.#chainParams(params),
-        listKey: params.listKey,
-        transactProofData: params.transactProofData
-      }
-    )
-  }
-
-  async submitLegacyTransactProofs (
-    params: SubmitLegacyTransactProofsParams
-  ): Promise<void> {
-    await this.#request<SubmitLegacyTransactProofsWireParams, unknown>(
-      params.network,
-      POIJSONRPCMethod.SubmitLegacyTransactProofs,
-      {
-        ...this.#chainParams(params),
-        listKeys: params.listKeys,
-        legacyTransactProofDatas: params.legacyTransactProofDatas
-      }
-    )
-  }
-
-  async submitSingleCommitmentProofs (
-    params: SubmitSingleCommitmentProofsParams
-  ): Promise<void> {
-    await this.#request<SubmitSingleCommitmentProofsWireParams, unknown>(
-      params.network,
-      POIJSONRPCMethod.SubmitSingleCommitmentProofs,
-      {
-        ...this.#chainParams(params),
-        singleCommitmentProofsData: params.singleCommitmentProofsData
-      }
-    )
-  }
-
   #chainParams (
-    params: Pick<GetValidatedTxidParams, 'network' | 'txidVersion'>
+    params: { network: NetworkName, txidVersion: TXIDVersion }
   ) {
     return {
       chainType: EVM_CHAIN_TYPE,
@@ -222,7 +77,7 @@ class PoiNodeClient {
   }
 
   async #request<Params, Result> (
-    network: GetValidatedTxidParams['network'],
+    network: NetworkName,
     method: POIJSONRPCMethod,
     params: Params
   ): Promise<Result> {
@@ -256,7 +111,7 @@ class PoiNodeClient {
 
   async #requestUrl<Params, Result> (
     url: string,
-    network: GetValidatedTxidParams['network'],
+    network: NetworkName,
     method: POIJSONRPCMethod,
     params: Params
   ): Promise<Result> {
@@ -296,7 +151,7 @@ class PoiNodeClient {
 
   async #readResponse<Result> (
     url: string,
-    network: GetValidatedTxidParams['network'],
+    network: NetworkName,
     method: POIJSONRPCMethod,
     response: FetchResponse
   ): Promise<Result> {
@@ -421,16 +276,6 @@ function chunk<T> (values: T[], size: number): T[][] {
   return chunks
 }
 
-function assertMaxLength (
-  actual: number,
-  max: number,
-  field: string
-): void {
-  if (actual > max) {
-    throw new RangeError(`${field} length ${actual} exceeds PPOI limit ${max}`)
-  }
-}
-
 function toError (error: unknown): Error {
   return error instanceof Error ? error : new Error(String(error))
 }
@@ -440,7 +285,6 @@ function getErrorMessage (error: unknown): string {
 }
 
 export {
-  GET_MERKLE_PROOFS_MAX_BLINDED_COMMITMENTS,
   GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS,
   POI_NODE_CLIENT_DEFAULT_TIMEOUT_MS,
   PoiNodeClient

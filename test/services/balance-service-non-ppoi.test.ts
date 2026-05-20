@@ -2,8 +2,7 @@ import type { DBNewNote, WalletDB } from '@railgun-reloaded/storage'
 import {
   createWallet,
   createWalletDB,
-  insertNotesBatch,
-  recalculateAllBalances
+  insertNotesBatch
 } from '@railgun-reloaded/storage'
 import { test } from 'brittle'
 
@@ -91,14 +90,12 @@ test('BalanceService treats every unspent note as Spendable on non-PPOI networks
       spent: true
     })
   ])
-  recalculateAllBalances(db, WALLET_ID, CHAIN_ID)
-
   const service = new BalanceService(db)
   const total = await service.getBalances(WALLET_ID, CHAIN_ID)
-  const spendable = await service.getSpendableBalances(WALLET_ID, CHAIN_ID)
+  const all = await service.getBalances(WALLET_ID, CHAIN_ID, 'all')
   const byBucket = await service.getBalancesByBucket(WALLET_ID, CHAIN_ID)
 
-  t.alike(sortBalances(spendable), sortBalances(total))
+  t.alike(sortBalances(total), sortBalances(all))
   t.alike(sortBalances(byBucket[WalletBalanceBucket.Spendable]), sortBalances(total))
   for (const bucket of Object.values(WalletBalanceBucket)) {
     if (bucket !== WalletBalanceBucket.Spendable) {
