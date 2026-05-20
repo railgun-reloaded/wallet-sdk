@@ -1,7 +1,9 @@
 import { padBytesLeft } from '@railgun-reloaded/bytes'
 import type { EVMBlock, EncryptedCommitment, GeneratedCommitment, Shield, ShieldCommitment, Transact, TransactCommitment, Unshield } from '@railgun-reloaded/scanner'
 import { ActionType } from '@railgun-reloaded/scanner'
-import type { DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
+import type { DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
+
+import { formatRailgunTransactions } from './txid-tx-formatter'
 
 enum CommitmentType {
   Shield = 0,
@@ -28,11 +30,13 @@ function padCommitmentHash (hash: Uint8Array): Uint8Array {
 function denormalizeBlockData (block : EVMBlock) : {
   nullifiers: DBNewNullifier[],
   commitments: DBNewCommitment[],
-  unshields: DBNewUnshield[]
+  unshields: DBNewUnshield[],
+  railgunTransactions: DBNewRailgunTransaction[]
 } {
   const nullifiers = new Array<DBNewNullifier>()
   const commitments = new Array<DBNewCommitment>()
   const unshields = new Array<DBNewUnshield>()
+  const railgunTransactions = formatRailgunTransactions(block)
 
   const blockNumber = block.number
   for (const tx of block.transactions) {
@@ -80,10 +84,6 @@ function denormalizeBlockData (block : EVMBlock) : {
         }
         case ActionType.EncryptedCommitment:
         {
-          /**
-           * Both encryptedCommitment/TransactCommitment has additional field txID and boundParamHash
-           * which is required for PPOI. This is not handled currently.
-           */
           const transact = action as Transact
           nullifiers.push(...transact.nullifiers.map(nullifier => ({
             nullifier,
@@ -152,7 +152,7 @@ function denormalizeBlockData (block : EVMBlock) : {
     }
   }
 
-  return { nullifiers, commitments, unshields }
+  return { nullifiers, commitments, unshields, railgunTransactions }
 }
 
 export { denormalizeBlockData, CommitmentType }

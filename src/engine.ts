@@ -2,8 +2,8 @@ import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
-import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewUnshield } from '@railgun-reloaded/storage'
-import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertUnshieldBatch, runDBTransaction, setMerkleTree, updateSyncState } from '@railgun-reloaded/storage'
+import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
+import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertRailgunTransactions, insertUnshieldBatch, runDBTransaction, setMerkleTree, setTxidSyncCursor, updateSyncState } from '@railgun-reloaded/storage'
 
 import { NoteCommitmentTree } from './merkle'
 import type { NetworkConfig, NetworkName } from './network-config'
@@ -152,6 +152,7 @@ class RailgunEngine {
   async scan (options: {
     endBlock?: bigint | undefined
     onBatch?: ((startHeight: bigint, lastBlock: bigint) => void) | undefined
+    persistRailgunTransactions?: boolean | undefined
   } = {}): Promise<bigint | undefined> {
     if (!this.#currentNetwork) {
       throw new Error('Scan failed: no network selected')
@@ -183,7 +184,12 @@ class RailgunEngine {
     const wrappedOnBatch = onBatch
       ? (lastBlock: bigint) => onBatch(startHeight, lastBlock)
       : undefined
-    return this.#drainToTip(startHeight, options.endBlock, wrappedOnBatch)
+    return this.#drainToTip(
+      startHeight,
+      options.endBlock,
+      wrappedOnBatch,
+      options.persistRailgunTransactions !== false
+    )
   }
 
   /**
@@ -205,9 +211,16 @@ class RailgunEngine {
    * @param nullifierBatch - Batched Nullifiers to insert
    * @param commitmentBatch - Batched Commitments to insert
    * @param unshieldBatch - Batched Unshields to insert
+   * @param railgunTransactionBatch - Batched Railgun TXID transactions to insert
    * @param blockNumber - Block number of last batched entry
    */
-  #insertBatch (nullifierBatch: DBNewNullifier[], commitmentBatch: DBNewCommitment[], unshieldBatch: DBNewUnshield[], blockNumber: bigint) {
+  #insertBatch (
+    nullifierBatch: DBNewNullifier[],
+    commitmentBatch: DBNewCommitment[],
+    unshieldBatch: DBNewUnshield[],
+    railgunTransactionBatch: DBNewRailgunTransaction[],
+    blockNumber: bigint
+  ) {
     // Update commitmentTree
     const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
     commitmentBatch.forEach((c) => {
@@ -240,6 +253,12 @@ class RailgunEngine {
       if (unshieldBatch.length > 0) {
         insertUnshieldBatch(tx, unshieldBatch)
       }
+      if (railgunTransactionBatch.length > 0) {
+        const inserted = insertRailgunTransactions(tx, railgunTransactionBatch)
+        if (inserted > 0) {
+          setTxidSyncCursor(tx, this.#networkConfig.chainID, blockNumber)
+        }
+      }
 
       updateSyncState(tx, this.#networkConfig.chainID, blockNumber)
 
@@ -265,12 +284,14 @@ class RailgunEngine {
    *   at or above this height.
    * @param onBatch - Optional callback fired after each batch insert with
    *   the highest block number in that batch.
+   * @param persistRailgunTransactions - Whether to persist PPOI TXID rows.
    * @returns Last block number persisted, or `undefined`.
    */
   async #drainToTip (
     startHeight: bigint,
     endBlock?: bigint,
-    onBatch?: (lastBlock: bigint) => void
+    onBatch?: (lastBlock: bigint) => void,
+    persistRailgunTransactions: boolean = true
   ): Promise<bigint | undefined> {
     this.#log(`Syncing event from height ${startHeight}`)
     const eventIterator = this.#dataSource.from({
@@ -283,24 +304,35 @@ class RailgunEngine {
     let nullifierBatch: DBNewNullifier[] = []
     let commitmentBatch: DBNewCommitment[] = []
     let unshieldBatch: DBNewUnshield[] = []
+    let railgunTransactionBatch: DBNewRailgunTransaction[] = []
 
     let blocksInBatch = 0
     let lastBlockNumber: bigint | undefined
     for await (const block of eventIterator) {
-      const { nullifiers, commitments, unshields } = denormalizeBlockData(block)
+      const { nullifiers, commitments, unshields, railgunTransactions } = denormalizeBlockData(block)
       nullifierBatch.push(...nullifiers)
       commitmentBatch.push(...commitments)
       unshieldBatch.push(...unshields)
+      if (persistRailgunTransactions) {
+        railgunTransactionBatch.push(...railgunTransactions)
+      }
       blocksInBatch += 1
       lastBlockNumber = block.number
 
       if (blocksInBatch >= batchInsertSize) {
-        this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, block.number)
+        this.#insertBatch(
+          nullifierBatch,
+          commitmentBatch,
+          unshieldBatch,
+          railgunTransactionBatch,
+          block.number
+        )
         onBatch?.(block.number)
         blocksInBatch = 0
         commitmentBatch = []
         nullifierBatch = []
         unshieldBatch = []
+        railgunTransactionBatch = []
       }
 
       if (endBlock !== undefined && block.number >= endBlock) {
@@ -309,7 +341,13 @@ class RailgunEngine {
     }
 
     if (blocksInBatch > 0 && lastBlockNumber !== undefined) {
-      this.#insertBatch(nullifierBatch, commitmentBatch, unshieldBatch, lastBlockNumber)
+      this.#insertBatch(
+        nullifierBatch,
+        commitmentBatch,
+        unshieldBatch,
+        railgunTransactionBatch,
+        lastBlockNumber
+      )
       onBatch?.(lastBlockNumber)
     }
 
