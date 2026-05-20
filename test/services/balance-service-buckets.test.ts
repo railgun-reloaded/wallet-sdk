@@ -2,8 +2,7 @@ import type { DBNewNote, WalletDB } from '@railgun-reloaded/storage'
 import {
   createWallet,
   createWalletDB,
-  insertNotesBatch,
-  recalculateAllBalances
+  insertNotesBatch
 } from '@railgun-reloaded/storage'
 import { test } from 'brittle'
 
@@ -67,7 +66,6 @@ function noteFixture (
 
 function seedNotes (db: WalletDB, notes: DBNewNote[]): void {
   insertNotesBatch(db, notes)
-  recalculateAllBalances(db, WALLET_ID, CHAIN_ID)
 }
 
 function balanceOf (balances: TokenBalance[], token: string): bigint {
@@ -147,6 +145,14 @@ test('BalanceService.getBalancesByBucket aggregates unspent notes by bucket and 
   t.is(balanceOf(byBucket[WalletBalanceBucket.MissingExternalPOI], DAI), 13n)
   t.alike(byBucket[WalletBalanceBucket.Spent], [])
 
-  const total = await service.getBalances(WALLET_ID, CHAIN_ID)
+  const total = await service.getBalances(WALLET_ID, CHAIN_ID, 'all')
   t.alike(sortBalances(sumBucketBalances(byBucket)), sortBalances(total))
+  t.alike(
+    sortBalances(await service.getBalances(WALLET_ID, CHAIN_ID)),
+    sortBalances(byBucket[WalletBalanceBucket.Spendable])
+  )
+  t.alike(
+    await service.getBalances(WALLET_ID, CHAIN_ID, WalletBalanceBucket.Spent),
+    []
+  )
 })

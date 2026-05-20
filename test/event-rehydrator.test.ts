@@ -165,7 +165,7 @@ test('rehydrateActions discriminates legacy EncryptedCommitment by ephemeralKeys
     commitments: [{
       hash: new Uint8Array(32).fill(3),
       ciphertext: { iv: new Uint8Array(16), tag: new Uint8Array(16), data: [new Uint8Array(32)] },
-      memo: [],
+      memo: new Uint8Array(),
       ephemeralKeys: [new Uint8Array(32), new Uint8Array(32)],
       treeNumber: 0,
       treePosition: 0,
