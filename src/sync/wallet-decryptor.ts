@@ -18,7 +18,6 @@ import {
   getSyncState,
   getUnspentNotes,
   markNotesSpentBatch,
-  recalculateAllBalances,
   updateScanState
 } from '@railgun-reloaded/storage'
 import type { Chain } from '@railgun-reloaded/wallet-node'
@@ -282,12 +281,12 @@ async function runWalletDecryption (
       if (ownedNotes.length > 0) {
         const ownedByNullifier = new Map<string, Uint8Array>()
         for (const note of ownedNotes) {
-          ownedByNullifier.set(bytesToHex(note.nullifier), note.commitment)
+          ownedByNullifier.set(nullifierKey(note.nullifier, note.treeNumber), note.commitment)
         }
 
         const spendsByTxid = new Map<string, { txHash: Uint8Array, commitments: Uint8Array[] }>()
         for (const row of nullifierRows) {
-          const commitment = ownedByNullifier.get(bytesToHex(row.nullifier))
+          const commitment = ownedByNullifier.get(nullifierKey(row.nullifier, row.treeNumber))
           if (!commitment) continue
           const txKey = bytesToHex(row.transactionHash)
           const bucket = spendsByTxid.get(txKey)
@@ -317,10 +316,6 @@ async function runWalletDecryption (
     })
   }
 
-  if (notesAdded > 0 || notesSpent > 0) {
-    recalculateAllBalances(walletDb, walletId, chainId)
-  }
-
   return {
     walletId,
     chainId,
@@ -330,6 +325,10 @@ async function runWalletDecryption (
     notesAdded,
     notesSpent
   }
+}
+
+function nullifierKey (nullifier: Uint8Array, treeNumber: number): string {
+  return `${bytesToHex(nullifier)}:${treeNumber}`
 }
 
 export { runWalletDecryption, SyncPhase }

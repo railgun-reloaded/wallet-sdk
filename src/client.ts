@@ -12,6 +12,7 @@ import {
 import { RailgunEngine } from './engine'
 import { NETWORK_CONFIG, NetworkName } from './network-config'
 import type {
+  BalanceMode,
   DecryptedNote,
   TokenBalance
 } from './services/balance/balance-service'
@@ -206,7 +207,7 @@ class RailgunClient {
   /** Underlying wallet-service instance. */
   readonly #walletService: WalletService
 
-  /** Read API over cached wallet balances and notes. */
+  /** Read API over live wallet notes. */
   readonly #balanceService: BalanceService
 
   /** The wallet DB in use (either injected or auto-created). */
@@ -290,26 +291,20 @@ class RailgunClient {
   }
 
   /**
-   * Read all cached ERC-20 balances for a wallet on a given chain.
+   * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
+   * Default mode returns the user-facing spendable balance: only Spendable on
+   * PPOI networks, and all unspent notes on non-PPOI networks.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
-   * @returns Token balances from wallet.db.balances.
+   * @param mode - Balance mode: default spendable, all unspent, or one bucket.
+   * @returns Token balances grouped by token.
    */
-  getBalances (walletId: string, chainId: number): Promise<TokenBalance[]> {
-    return this.#balanceService.getBalances(walletId, chainId)
-  }
-
-  /**
-   * Read spendable ERC-20 balances for a wallet on a given chain.
-   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
-   * @param chainId - Chain id to scope the lookup to.
-   * @returns Token balances classified into `WalletBalanceBucket.Spendable`.
-   */
-  getSpendableBalances (
+  getBalances (
     walletId: string,
-    chainId: number
+    chainId: number,
+    mode?: BalanceMode
   ): Promise<TokenBalance[]> {
-    return this.#balanceService.getSpendableBalances(walletId, chainId)
+    return this.#balanceService.getBalances(walletId, chainId, mode)
   }
 
   /**
@@ -323,21 +318,6 @@ class RailgunClient {
     chainId: number
   ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
     return this.#balanceService.getBalancesByBucket(walletId, chainId)
-  }
-
-  /**
-   * Read one cached ERC-20 token balance for a wallet on a given chain.
-   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
-   * @param chainId - Chain id to scope the lookup to.
-   * @param tokenAddress - ERC-20 token address. Lookup is case-insensitive.
-   * @returns Balance amount, or 0n when no cached balance exists.
-   */
-  getTokenBalance (
-    walletId: string,
-    chainId: number,
-    tokenAddress: string
-  ): Promise<bigint> {
-    return this.#balanceService.getTokenBalance(walletId, chainId, tokenAddress)
   }
 
   /**
@@ -528,6 +508,7 @@ class RailgunClient {
 
 export { RailgunClient, SyncPhase }
 export type {
+  BalanceMode,
   DecryptedNote,
   DecryptParams,
   RailgunClientOptions,

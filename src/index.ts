@@ -1,5 +1,6 @@
 export { RailgunClient } from './client'
 export type {
+  BalanceMode,
   DecryptedNote,
   DecryptParams,
   RailgunClientOptions,
