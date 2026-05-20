@@ -50,6 +50,7 @@ function noteFixture (overrides: Partial<DBNewNote>): DBNewNote {
   return {
     commitment: filledBytes(1),
     walletId: 'wallet-id',
+    chainId: 11155111,
     nullifier: filledBytes(2),
     token: '0x0000000000000000000000000000000000000000',
     amount: 1n,
@@ -57,6 +58,7 @@ function noteFixture (overrides: Partial<DBNewNote>): DBNewNote {
     blockNumber: 1n,
     treeNumber: 0,
     treePosition: 0,
+    commitmentType: 0,
     decryptedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides
   }
@@ -74,7 +76,7 @@ function seedNotes (
   notes: DBNewNote[]
 ): void {
   insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
-  recalculateAllBalances(walletDB, walletId)
+  recalculateAllBalances(walletDB, walletId, 11155111)
 }
 
 test('RailgunClient delegates createWallet / listWallets / deleteWallet', async () => {
@@ -220,9 +222,9 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
     })
   ])
 
-  const all = await client.getNotes(wallet.walletId)
-  const unspent = await client.getNotes(wallet.walletId, { unspent: true })
-  const allExplicit = await client.getNotes(wallet.walletId, { unspent: false })
+  const all = await client.getNotes(wallet.walletId, 11155111)
+  const unspent = await client.getNotes(wallet.walletId, 11155111, { unspent: true })
+  const allExplicit = await client.getNotes(wallet.walletId, 11155111, { unspent: false })
   const first = all.find(note => note.amount === 10n)
   const spent = all.find(note => note.spent)
 
@@ -245,9 +247,9 @@ test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', 
   const unknown = 'missing-wallet'
 
   for (const action of [
-    () => client.getBalances(unknown),
-    () => client.getTokenBalance(unknown, '0x0000000000000000000000000000000000000000'),
-    () => client.getNotes(unknown)
+    () => client.getBalances(unknown, 11155111),
+    () => client.getTokenBalance(unknown, 11155111, '0x0000000000000000000000000000000000000000'),
+    () => client.getNotes(unknown, 11155111)
   ]) {
     try {
       await action()
@@ -402,7 +404,8 @@ test('RailgunClient.sync composes scan() then decrypt()', async () => {
   const summary = await client.sync(VECTORS[0]!.walletId, key, {
     network: NetworkName.EthereumSepolia,
     dataSource: aggregator,
-    endBlock: 5784867n
+    endBlock: 5784867n,
+    refreshPoi: false
   })
 
   assert.equal(summary.scan.lastBlock, 5784867n, 'scan reached the requested tip')
@@ -444,6 +447,7 @@ test('RailgunClient.sync fires onProgress for both phases in order', async () =>
     network: NetworkName.EthereumSepolia,
     dataSource: aggregator,
     endBlock: 5784867n,
+    refreshPoi: false,
     onProgress: record
   })
 

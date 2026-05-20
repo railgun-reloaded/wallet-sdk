@@ -1,3 +1,6 @@
+import { SEPOLIA_POI_CONFIG } from './poi/network-config'
+import type { NetworkPoiConfig } from './poi/network-config'
+
 enum NetworkName {
   Ethereum = 'Ethereum',
   EthereumSepolia = 'EthereumSepolia',
@@ -11,6 +14,7 @@ type NetworkConfig = {
   deploymentBlock: bigint
   proxyContractAddress: string
   rpcURL: string
+  poi?: NetworkPoiConfig
 }
 
 const NETWORK_CONFIG : Record<NetworkName, NetworkConfig> = {
@@ -24,7 +28,8 @@ const NETWORK_CONFIG : Record<NetworkName, NetworkConfig> = {
     chainID: 11155111,
     deploymentBlock: 5784866n,
     proxyContractAddress: '0xeCFCf3b4eC647c4Ca6D49108b311b7a7C9543fea',
-    rpcURL: 'https://ethereum-sepolia-rpc.publicnode.com'
+    rpcURL: 'https://ethereum-sepolia-rpc.publicnode.com',
+    poi: SEPOLIA_POI_CONFIG
   },
   [NetworkName.Polygon]: {
     chainID: 137,

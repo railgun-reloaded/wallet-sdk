@@ -1,3 +1,4 @@
+import type { DecryptedNote } from '@railgun-reloaded/balance-scanner'
 import {
   decryptActions,
   storeDecryptedNotes
@@ -10,6 +11,7 @@ import type {
   WalletDB
 } from '@railgun-reloaded/storage'
 import {
+  findRailgunTransactionForLeaf,
   getCommitmentsByBlockRange,
   getNullifiersByBlockRange,
   getScanState,
@@ -29,7 +31,15 @@ import { erc20TokenDataGetter } from './token-data'
 
 enum SyncPhase {
   Scan = 'scan',
-  Decrypt = 'decrypt'
+  Decrypt = 'decrypt',
+  PoiRefresh = 'poi-refresh'
+}
+
+type PoiRefreshProgressSummary = {
+  checked: number
+  updated: number
+  skipped: number
+  failed: number
 }
 
 /**
@@ -49,6 +59,10 @@ type SyncProgress = {
   notesAdded: number
   /** Running total of owned notes marked spent (decrypt phase only). */
   notesSpent: number
+  /** Running total of POI status refresh results (POI refresh phase only). */
+  poi?: PoiRefreshProgressSummary
+  /** Typed refresh error when a PPOI node request fails. */
+  error?: Error
 }
 
 /**
@@ -125,6 +139,56 @@ function groupNullifiersByBlock (rows: DBNullifier[]): Map<bigint, DBNullifier[]
 }
 
 /**
+ * Index a window of chain commitment rows by `(treeNumber, treePosition)` so
+ * the enrichment step can look up the originating EVM transaction hash for a
+ * decrypted note in O(1).
+ * @param rows - Chain commitment rows for the current batch.
+ * @returns Map keyed by `"treeNumber:treePosition"` to the chain row.
+ */
+function indexCommitmentsByLeaf (rows: DBCommitment[]): Map<string, DBCommitment> {
+  const index = new Map<string, DBCommitment>()
+  for (const row of rows) {
+    index.set(`${row.treeNumber}:${row.treePosition}`, row)
+  }
+  return index
+}
+
+/**
+ * Attach PPOI metadata (`chainId`, `creationTxid`, `creationRailgunTxid`) to
+ * decrypted notes before they reach `storeDecryptedNotes`. `creationTxid`
+ * comes from the chain commitment row that produced the note; the
+ * `creationRailgunTxid` join walks `railgun_transactions` to find the
+ * Railgun-side tx whose output batch contains the note's slot. If no row in
+ * `railgun_transactions` covers the slot (RPC-only source), the field stays
+ * undefined and downstream POI refresh treats the note as un-refreshable.
+ * @param notes - Decrypted notes returned by `decryptActions`.
+ * @param chainId - Chain id the sync is running for.
+ * @param chainDb - Chain database, queried for the railgun-tx join.
+ * @param commitmentsByLeaf - Per-batch index of chain commitments keyed by leaf.
+ * @returns The same notes with PPOI metadata fields populated where possible.
+ */
+function enrichDecryptedNotes (
+  notes: DecryptedNote[],
+  chainId: number,
+  chainDb: ChainDB,
+  commitmentsByLeaf: Map<string, DBCommitment>
+): DecryptedNote[] {
+  return notes.map((note) => {
+    const leafIndex = Number(note.leafIndex)
+    const commitmentRow = commitmentsByLeaf.get(`${note.treeId}:${leafIndex}`)
+    const railgunTx = findRailgunTransactionForLeaf(chainDb, note.treeId, leafIndex)
+    const enriched: DecryptedNote = { ...note, chainId }
+    if (commitmentRow !== undefined) {
+      enriched.creationTxid = commitmentRow.transactionHash
+    }
+    if (railgunTx !== undefined) {
+      enriched.creationRailgunTxid = railgunTx.railgunTxid
+    }
+    return enriched
+  })
+}
+
+/**
  * Decrypt and persist all notes for a wallet over a block range read from
  * chain.db. Idempotent: re-running over the same range against the same
  * wallet.db is a no-op for inserted notes (commitment is the primary key)
@@ -178,6 +242,7 @@ async function runWalletDecryption (
     if (commitmentRows.length > 0) {
       const blockGroups = groupCommitmentsByBlock(commitmentRows)
       const nullifiersByBlock = groupNullifiersByBlock(nullifierRows)
+      const commitmentsByLeaf = indexCommitmentsByLeaf(commitmentRows)
       for (const [blockNumber, rows] of blockGroups) {
         const blockNullifiers = nullifiersByBlock.get(blockNumber) ?? []
         const { shields, transacts } = rehydrateActions({
@@ -201,13 +266,19 @@ async function runWalletDecryption (
         )
 
         if (receivedNotes.length > 0) {
-          notesAdded += storeDecryptedNotes(walletDb, receivedNotes)
+          const enriched = enrichDecryptedNotes(
+            receivedNotes,
+            chainId,
+            chainDb,
+            commitmentsByLeaf
+          )
+          notesAdded += storeDecryptedNotes(walletDb, enriched)
         }
       }
     }
 
     if (nullifierRows.length > 0) {
-      const ownedNotes = getUnspentNotes(walletDb, walletId)
+      const ownedNotes = getUnspentNotes(walletDb, walletId, chainId)
       if (ownedNotes.length > 0) {
         const ownedByNullifier = new Map<string, Uint8Array>()
         for (const note of ownedNotes) {
@@ -247,7 +318,7 @@ async function runWalletDecryption (
   }
 
   if (notesAdded > 0 || notesSpent > 0) {
-    recalculateAllBalances(walletDb, walletId)
+    recalculateAllBalances(walletDb, walletId, chainId)
   }
 
   return {
@@ -262,4 +333,9 @@ async function runWalletDecryption (
 }
 
 export { runWalletDecryption, SyncPhase }
-export type { DecryptSummary, SyncProgress, WalletDecryptionParams }
+export type {
+  DecryptSummary,
+  PoiRefreshProgressSummary,
+  SyncProgress,
+  WalletDecryptionParams
+}

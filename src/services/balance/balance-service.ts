@@ -8,6 +8,10 @@ import {
   getWallet
 } from '@railgun-reloaded/storage'
 
+import { NETWORK_CONFIG } from '../../network-config'
+import type { NetworkConfig as NetworkConfigEntry } from '../../network-config'
+import { classifyNote } from '../../poi/bucket-classifier'
+import { WalletBalanceBucket } from '../../poi/types'
 import { WalletNotFoundError } from '../wallet/errors'
 
 /**
@@ -84,6 +88,87 @@ function mapNoteRow (row: DBNote): DecryptedNote {
   }
 }
 
+type BucketBalanceAccumulators = Record<WalletBalanceBucket, Map<string, bigint>>
+
+const NON_PPOI_NETWORK: NetworkConfigEntry = {
+  chainID: 0,
+  deploymentBlock: 0n,
+  proxyContractAddress: '',
+  rpcURL: ''
+}
+
+function createBucketAccumulators (): BucketBalanceAccumulators {
+  return {
+    [WalletBalanceBucket.Spendable]: new Map(),
+    [WalletBalanceBucket.ShieldPending]: new Map(),
+    [WalletBalanceBucket.ShieldBlocked]: new Map(),
+    [WalletBalanceBucket.ProofSubmitted]: new Map(),
+    [WalletBalanceBucket.MissingInternalPOI]: new Map(),
+    [WalletBalanceBucket.MissingExternalPOI]: new Map(),
+    [WalletBalanceBucket.Spent]: new Map()
+  }
+}
+
+function createEmptyBucketBalances (): Record<WalletBalanceBucket, TokenBalance[]> {
+  return {
+    [WalletBalanceBucket.Spendable]: [],
+    [WalletBalanceBucket.ShieldPending]: [],
+    [WalletBalanceBucket.ShieldBlocked]: [],
+    [WalletBalanceBucket.ProofSubmitted]: [],
+    [WalletBalanceBucket.MissingInternalPOI]: [],
+    [WalletBalanceBucket.MissingExternalPOI]: [],
+    [WalletBalanceBucket.Spent]: []
+  }
+}
+
+function getNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
+  return Object.values(NETWORK_CONFIG)
+    .find(network => network.chainID === chainId) ?? NON_PPOI_NETWORK
+}
+
+function addNoteBalance (
+  balances: Map<string, bigint>,
+  note: DBNote
+): void {
+  balances.set(note.token, (balances.get(note.token) ?? 0n) + note.amount)
+}
+
+function mapBalanceAccumulator (
+  balances: Map<string, bigint>
+): TokenBalance[] {
+  return [...balances.entries()]
+    .filter(([, balance]) => balance > 0n)
+    .map(([token, balance]) => ({ token, balance }))
+}
+
+function mapBucketAccumulators (
+  accumulators: BucketBalanceAccumulators
+): Record<WalletBalanceBucket, TokenBalance[]> {
+  return {
+    [WalletBalanceBucket.Spendable]: mapBalanceAccumulator(
+      accumulators[WalletBalanceBucket.Spendable]
+    ),
+    [WalletBalanceBucket.ShieldPending]: mapBalanceAccumulator(
+      accumulators[WalletBalanceBucket.ShieldPending]
+    ),
+    [WalletBalanceBucket.ShieldBlocked]: mapBalanceAccumulator(
+      accumulators[WalletBalanceBucket.ShieldBlocked]
+    ),
+    [WalletBalanceBucket.ProofSubmitted]: mapBalanceAccumulator(
+      accumulators[WalletBalanceBucket.ProofSubmitted]
+    ),
+    [WalletBalanceBucket.MissingInternalPOI]: mapBalanceAccumulator(
+      accumulators[WalletBalanceBucket.MissingInternalPOI]
+    ),
+    [WalletBalanceBucket.MissingExternalPOI]: mapBalanceAccumulator(
+      accumulators[WalletBalanceBucket.MissingExternalPOI]
+    ),
+    [WalletBalanceBucket.Spent]: mapBalanceAccumulator(
+      accumulators[WalletBalanceBucket.Spent]
+    )
+  }
+}
+
 /**
  * Read API over a wallet DB: balances and notes for a single wallet. Pure
  * pass-through over storage helpers — does not own the DB and never closes
@@ -112,46 +197,90 @@ class BalanceService {
   }
 
   /**
-   * Read all cached ERC-20 balances for a wallet.
+   * Read all cached ERC-20 balances for a wallet on a given chain.
    * @param walletId - Wallet ID returned by `createWallet`.
+   * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
    * @returns Public token balances from wallet.db.balances.
    */
-  async getBalances (walletId: string): Promise<TokenBalance[]> {
+  async getBalances (walletId: string, chainId: number): Promise<TokenBalance[]> {
     this.#assertWalletExists(walletId)
-    return getAllBalances(this.#db, walletId)
+    return getAllBalances(this.#db, walletId, chainId)
       .filter(row => row.amount > 0n)
       .map(mapBalanceRow)
   }
 
   /**
-   * Read one cached ERC-20 balance for a wallet.
+   * Read spendable ERC-20 balances for a wallet on a given chain.
    * @param walletId - Wallet ID returned by `createWallet`.
+   * @param chainId - Chain id to scope the lookup to.
+   * @returns Token balances classified into `WalletBalanceBucket.Spendable`.
+   */
+  async getSpendableBalances (
+    walletId: string,
+    chainId: number
+  ): Promise<TokenBalance[]> {
+    return (await this.getBalancesByBucket(walletId, chainId))[WalletBalanceBucket.Spendable]
+  }
+
+  /**
+   * Read unspent ERC-20 balances grouped by POI balance bucket.
+   * @param walletId - Wallet ID returned by `createWallet`.
+   * @param chainId - Chain id to scope the lookup to.
+   * @returns Token balances keyed by `WalletBalanceBucket`.
+   */
+  async getBalancesByBucket (
+    walletId: string,
+    chainId: number
+  ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
+    this.#assertWalletExists(walletId)
+
+    const notes = getUnspentNotes(this.#db, walletId, chainId)
+    if (notes.length === 0) {
+      return createEmptyBucketBalances()
+    }
+
+    const network = getNetworkConfigByChainId(chainId)
+    const accumulators = createBucketAccumulators()
+    for (const note of notes) {
+      addNoteBalance(accumulators[classifyNote(note, network)], note)
+    }
+
+    return mapBucketAccumulators(accumulators)
+  }
+
+  /**
+   * Read one cached ERC-20 balance for a wallet on a given chain.
+   * @param walletId - Wallet ID returned by `createWallet`.
+   * @param chainId - Chain id to scope the lookup to.
    * @param tokenAddress - ERC-20 token address. Lookup is case-insensitive.
    * @returns Balance amount, or 0n when no cached balance exists.
    */
   async getTokenBalance (
     walletId: string,
+    chainId: number,
     tokenAddress: string
   ): Promise<bigint> {
     this.#assertWalletExists(walletId)
-    return getBalance(this.#db, walletId, tokenAddress)?.amount ?? 0n
+    return getBalance(this.#db, walletId, chainId, tokenAddress)?.amount ?? 0n
   }
 
   /**
-   * Read decrypted notes for a wallet.
+   * Read decrypted notes for a wallet on a given chain.
    * @param walletId - Wallet ID returned by `createWallet`.
+   * @param chainId - Chain id to scope the lookup to.
    * @param options - Optional note filtering.
    * @param options.unspent - When true, return only notes with `spent === false`.
    * @returns Public decrypted-note records.
    */
   async getNotes (
     walletId: string,
+    chainId: number,
     options: { unspent?: boolean } = {}
   ): Promise<DecryptedNote[]> {
     this.#assertWalletExists(walletId)
     const rows = options.unspent === true
-      ? getUnspentNotes(this.#db, walletId)
-      : getAllNotes(this.#db, walletId)
+      ? getUnspentNotes(this.#db, walletId, chainId)
+      : getAllNotes(this.#db, walletId, chainId)
     return rows.map(mapNoteRow)
   }
 }

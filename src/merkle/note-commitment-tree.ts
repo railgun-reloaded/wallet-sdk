@@ -1,6 +1,6 @@
 import { bigIntToBytes, bytesToBigInt } from '@railgun-reloaded/bytes'
 import { keccak256 } from '@railgun-reloaded/cryptography'
-import { SparseMerkleTree } from '@railgun-reloaded/merkle-tree'
+import { SparseMerkleTree } from '@railgun-reloaded/merkle-tree/sparse-merkle-tree.js'
 
 import { poseidonHash } from './hash'
 
