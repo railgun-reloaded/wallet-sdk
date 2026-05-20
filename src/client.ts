@@ -16,7 +16,8 @@ import { RailgunEngine } from './engine'
 import type {
   EventFilter,
   EventHandler,
-  RailgunEventMap
+  RailgunEventMap,
+  SyncProgressEvent
 } from './events'
 import { EventBus } from './events'
 import { NETWORK_CONFIG, NetworkName } from './network-config'
@@ -433,9 +434,10 @@ class RailgunClient {
     const scanStartBlock = previousLastBlock !== undefined
       ? previousLastBlock + 1n
       : NETWORK_CONFIG[params.network].deploymentBlock
-    const startTime = Date.now()
+    const startedAt = Date.now()
     let blocksScanned = 0n
-    this.#bus.emit('sync:start', {
+
+    this.#emit('sync:start', {
       chainId,
       phase: 'scan',
       fromBlock: scanStartBlock,
@@ -443,51 +445,35 @@ class RailgunClient {
       timestamp: new Date()
     })
 
-    const userOnProgress = params.onProgress
-    /**
-     * Forward scan progress to the caller's callback and the client event bus.
-     * @param progress - Scan progress emitted from the engine batch adapter.
-     */
-    const wrappedOnProgress = (progress: SyncProgress) => {
-      userOnProgress?.(progress)
+    const onBatch = makeScanOnBatch((progress) => {
+      params.onProgress?.(progress)
       blocksScanned = progress.blocksScanned
-      this.#bus.emit('sync:progress', {
-        chainId,
-        phase: 'scan',
-        fromBlock: progress.fromBlock,
-        toBlock: progress.toBlock,
-        currentBlock: progress.currentBlock,
-        blocksScanned: progress.blocksScanned,
-        notesAdded: 0,
-        notesSpent: 0,
-        timestamp: new Date()
-      })
-    }
+      this.#emitProgress(progress, chainId)
+    }, params.endBlock)
 
     try {
       const lastBlock = await this.#engine.scan({
         ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
-        onBatch: makeScanOnBatch(wrappedOnProgress, params.endBlock)
+        onBatch
       })
       const completeBlocksScanned = blocksScanned > 0n
         ? blocksScanned
         : countCoveredBlocks(scanStartBlock, lastBlock)
-      this.#bus.emit('sync:complete', {
+      this.#emit('sync:complete', {
         chainId,
         phase: 'scan',
         blocksScanned: completeBlocksScanned,
         notesAdded: 0,
         notesSpent: 0,
-        durationMs: Date.now() - startTime,
+        durationMs: Date.now() - startedAt,
         timestamp: new Date()
       })
       return lastBlock
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      this.#bus.emit('sync:error', {
+      this.#emit('sync:error', {
         chainId,
         phase: 'scan',
-        error,
+        error: toError(err),
         timestamp: new Date()
       })
       throw err
@@ -517,8 +503,9 @@ class RailgunClient {
     }
     const walletContext = await this.#walletService.loadWallet(walletId, encryptionKey)
     const chainId = params.chainId
-    const startTime = Date.now()
-    this.#bus.emit('sync:start', {
+    const startedAt = Date.now()
+
+    this.#emit('sync:start', {
       walletId,
       chainId,
       phase: 'decrypt',
@@ -528,7 +515,6 @@ class RailgunClient {
     })
 
     try {
-      const userOnProgress = params.onProgress
       const summary = await runWalletDecryption({
         chainDb,
         walletDb: this.#walletDB,
@@ -537,58 +523,41 @@ class RailgunClient {
         ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
         ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
         ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
-        /**
-         * Forward decrypt progress to the caller's callback and event bus.
-         * @param progress - Decryptor progress payload.
-         */
         onProgress: (progress) => {
-          userOnProgress?.(progress)
-          this.#bus.emit('sync:progress', {
-            walletId,
-            chainId,
-            phase: 'decrypt',
-            fromBlock: progress.fromBlock,
-            toBlock: progress.toBlock,
-            currentBlock: progress.currentBlock,
-            blocksScanned: progress.blocksScanned,
-            notesAdded: progress.notesAdded,
-            notesSpent: progress.notesSpent,
-            timestamp: new Date()
-          })
+          params.onProgress?.(progress)
+          this.#emitProgress(progress, chainId, walletId)
         }
       })
 
       if (summary.notesAdded > 0 || summary.notesSpent > 0) {
-        const balances = await this.#balanceService.getBalances(walletId)
-        this.#bus.emit('balance:update', {
+        this.#emit('balance:update', {
           walletId,
           chainId,
-          balances,
+          balances: await this.#balanceService.getBalances(walletId, chainId, 'all'),
           notesAdded: summary.notesAdded,
           notesSpent: summary.notesSpent,
           timestamp: new Date()
         })
       }
 
-      this.#bus.emit('sync:complete', {
+      this.#emit('sync:complete', {
         walletId,
         chainId,
         phase: 'decrypt',
         blocksScanned: summary.blocksScanned,
         notesAdded: summary.notesAdded,
         notesSpent: summary.notesSpent,
-        durationMs: Date.now() - startTime,
+        durationMs: Date.now() - startedAt,
         timestamp: new Date()
       })
 
       return summary
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      this.#bus.emit('sync:error', {
+      this.#emit('sync:error', {
         walletId,
         chainId,
         phase: 'decrypt',
-        error,
+        error: toError(err),
         timestamp: new Date()
       })
       throw err
@@ -611,9 +580,10 @@ class RailgunClient {
     params: SyncParams
   ): Promise<SyncSummary> {
     const chainId = NETWORK_CONFIG[params.network].chainID
-    const startTime = Date.now()
+    const startedAt = Date.now()
     const outerToBlock = params.toBlock ?? params.endBlock
-    this.#bus.emit('sync:start', {
+
+    this.#emit('sync:start', {
       walletId,
       chainId,
       phase: 'sync',
@@ -647,28 +617,28 @@ class RailgunClient {
         )
         : undefined
 
-      this.#bus.emit('sync:complete', {
+      this.#emit('sync:complete', {
         walletId,
         chainId,
         phase: 'sync',
         blocksScanned: decrypt.blocksScanned,
         notesAdded: decrypt.notesAdded,
         notesSpent: decrypt.notesSpent,
-        durationMs: Date.now() - startTime,
+        durationMs: Date.now() - startedAt,
         timestamp: new Date()
       })
+
       return {
         scan: { lastBlock },
         decrypt,
         ...(poi !== undefined && { poi })
       }
     } catch (err) {
-      const error = err instanceof Error ? err : new Error(String(err))
-      this.#bus.emit('sync:error', {
+      this.#emit('sync:error', {
         walletId,
         chainId,
         phase: 'sync',
-        error,
+        error: toError(err),
         timestamp: new Date()
       })
       throw err
@@ -708,8 +678,8 @@ class RailgunClient {
    * was created internally. Injected DBs remain the caller's responsibility.
    */
   close (): void {
-    this.#bus.removeAllListeners()
     this.#closed = true
+    this.#bus.removeAllListeners()
     this.#engine.destroy()
     if (this.#ownsWalletDB) {
       closeWalletDB(this.#walletDB)
@@ -738,6 +708,38 @@ class RailgunClient {
       closeChainDB(chainDB)
     }
   }
+
+  #emit<E extends keyof RailgunEventMap> (
+    event: E,
+    payload: RailgunEventMap[E]
+  ): void {
+    if (this.#closed) return
+    this.#bus.emit(event, payload)
+  }
+
+  #emitProgress (
+    progress: SyncProgress,
+    chainId: number,
+    walletId?: string
+  ): void {
+    if (progress.phase === SyncPhase.PoiRefresh) {
+      return
+    }
+
+    const payload: SyncProgressEvent = {
+      ...(walletId !== undefined && { walletId }),
+      chainId,
+      phase: progress.phase === SyncPhase.Scan ? 'scan' : 'decrypt',
+      fromBlock: progress.fromBlock,
+      toBlock: progress.toBlock,
+      currentBlock: progress.currentBlock,
+      blocksScanned: progress.blocksScanned,
+      notesAdded: progress.notesAdded,
+      notesSpent: progress.notesSpent,
+      timestamp: new Date()
+    }
+    this.#emit('sync:progress', payload)
+  }
 }
 
 /**
@@ -755,6 +757,10 @@ function countCoveredBlocks (
     return 0n
   }
   return toBlock - fromBlock + 1n
+}
+
+function toError (err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err))
 }
 
 export { RailgunClient, SyncPhase }
