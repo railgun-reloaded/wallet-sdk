@@ -44,7 +44,7 @@ function classifyNote (
   }
 
   if (network.poi === undefined) {
-    return WalletBalanceBucket.Spendable
+    throw new Error(`Missing PPOI config for chain ${network.chainID}`)
   }
 
   if (note.poisPerList == null) {

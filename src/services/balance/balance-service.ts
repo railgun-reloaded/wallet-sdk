@@ -86,13 +86,6 @@ function mapNoteRow (row: DBNote): DecryptedNote {
 
 type BucketBalanceAccumulators = Record<WalletBalanceBucket, Map<string, bigint>>
 
-const NON_PPOI_NETWORK: NetworkConfigEntry = {
-  chainID: 0,
-  deploymentBlock: 0n,
-  proxyContractAddress: '',
-  rpcURL: ''
-}
-
 function createBucketAccumulators (): BucketBalanceAccumulators {
   return {
     [WalletBalanceBucket.Spendable]: new Map(),
@@ -117,9 +110,13 @@ function createEmptyBucketBalances (): Record<WalletBalanceBucket, TokenBalance[
   }
 }
 
-function getNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
-  return Object.values(NETWORK_CONFIG)
-    .find(network => network.chainID === chainId) ?? NON_PPOI_NETWORK
+function getPoiNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
+  const network = Object.values(NETWORK_CONFIG)
+    .find(network => network.chainID === chainId)
+  if (network?.poi === undefined) {
+    throw new Error(`Missing PPOI config for chain ${chainId}`)
+  }
+  return network
 }
 
 function addNoteBalance (
@@ -212,15 +209,16 @@ class BalanceService {
       return []
     }
 
-    const network = getNetworkConfigByChainId(chainId)
     const balances = new Map<string, bigint>()
 
-    if (mode === 'all' || (mode === 'spendable' && network.poi === undefined)) {
+    if (mode === 'all') {
       for (const note of notes) {
         addNoteBalance(balances, note)
       }
       return mapBalanceAccumulator(balances)
     }
+
+    const network = getPoiNetworkConfigByChainId(chainId)
 
     const targetBucket = mode === 'spendable'
       ? WalletBalanceBucket.Spendable
@@ -253,7 +251,7 @@ class BalanceService {
       return createEmptyBucketBalances()
     }
 
-    const network = getNetworkConfigByChainId(chainId)
+    const network = getPoiNetworkConfigByChainId(chainId)
     const accumulators = createBucketAccumulators()
     for (const note of notes) {
       addNoteBalance(accumulators[classifyNote(note, network)], note)
