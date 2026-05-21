@@ -7,7 +7,7 @@ import { TokenType } from '@railgun-reloaded/wallet-node'
  * left-padded to 32 bytes; recover the address by taking the last 40 hex
  * chars and pair it with `tokenType: ERC20` and a zero `tokenSubID`.
  *
- * NFT support (ERC-721/1155) requires reading the on-chain token registry
+ * NFT support (ERC-721) requires reading the on-chain token registry
  * and is not implemented here.
  */
 const erc20TokenDataGetter: TokenDataGetter = {
