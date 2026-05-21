@@ -101,7 +101,8 @@ type RailgunEventMap = {
 /**
  * Optional filter applied at subscription time. A handler fires only when
  * every provided field equals the event payload's matching field. Events
- * without `walletId` are skipped by any filter that specifies `walletId`.
+ * without `walletId` (e.g. scan-phase progress) are skipped by any filter
+ * that specifies `walletId`.
  */
 type EventFilter = {
   walletId?: string
@@ -112,8 +113,9 @@ type EventFilter = {
  * Subscriber handler signature. Synchronous; returning a promise has no
  * effect.
  */
-type EventHandler<E extends keyof RailgunEventMap> =
-  (payload: RailgunEventMap[E]) => void
+type EventHandler<E extends keyof RailgunEventMap> = (
+  payload: RailgunEventMap[E]
+) => void
 
 export type {
   BalanceUpdateEvent,

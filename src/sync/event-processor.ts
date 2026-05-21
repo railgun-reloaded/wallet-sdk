@@ -45,6 +45,18 @@ enum CommitmentType {
 }
 
 /**
+ * Left-pad a commitment hash while rejecting over-length values.
+ * @param hash - Commitment hash bytes.
+ * @returns Exactly 32 bytes.
+ */
+function padCommitmentHash (hash: Uint8Array): Uint8Array {
+  if (hash.length > 32) {
+    throw new Error(`Commitment hash exceeds 32 bytes: ${hash.length}`)
+  }
+  return padBytesLeft(hash, 32)
+}
+
+/**
  * Denormalize blockData into nullifiers and commitments
  * @param block - Input BlockData
  * @returns - Denormalized nullifiers and commitments
@@ -75,7 +87,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             blockNumber,
             treeNumber,
             treePosition,
-            hash: padBytesLeft(hash, 32, { strict: true }),
+            hash: padCommitmentHash(hash),
             commitmentType: CommitmentType.Shield,
             commitment: {
               preimage,
@@ -95,7 +107,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             blockNumber,
             treeNumber,
             treePosition,
-            hash: padBytesLeft(hash, 32, { strict: true }),
+            hash: padCommitmentHash(hash),
             commitmentType: CommitmentType.Shield,
             commitment: {
               preimage,
@@ -119,7 +131,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             transactionHash,
             blockNumber,
             treeNumber: c.treeNumber,
-            hash: padBytesLeft(c.hash, 32, { strict: true }),
+            hash: padCommitmentHash(c.hash),
             treePosition: c.treePosition,
             commitmentType: CommitmentType.Transact,
             commitment: {
@@ -145,7 +157,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             transactionHash,
             blockNumber,
             treeNumber: c.treeNumber,
-            hash: padBytesLeft(c.hash, 32, { strict: true }),
+            hash: padCommitmentHash(c.hash),
             treePosition: c.treePosition,
             commitmentType: CommitmentType.Transact,
             commitment: {

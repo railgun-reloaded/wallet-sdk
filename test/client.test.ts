@@ -212,7 +212,6 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
-  const token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
   const tokenMixed = '0xA0b86991C6218b36c1d19D4a2e9Eb0cE3606eB48'
   const spentTxid = filledBytes(33)
 
@@ -243,16 +242,16 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
   const first = all.find(note => note.amount === 10n)
   const spent = all.find(note => note.spent)
 
-  assert.equal(all.length, 2, 'default returns all notes')
-  assert.equal(allExplicit.length, 2, 'unspent false returns all notes')
-  assert.equal(unspent.length, 1, 'unspent true excludes spent notes')
-  assert.ok(first)
-  assert.equal(first?.commitment, `0x${'1e'.repeat(32)}`)
-  assert.equal(first?.nullifier, `0x${'1f'.repeat(32)}`)
-  assert.equal(first?.token, token)
-  assert.equal(first?.leafIndex, 7n)
-  assert.equal(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
-  assert.equal(spent?.spentTxid, `0x${'21'.repeat(32)}`)
+  t.is(all.length, 2, 'default returns all notes')
+  t.is(allExplicit.length, 2, 'unspent false returns all notes')
+  t.is(unspent.length, 1, 'unspent true excludes spent notes')
+  t.ok(first)
+  t.is(first?.commitment, `0x${'1e'.repeat(32)}`)
+  t.is(first?.nullifier, `0x${'1f'.repeat(32)}`)
+  t.is(first?.token, tokenMixed)
+  t.is(first?.leafIndex, 7n)
+  t.is(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
+  t.is(spent?.spentTxid, `0x${'21'.repeat(32)}`)
   client.close()
 })
 
