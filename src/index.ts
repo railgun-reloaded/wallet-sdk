@@ -13,6 +13,19 @@ export type {
 export type { DecryptSummary } from './sync/wallet-decryptor'
 export { SyncPhase } from './sync/wallet-decryptor'
 
+export type {
+  BalanceUpdateEvent,
+  BusErrorEvent,
+  EventFilter,
+  EventHandler,
+  RailgunEventMap,
+  SyncCompleteEvent,
+  SyncErrorEvent,
+  SyncPhaseTag,
+  SyncProgressEvent,
+  SyncStartEvent
+} from './events'
+
 export { RailgunEngine } from './engine'
 
 export type { NetworkConfig } from './network-config'
