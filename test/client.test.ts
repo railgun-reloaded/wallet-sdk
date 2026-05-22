@@ -172,7 +172,7 @@ test('RailgunClient balance API returns empty values for an empty wallet', async
   client.close()
 })
 
-test('RailgunClient.getTokenBalance uses exact token input', async (t) => {
+test('RailgunClient.getTokenBalance matches case-insensitively', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
@@ -184,9 +184,9 @@ test('RailgunClient.getTokenBalance uses exact token input', async (t) => {
     noteFixture({ commitment: filledBytes(20), nullifier: filledBytes(21), token, amount: 123n })
   ])
 
-  t.is(await client.getTokenBalance(wallet.walletId, token), 123n)
-  t.is(await client.getTokenBalance(wallet.walletId, token.toUpperCase()), 0n)
-  t.is(await client.getTokenBalance(wallet.walletId, '0x1111111111111111111111111111111111111111'), 0n)
+  assert.equal(await client.getTokenBalance(wallet.walletId, token), 123n)
+  assert.equal(await client.getTokenBalance(wallet.walletId, token.toUpperCase()), 123n)
+  assert.equal(await client.getTokenBalance(wallet.walletId, '0x1111111111111111111111111111111111111111'), 0n)
   client.close()
 })
 
@@ -226,16 +226,16 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
   const first = all.find(note => note.amount === 10n)
   const spent = all.find(note => note.spent)
 
-  t.is(all.length, 2, 'default returns all notes')
-  t.is(allExplicit.length, 2, 'unspent false returns all notes')
-  t.is(unspent.length, 1, 'unspent true excludes spent notes')
-  t.ok(first)
-  t.is(first?.commitment, `0x${'1e'.repeat(32)}`)
-  t.is(first?.nullifier, `0x${'1f'.repeat(32)}`)
-  t.is(first?.token, tokenMixed)
-  t.is(first?.leafIndex, 7n)
-  t.is(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
-  t.is(spent?.spentTxid, `0x${'21'.repeat(32)}`)
+  assert.equal(all.length, 2, 'default returns all notes')
+  assert.equal(allExplicit.length, 2, 'unspent false returns all notes')
+  assert.equal(unspent.length, 1, 'unspent true excludes spent notes')
+  assert.ok(first)
+  assert.equal(first?.commitment, `0x${'1e'.repeat(32)}`)
+  assert.equal(first?.nullifier, `0x${'1f'.repeat(32)}`)
+  assert.equal(first?.token, tokenMixed.toLowerCase())
+  assert.equal(first?.leafIndex, 7n)
+  assert.equal(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
+  assert.equal(spent?.spentTxid, `0x${'21'.repeat(32)}`)
   client.close()
 })
 
