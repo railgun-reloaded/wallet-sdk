@@ -1,4 +1,7 @@
 import assert from 'node:assert/strict'
+import { mkdtempSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { SourceAggregator, SubsquidProvider } from '@railgun-reloaded/scanner'
@@ -12,8 +15,14 @@ const CONTRACT_ROOT_HISTORY_ABI = [
 ]
 const networkName = NetworkName.EthereumSepolia
 
-test('Should create NoteCommitmentTree and verify root', { timeout: 60_000 }, async () => {
-  const engine = new RailgunEngine()
+test('Should create NoteCommitmentTree and verify root', { timeout: 60_000 }, async (t) => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'wallet-sdk-engine-'))
+  const engine = new RailgunEngine({ dataDir })
+  t.after(() => {
+    engine.destroy()
+    rmSync(dataDir, { recursive: true, force: true })
+  })
+
   const aggregator = new SourceAggregator([
     new SubsquidProvider('https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql')
   ])
@@ -25,7 +34,6 @@ test('Should create NoteCommitmentTree and verify root', { timeout: 60_000 }, as
   await engine.scan({ endBlock })
 
   const noteCommitmentTrees = engine.getAllNoteCommitmentTree()
-  engine.destroy()
 
   const provider = new JsonRpcProvider(networkConfig.rpcURL)
   const contract = new Contract(networkConfig.proxyContractAddress, CONTRACT_ROOT_HISTORY_ABI, provider)
