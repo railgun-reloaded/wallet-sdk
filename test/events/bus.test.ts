@@ -1,4 +1,5 @@
-import { test } from 'brittle'
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
 
 import { EventBus } from '../../src/events/bus'
 
@@ -36,44 +37,44 @@ function startPayload (overrides: Partial<{ chainId: number }> = {}) {
   }
 }
 
-test('EventBus.on returns an unsubscribe that removes the handler', (t) => {
+test('EventBus.on returns an unsubscribe that removes the handler', () => {
   const bus = new EventBus()
   const seen: number[] = []
   const unsub = bus.on('balance:update', () => seen.push(1))
   bus.emit('balance:update', balancePayload())
   unsub()
   bus.emit('balance:update', balancePayload())
-  t.is(seen.length, 1, 'handler fires once before unsub, never after')
+  assert.equal(seen.length, 1, 'handler fires once before unsub, never after')
 })
 
-test('unsubscribe is idempotent', (t) => {
+test('unsubscribe is idempotent', () => {
   const bus = new EventBus()
   const unsub = bus.on('sync:start', () => {})
   unsub()
-  t.execution(() => unsub(), 'second call must not throw')
+  assert.doesNotThrow(() => unsub(), 'second call must not throw')
 })
 
-test('handlers fire in registration order', (t) => {
+test('handlers fire in registration order', () => {
   const bus = new EventBus()
   const seen: string[] = []
   bus.on('sync:start', () => seen.push('a'))
   bus.on('sync:start', () => seen.push('b'))
   bus.on('sync:start', () => seen.push('c'))
   bus.emit('sync:start', startPayload())
-  t.alike(seen, ['a', 'b', 'c'])
+  assert.deepEqual(seen, ['a', 'b', 'c'])
 })
 
-test('multiple subscribers to the same event all fire', (t) => {
+test('multiple subscribers to the same event all fire', () => {
   const bus = new EventBus()
   let hits = 0
   bus.on('sync:start', () => { hits += 1 })
   bus.on('sync:start', () => { hits += 1 })
   bus.on('sync:start', () => { hits += 1 })
   bus.emit('sync:start', startPayload())
-  t.is(hits, 3)
+  assert.equal(hits, 3)
 })
 
-test('walletId filter skips events without walletId', (t) => {
+test('walletId filter skips events without walletId', () => {
   const bus = new EventBus()
   let hits = 0
   bus.on('sync:progress', () => { hits += 1 }, { walletId: 'w1' })
@@ -88,47 +89,47 @@ test('walletId filter skips events without walletId', (t) => {
     notesSpent: 0,
     timestamp: new Date()
   })
-  t.is(hits, 0)
+  assert.equal(hits, 0)
 })
 
-test('walletId filter matches only that wallet', (t) => {
+test('walletId filter matches only that wallet', () => {
   const bus = new EventBus()
   const seen: string[] = []
   bus.on('balance:update', (e) => seen.push(e.walletId), { walletId: 'wA' })
   bus.emit('balance:update', balancePayload({ walletId: 'wA' }))
   bus.emit('balance:update', balancePayload({ walletId: 'wB' }))
-  t.alike(seen, ['wA'])
+  assert.deepEqual(seen, ['wA'])
 })
 
-test('chainId filter matches only that chain', (t) => {
+test('chainId filter matches only that chain', () => {
   const bus = new EventBus()
   const seen: number[] = []
   bus.on('balance:update', (e) => seen.push(e.chainId), { chainId: 11155111 })
   bus.emit('balance:update', balancePayload({ chainId: 1 }))
   bus.emit('balance:update', balancePayload({ chainId: 11155111 }))
-  t.alike(seen, [11155111])
+  assert.deepEqual(seen, [11155111])
 })
 
-test('combined filter requires every field to match', (t) => {
+test('combined filter requires every field to match', () => {
   const bus = new EventBus()
   let hits = 0
   bus.on('balance:update', () => { hits += 1 }, { walletId: 'w', chainId: 1 })
   bus.emit('balance:update', balancePayload({ walletId: 'w', chainId: 1 }))
   bus.emit('balance:update', balancePayload({ walletId: 'w', chainId: 2 }))
   bus.emit('balance:update', balancePayload({ walletId: 'x', chainId: 1 }))
-  t.is(hits, 1)
+  assert.equal(hits, 1)
 })
 
-test('no filter is firehose', (t) => {
+test('no filter is firehose', () => {
   const bus = new EventBus()
   let hits = 0
   bus.on('balance:update', () => { hits += 1 })
   bus.emit('balance:update', balancePayload({ walletId: 'a', chainId: 1 }))
   bus.emit('balance:update', balancePayload({ walletId: 'b', chainId: 2 }))
-  t.is(hits, 2)
+  assert.equal(hits, 2)
 })
 
-test('throwing handler is isolated; later handlers still run; error event emitted', (t) => {
+test('throwing handler is isolated; later handlers still run; error event emitted', () => {
   const bus = new EventBus()
   const seen: string[] = []
   bus.on('balance:update', () => { throw new Error('boom') })
@@ -136,19 +137,19 @@ test('throwing handler is isolated; later handlers still run; error event emitte
   const errors: string[] = []
   bus.on('error', (e) => errors.push(e.error.message))
   bus.emit('balance:update', balancePayload())
-  t.alike(seen, ['after'])
-  t.alike(errors, ['boom'])
+  assert.deepEqual(seen, ['after'])
+  assert.deepEqual(errors, ['boom'])
 })
 
-test('throwing inside an error-handler does not recurse', (t) => {
+test('throwing inside an error-handler does not recurse', () => {
   const bus = new EventBus()
   bus.on('error', () => { throw new Error('error-handler boom') })
   bus.on('balance:update', () => { throw new Error('inner boom') })
   // If recursion existed, this would loop forever. We just must not throw.
-  t.execution(() => bus.emit('balance:update', balancePayload()))
+  assert.doesNotThrow(() => bus.emit('balance:update', balancePayload()))
 })
 
-test('removeAllListeners() clears every event', (t) => {
+test('removeAllListeners() clears every event', () => {
   const bus = new EventBus()
   let hits = 0
   bus.on('balance:update', () => { hits += 1 })
@@ -156,10 +157,10 @@ test('removeAllListeners() clears every event', (t) => {
   bus.removeAllListeners()
   bus.emit('balance:update', balancePayload())
   bus.emit('sync:start', startPayload())
-  t.is(hits, 0)
+  assert.equal(hits, 0)
 })
 
-test('removeAllListeners(event) clears only that event', (t) => {
+test('removeAllListeners(event) clears only that event', () => {
   const bus = new EventBus()
   let bal = 0
   let start = 0
@@ -168,6 +169,6 @@ test('removeAllListeners(event) clears only that event', (t) => {
   bus.removeAllListeners('balance:update')
   bus.emit('balance:update', balancePayload())
   bus.emit('sync:start', startPayload())
-  t.is(bal, 0)
-  t.is(start, 1)
+  assert.equal(bal, 0)
+  assert.equal(start, 1)
 })

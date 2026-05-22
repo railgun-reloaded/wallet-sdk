@@ -17,7 +17,7 @@ const ERC721_SUB_ID_HEX = `0x${'ab'.repeat(32)}`
  * @returns New fixture state per test.
  */
 function fixture (): { db: WalletDB, walletId: string } {
-  const db = createWalletDB({ path: ':memory:', enableWAL: false, runMigrations: true })
+  const db = createWalletDB({ path: ':memory:', runMigrations: true })
   const walletId = 'test-wallet'
   createWallet(db, { id: walletId, encryptedKeys: Buffer.from('keys') })
   return { db, walletId }

@@ -1,4 +1,6 @@
+import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
+import { test } from 'node:test'
 
 import type { EVMBlock } from '@railgun-reloaded/scanner'
 import { SourceAggregator } from '@railgun-reloaded/scanner'
@@ -17,7 +19,6 @@ import {
   updateSyncState
 } from '@railgun-reloaded/storage'
 import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
-import { test } from 'brittle'
 
 import { RailgunClient } from '../../src/client'
 import { NetworkName } from '../../src/network-config'
@@ -222,7 +223,7 @@ function fakeSepoliaSource (): SourceAggregator<EVMBlock> {
   ])])
 }
 
-test('decrypt() emits sync:start then sync:complete; no balance:update on no-op', async (t) => {
+test('decrypt() emits sync:start then sync:complete; no balance:update on no-op', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -243,15 +244,15 @@ test('decrypt() emits sync:start then sync:complete; no balance:update on no-op'
     toBlock: 0n
   })
 
-  t.ok(events.includes('start:decrypt'), 'sync:start fired')
-  t.ok(events.includes('progress:decrypt'), 'sync:progress fired')
-  t.ok(events.includes('complete:decrypt'), 'sync:complete fired')
-  t.absent(events.includes('balance'), 'balance:update suppressed when no notes changed')
+  assert.ok(events.includes('start:decrypt'), 'sync:start fired')
+  assert.ok(events.includes('progress:decrypt'), 'sync:progress fired')
+  assert.ok(events.includes('complete:decrypt'), 'sync:complete fired')
+  assert.ok(!events.includes('balance'), 'balance:update suppressed when no notes changed')
 
   client.close()
 })
 
-test('decrypt no-op suppresses balance:update even with cached balances', async (t) => {
+test('decrypt no-op suppresses balance:update even with cached balances', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -270,11 +271,11 @@ test('decrypt no-op suppresses balance:update even with cached balances', async 
     toBlock: 0n
   })
 
-  t.is(balanceEvents.length, 0, 'pre-existing balances do not trigger the event')
+  assert.equal(balanceEvents.length, 0, 'pre-existing balances do not trigger the event')
   client.close()
 })
 
-test('balance:update fires with a fresh snapshot when decrypt marks a note spent', async (t) => {
+test('balance:update fires with a fresh snapshot when decrypt marks a note spent', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -310,15 +311,15 @@ test('balance:update fires with a fresh snapshot when decrypt marks a note spent
     toBlock: 1n
   })
 
-  t.is(summary.notesSpent, 1, 'decrypt marked the owned note spent')
-  t.is(balanceEvents.length, 1, 'one balance:update per decrypt run')
-  t.is(balanceEvents[0]!.spent, 1, 'notesSpent reflected in event')
-  t.is(balanceEvents[0]!.len, 1, 'snapshot contains remaining positive balance')
-  t.is(balanceEvents[0]!.balance, 7n, 'snapshot was read after recompute')
+  assert.equal(summary.notesSpent, 1, 'decrypt marked the owned note spent')
+  assert.equal(balanceEvents.length, 1, 'one balance:update per decrypt run')
+  assert.equal(balanceEvents[0]!.spent, 1, 'notesSpent reflected in event')
+  assert.equal(balanceEvents[0]!.len, 1, 'snapshot contains remaining positive balance')
+  assert.equal(balanceEvents[0]!.balance, 7n, 'snapshot was read after recompute')
   client.close()
 })
 
-test('balance:update fires with a fresh snapshot when decrypt adds notes', async (t) => {
+test('balance:update fires with a fresh snapshot when decrypt adds notes', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -352,19 +353,19 @@ test('balance:update fires with a fresh snapshot when decrypt adds notes', async
     toBlock: TEST_VECTOR_TRANSACT.number
   })
 
-  t.ok(summary.notesAdded >= 1, 'decrypt found a note')
-  t.is(balanceEvents.length, 1, 'one balance:update per decrypt run')
-  t.ok(balanceEvents[0]!.added >= 1, 'notesAdded reflected in event')
-  t.ok(balanceEvents[0]!.len >= 1, 'snapshot non-empty')
-  t.is(balanceEvents[0]!.walletId, wallet.walletId, 'event scoped to wallet')
-  t.ok(
+  assert.ok(summary.notesAdded >= 1, 'decrypt found a note')
+  assert.equal(balanceEvents.length, 1, 'one balance:update per decrypt run')
+  assert.ok(balanceEvents[0]!.added >= 1, 'notesAdded reflected in event')
+  assert.ok(balanceEvents[0]!.len >= 1, 'snapshot non-empty')
+  assert.equal(balanceEvents[0]!.walletId, wallet.walletId, 'event scoped to wallet')
+  assert.ok(
     order.indexOf('balance') < order.lastIndexOf('complete:decrypt'),
     'balance:update fired before decrypt complete'
   )
   client.close()
 })
 
-test('scan() emits sync:start, sync:progress, sync:complete', async (t) => {
+test('scan() emits sync:start, sync:progress, sync:complete', async () => {
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -380,13 +381,13 @@ test('scan() emits sync:start, sync:progress, sync:complete', async (t) => {
     endBlock: SEPOLIA_DEPLOYMENT_BLOCK + 1n
   })
 
-  t.ok(events.find(e => e.name === 'start' && e.phase === 'scan'), 'scan start fired')
-  t.ok(events.find(e => e.name === 'progress' && e.phase === 'scan'), 'scan progress fired')
-  t.ok(events.find(e => e.name === 'complete' && e.phase === 'scan'), 'scan complete fired')
+  assert.ok(events.find(e => e.name === 'start' && e.phase === 'scan'), 'scan start fired')
+  assert.ok(events.find(e => e.name === 'progress' && e.phase === 'scan'), 'scan progress fired')
+  assert.ok(events.find(e => e.name === 'complete' && e.phase === 'scan'), 'scan complete fired')
   client.close()
 })
 
-test('scan() complete reports covered blocks even when no event blocks yield', async (t) => {
+test('scan() complete reports covered blocks even when no event blocks yield', async () => {
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -405,12 +406,12 @@ test('scan() complete reports covered blocks even when no event blocks yield', a
     endBlock: SEPOLIA_DEPLOYMENT_BLOCK + 1n
   })
 
-  t.is(startFrom, SEPOLIA_DEPLOYMENT_BLOCK, 'scan start reports resolved fromBlock')
-  t.is(completeBlocks, 2n, 'complete reports covered empty range')
+  assert.equal(startFrom, SEPOLIA_DEPLOYMENT_BLOCK, 'scan start reports resolved fromBlock')
+  assert.equal(completeBlocks, 2n, 'complete reports covered empty range')
   client.close()
 })
 
-test('every sync:progress emitted by decrypt() carries phase=decrypt', async (t) => {
+test('every sync:progress emitted by decrypt() carries phase=decrypt', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -428,12 +429,12 @@ test('every sync:progress emitted by decrypt() carries phase=decrypt', async (t)
     toBlock: 0n
   })
 
-  t.ok(phases.length > 0, 'decrypt emitted progress')
-  t.ok(phases.every(p => p === 'decrypt'), 'all progress events tagged decrypt')
+  assert.ok(phases.length > 0, 'decrypt emitted progress')
+  assert.ok(phases.every(p => p === 'decrypt'), 'all progress events tagged decrypt')
   client.close()
 })
 
-test('sync() emits all three start/complete pairs', async (t) => {
+test('sync() emits all three start/complete pairs', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -454,16 +455,16 @@ test('sync() emits all three start/complete pairs', async (t) => {
     toBlock: SEPOLIA_DEPLOYMENT_BLOCK + 1n
   })
 
-  t.ok(phases.includes('start:sync'), 'outer sync:start fired')
-  t.ok(phases.includes('start:scan'), 'inner scan start fired')
-  t.ok(phases.includes('start:decrypt'), 'inner decrypt start fired')
-  t.ok(phases.includes('complete:scan'), 'inner scan complete fired')
-  t.ok(phases.includes('complete:decrypt'), 'inner decrypt complete fired')
-  t.ok(phases.includes('complete:sync'), 'outer sync:complete fired')
+  assert.ok(phases.includes('start:sync'), 'outer sync:start fired')
+  assert.ok(phases.includes('start:scan'), 'inner scan start fired')
+  assert.ok(phases.includes('start:decrypt'), 'inner decrypt start fired')
+  assert.ok(phases.includes('complete:scan'), 'inner scan complete fired')
+  assert.ok(phases.includes('complete:decrypt'), 'inner decrypt complete fired')
+  assert.ok(phases.includes('complete:sync'), 'outer sync:complete fired')
   client.close()
 })
 
-test('argument-validation throws happen before bus emission', async (t) => {
+test('argument-validation throws happen before bus emission', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const client = new RailgunClient({ walletDB })
@@ -474,17 +475,17 @@ test('argument-validation throws happen before bus emission', async (t) => {
   client.on('sync:start', () => events.push('start'))
   client.on('sync:error', () => events.push('error'))
 
-  await t.exception(
+  await assert.rejects(
     () => client.decrypt(wallet.walletId, encryptionKey, { chainId: SEPOLIA_CHAIN_ID }),
     /chain DB not initialized/
   )
 
-  t.absent(events.includes('start'), 'pre-bus validation did not emit start')
-  t.absent(events.includes('error'), 'pre-bus validation did not emit error')
+  assert.ok(!events.includes('start'), 'pre-bus validation did not emit start')
+  assert.ok(!events.includes('error'), 'pre-bus validation did not emit error')
   client.close()
 })
 
-test('scan() emits sync:error before rethrow and suppresses complete', async (t) => {
+test('scan() emits sync:error before rethrow and suppresses complete', async () => {
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -494,7 +495,7 @@ test('scan() emits sync:error before rethrow and suppresses complete', async (t)
   client.on('sync:error', (e) => events.push(`error:${e.phase}:${e.error.message}`))
   client.on('sync:complete', (e) => events.push(`complete:${e.phase}`))
 
-  await t.exception(
+  await assert.rejects(
     () => client.scan({
       network: NetworkName.EthereumSepolia,
       dataSource: new SourceAggregator<EVMBlock>([
@@ -505,11 +506,11 @@ test('scan() emits sync:error before rethrow and suppresses complete', async (t)
     /source boom/
   )
 
-  t.alike(events, ['start:scan', 'error:scan:source boom'])
+  assert.deepEqual(events, ['start:scan', 'error:scan:source boom'])
   client.close()
 })
 
-test('decrypt() emits sync:error before rethrow and suppresses complete', async (t) => {
+test('decrypt() emits sync:error before rethrow and suppresses complete', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -522,7 +523,7 @@ test('decrypt() emits sync:error before rethrow and suppresses complete', async 
   client.on('sync:error', (e) => events.push(`error:${e.phase}:${e.error.message}`))
   client.on('sync:complete', (e) => events.push(`complete:${e.phase}`))
 
-  await t.exception(
+  await assert.rejects(
     () => client.decrypt(wallet.walletId, encryptionKey, {
       chainId: SEPOLIA_CHAIN_ID,
       fromBlock: 0n,
@@ -536,11 +537,11 @@ test('decrypt() emits sync:error before rethrow and suppresses complete', async 
     /progress boom/
   )
 
-  t.alike(events, ['start:decrypt', 'error:decrypt:progress boom'])
+  assert.deepEqual(events, ['start:decrypt', 'error:decrypt:progress boom'])
   client.close()
 })
 
-test('a buggy balance:update handler does not break lifecycle completion', async (t) => {
+test('a buggy balance:update handler does not break lifecycle completion', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -566,12 +567,12 @@ test('a buggy balance:update handler does not break lifecycle completion', async
     toBlock: 1n
   })
 
-  t.is(handlerError, 'handler boom', 'handler error was re-emitted')
-  t.ok(completeFired, 'sync:complete still fires')
+  assert.equal(handlerError, 'handler boom', 'handler error was re-emitted')
+  assert.ok(completeFired, 'sync:complete still fires')
   client.close()
 })
 
-test('walletId filter scopes events to the matching wallet', async (t) => {
+test('walletId filter scopes events to the matching wallet', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -593,12 +594,12 @@ test('walletId filter scopes events to the matching wallet', async (t) => {
     toBlock: 0n
   })
 
-  t.is(aHits, 1, 'wallet A filter received its own decrypt complete')
-  t.is(bHits, 0, 'wallet B filter received nothing')
+  assert.equal(aHits, 1, 'wallet A filter received its own decrypt complete')
+  assert.equal(bHits, 0, 'wallet B filter received nothing')
   client.close()
 })
 
-test('close() removes existing listeners', async (t) => {
+test('close() removes existing listeners', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -616,10 +617,10 @@ test('close() removes existing listeners', async (t) => {
     toBlock: 0n
   })
 
-  t.is(hits, 0, 'listener registered before close was removed')
+  assert.equal(hits, 0, 'listener registered before close was removed')
 })
 
-test('on() after close returns an inert unsubscribe', async (t) => {
+test('on() after close returns an inert unsubscribe', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
@@ -637,11 +638,11 @@ test('on() after close returns an inert unsubscribe', async (t) => {
     toBlock: 0n
   })
 
-  t.execution(() => unsubscribe(), 'post-close unsubscribe is a no-op')
-  t.is(hits, 0, 'post-close subscriber is inert')
+  assert.doesNotThrow(() => unsubscribe(), 'post-close unsubscribe is a no-op')
+  assert.equal(hits, 0, 'post-close subscriber is inert')
 })
 
-test('two clients have independent buses', async (t) => {
+test('two clients have independent buses', async () => {
   await initializeCryptographyLibs()
   const walletDBA = memWalletDB()
   const walletDBB = memWalletDB()
@@ -663,8 +664,8 @@ test('two clients have independent buses', async (t) => {
     toBlock: 0n
   })
 
-  t.is(aHits, 1, 'client A subscriber heard A events')
-  t.is(bHits, 0, 'client B subscriber heard nothing from A')
+  assert.equal(aHits, 1, 'client A subscriber heard A events')
+  assert.equal(bHits, 0, 'client B subscriber heard nothing from A')
   clientA.close()
   clientB.close()
 })
