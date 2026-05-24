@@ -45,6 +45,39 @@ console.log({
 client.close()
 ```
 
+## Events
+
+`RailgunClient` exposes typed in-process events. `balance:update` fires after
+`decrypt()` or `sync()` changes a wallet's notes and cached balances have been
+recalculated. Its payload is a fresh full balance snapshot; applications should
+calculate any UI delta they need from their own previous snapshot.
+
+Successful no-op decrypt and sync runs do not emit `balance:update`. Subscribe
+to `sync:complete` when the application needs completion notifications even
+when balances did not change.
+
+```typescript
+const stopBalanceUpdates = client.on(
+  'balance:update',
+  ({ walletId, chainId, balances, notesAdded, notesSpent }) => {
+    console.log({ walletId, chainId, balances, notesAdded, notesSpent })
+  },
+  { walletId: info.walletId, chainId: 11155111 }
+)
+
+const stopSyncCompletion = client.on(
+  'sync:complete',
+  ({ phase, walletId, chainId }) => {
+    console.log({ phase, walletId, chainId })
+  },
+  { walletId: info.walletId, chainId: 11155111 }
+)
+
+// Remove subscriptions when this view or process no longer needs them.
+stopBalanceUpdates()
+stopSyncCompletion()
+```
+
 ## Errors
 
 - `InvalidMnemonicError` — BIP39 validation failed.

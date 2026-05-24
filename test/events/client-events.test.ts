@@ -464,6 +464,49 @@ test('sync() emits all three start/complete pairs', async () => {
   client.close()
 })
 
+test('sync() emits balance:update before outer completion when balances change', async () => {
+  await initializeCryptographyLibs()
+  const walletDB = memWalletDB()
+  const chainDB = memChainDB()
+  const client = new RailgunClient({ walletDB, chainDB })
+
+  const encryptionKey = new Uint8Array(randomBytes(32))
+  const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
+
+  const order: string[] = []
+  const snapshots: Array<{ balances: number, chainId: number, walletId: string }> = []
+  client.on('balance:update', (event) => {
+    order.push('balance')
+    snapshots.push({
+      balances: event.balances.length,
+      chainId: event.chainId,
+      walletId: event.walletId
+    })
+  })
+  client.on('sync:complete', (event) => order.push(`complete:${event.phase}`))
+
+  const summary = await client.sync(wallet.walletId, encryptionKey, {
+    network: NetworkName.EthereumSepolia,
+    dataSource: new SourceAggregator<EVMBlock>([
+      new FakeSource([TEST_VECTOR_TRANSACT])
+    ]),
+    endBlock: TEST_VECTOR_TRANSACT.number,
+    fromBlock: TEST_VECTOR_TRANSACT.number,
+    toBlock: TEST_VECTOR_TRANSACT.number
+  })
+
+  assert.ok(summary.decrypt.notesAdded >= 1, 'sync decrypted a new note')
+  assert.equal(snapshots.length, 1, 'one balance snapshot emitted')
+  assert.ok(snapshots[0]!.balances >= 1, 'snapshot includes persisted balances')
+  assert.equal(snapshots[0]!.chainId, SEPOLIA_CHAIN_ID, 'snapshot scoped to chain')
+  assert.equal(snapshots[0]!.walletId, wallet.walletId, 'snapshot scoped to wallet')
+  assert.ok(
+    order.indexOf('balance') < order.lastIndexOf('complete:sync'),
+    'balance:update fired before outer sync completion'
+  )
+  client.close()
+})
+
 test('argument-validation throws happen before bus emission', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()

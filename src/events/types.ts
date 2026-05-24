@@ -62,8 +62,10 @@ type SyncErrorEvent = {
 }
 
 /**
- * Fired after `decrypt`/`sync` when notes were added or spent. Carries the
- * full balance snapshot read fresh from wallet.db.
+ * Fired after `decrypt`/`sync` when notes were added or spent and cached
+ * balances have been recalculated. Carries the full balance snapshot read
+ * fresh from wallet.db. No-op runs signal completion through `sync:complete`
+ * without emitting this event.
  */
 type BalanceUpdateEvent = {
   walletId: string
