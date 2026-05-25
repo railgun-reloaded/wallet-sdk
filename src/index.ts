@@ -87,6 +87,25 @@ export type {
 } from './services/wallet/wallet-service'
 
 export {
+  BalanceSyncScheduler,
+  BalanceSyncSchedulerStoppedError
+} from './services/balance/balance-sync-scheduler'
+export type {
+  BalanceSyncBackoffOptions,
+  BalanceSyncDataSourceFactory,
+  BalanceSyncHeadProvider,
+  BalanceSyncRefreshOptions,
+  BalanceSyncRefreshReason,
+  BalanceSyncSchedulerClient,
+  BalanceSyncSchedulerConfig,
+  BalanceSyncSchedulerErrorContext,
+  BalanceSyncSchedulerState,
+  BalanceSyncSchedulerStatus,
+  BalanceSyncSchedulerWallet,
+  BalanceSyncSchedulerWalletState
+} from './services/balance/balance-sync-scheduler'
+
+export {
   InvalidEncryptionKeyError,
   InvalidMnemonicError,
   WalletAlreadyExistsError,
