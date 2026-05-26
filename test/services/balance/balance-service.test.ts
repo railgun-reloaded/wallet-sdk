@@ -33,6 +33,7 @@ function makeDBNote (overrides: Partial<DBNote> = {}): DBNote {
   return {
     commitment: Uint8Array.from(randomBytes(32)),
     walletId: 'test-wallet',
+    chainId: CHAIN_ID,
     nullifier: Uint8Array.from(randomBytes(32)),
     token: '0x0000000000000000000000000000000000000000',
     amount: 1000n,
@@ -43,6 +44,14 @@ function makeDBNote (overrides: Partial<DBNote> = {}): DBNote {
     blockNumber: 100n,
     treeNumber: 0,
     treePosition: 0,
+    commitmentType: 1,
+    outputType: null,
+    npk: null,
+    random: null,
+    blindedCommitment: null,
+    creationRailgunTxid: null,
+    creationTxid: null,
+    poisPerList: null,
     decryptedAt: new Date(),
     ...overrides,
   }
@@ -82,6 +91,7 @@ test('BalanceService.getNotes returns tokenType and tokenSubID for stored ERC20 
     blockNumber: 100n,
     treeNumber: 0,
     treePosition: 1,
+    commitmentType: 1,
   })
 
   insertNote(db, {
@@ -96,6 +106,7 @@ test('BalanceService.getNotes returns tokenType and tokenSubID for stored ERC20 
     blockNumber: 101n,
     treeNumber: 0,
     treePosition: 2,
+    commitmentType: 1,
   })
 
   const service = new BalanceService(db)

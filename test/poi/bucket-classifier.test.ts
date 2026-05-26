@@ -37,6 +37,8 @@ function noteFixture (overrides: Partial<DBNote> = {}): DBNote {
     nullifier: bytes(2),
     token: '0x0000000000000000000000000000000000000000',
     amount: 1n,
+    tokenType: 0,
+    tokenSubID: new Uint8Array(32),
     spent: false,
     spentTxid: null,
     blockNumber: 1n,

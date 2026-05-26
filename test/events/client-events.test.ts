@@ -15,7 +15,6 @@ import {
   createWalletDB,
   insertNotesBatch,
   insertNullifiersBatch,
-  recalculateAllBalances,
   updateSyncState
 } from '@railgun-reloaded/storage'
 import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
@@ -164,6 +163,7 @@ function noteFixture (
   return {
     commitment: filledBytes(1),
     walletId,
+    chainId: SEPOLIA_CHAIN_ID,
     nullifier: filledBytes(2),
     token: TOKEN,
     amount: 5n,
@@ -171,6 +171,7 @@ function noteFixture (
     blockNumber: 1n,
     treeNumber: 0,
     treePosition: 0,
+    commitmentType: 1,
     decryptedAt: new Date('2026-01-01T00:00:00.000Z'),
     ...overrides
   }
@@ -188,7 +189,6 @@ function seedNotes (
   notes: DBNewNote[]
 ): void {
   insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
-  recalculateAllBalances(walletDB, walletId)
 }
 
 /**
