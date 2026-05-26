@@ -537,8 +537,7 @@ class BalanceSyncScheduler {
       return
     }
 
-    // TODO(data-source-lifecycle): The ticket originally asked for a
-    // long-lived data source, but RailgunClient.scan() installs the source on
+    // TODO(data-source-lifecycle): RailgunClient.scan() installs the source on
     // RailgunEngine and RailgunEngine.setDataSource() destroys the previous
     // source. Keep sources per pass until engine/client expose a reusable
     // lifecycle that can be released explicitly on stop().
