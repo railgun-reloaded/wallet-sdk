@@ -1,5 +1,3 @@
-/* eslint-disable jsdoc/require-jsdoc */
-
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
@@ -20,27 +18,52 @@ import type { DecryptSummary } from '../src/sync/wallet-decryptor'
 
 const KEY_A = new Uint8Array(32).fill(1)
 const KEY_B = new Uint8Array(32).fill(2)
+
+/**
+ * Minimal DataSource fake that yields nothing; the scheduler only needs a
+ * non-live source so the aggregator drains immediately to head.
+ */
 class EmptySource {
+  /** Required by DataSource — non-live so the aggregator drains to its head. */
   isLiveProvider = false
+
+  /**
+   * Last block this source can serve.
+   * @returns Always 0n since the source is empty.
+   */
   async head () {
     return 0n
   }
 
+  /**
+   * Yield no blocks.
+   */
   async * from (): AsyncGenerator<EVMBlock> {}
+
+  /** No-op for the fake; required by the DataSource shape. */
   destroy () {}
 }
+
+/**
+ * In-memory BalanceSyncSchedulerClient fake that records scan/decrypt calls
+ * and lets each test override behaviour via `scanImpl` / `decryptImpl`.
+ */
 class FakeClient implements BalanceSyncSchedulerClient {
+  /** Every scan() invocation's params, in call order. */
   readonly scanCalls: ScanParams[] = []
+  /** Every decrypt() invocation's arguments, in call order. */
   readonly decryptCalls: Array<{
     walletId: string
     encryptionKey: Uint8Array
     params: DecryptParams
   }> = []
 
+  /** Optional override for scan(); receives params and a 1-based call number. */
   scanImpl: (
     (params: ScanParams, callNumber: number) => Promise<bigint | undefined>
   ) | undefined
 
+  /** Optional override for decrypt(). */
   decryptImpl: (
     (
       walletId: string,
@@ -49,6 +72,11 @@ class FakeClient implements BalanceSyncSchedulerClient {
     ) => Promise<DecryptSummary>
   ) | undefined
 
+  /**
+   * Record a scan and delegate to `scanImpl` when set.
+   * @param params - Scan parameters from the scheduler.
+   * @returns The scanned-to block; defaults to `params.endBlock`.
+   */
   async scan (params: ScanParams): Promise<bigint | undefined> {
     this.scanCalls.push(params)
     const callNumber = this.scanCalls.length
@@ -58,6 +86,13 @@ class FakeClient implements BalanceSyncSchedulerClient {
     return params.endBlock
   }
 
+  /**
+   * Record a decrypt and delegate to `decryptImpl` when set.
+   * @param walletId - Wallet being decrypted.
+   * @param encryptionKey - Wallet encryption key.
+   * @param params - Decrypt parameters from the scheduler.
+   * @returns A decrypt summary with zeroed counters by default.
+   */
   async decrypt (
     walletId: string,
     encryptionKey: Uint8Array,
@@ -78,9 +113,19 @@ class FakeClient implements BalanceSyncSchedulerClient {
     }
   }
 }
+
+/**
+ * Build a SourceAggregator backed by a single empty source.
+ * @returns Aggregator suitable for the scheduler's dataSourceFactory.
+ */
 function dataSource () {
   return new SourceAggregator<EVMBlock>([new EmptySource()])
 }
+
+/**
+ * Create an externally-resolvable promise for sequencing async test steps.
+ * @returns The promise plus its resolve/reject functions.
+ */
 function deferred<T> () {
   let resolveDeferred!: (value: T | PromiseLike<T>) => void
   let rejectDeferred!: (reason?: unknown) => void
@@ -94,9 +139,21 @@ function deferred<T> () {
     reject: rejectDeferred
   }
 }
+/**
+ * Resolve after a delay.
+ * @param ms - Milliseconds to wait.
+ * @returns A promise that resolves once the delay elapses.
+ */
 function sleep (ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
 }
+
+/**
+ * Poll a predicate until it is true or the timeout elapses.
+ * @param predicate - Condition to wait for.
+ * @param timeoutMs - Maximum time to wait before failing the test.
+ * @returns A promise that resolves once the predicate holds.
+ */
 async function waitFor (
   predicate: () => boolean,
   timeoutMs = 200
@@ -119,6 +176,10 @@ test('requestRefresh coalesces concurrent calls and scans once for many wallets'
       { walletId: 'wallet-b', encryptionKey: KEY_B }
     ],
     dataSourceFactory: dataSource,
+    /**
+     * Report the raw chain head to the scheduler.
+     * @returns Fixed raw chain head.
+     */
     getHead: () => 120n,
     confirmations: 5n
   })
@@ -150,6 +211,10 @@ test('post-tx refresh waits until confirmed target covers afterBlock', async () 
     network: NetworkName.EthereumSepolia,
     wallets: [{ walletId: 'wallet-a', encryptionKey: KEY_A }],
     dataSourceFactory: dataSource,
+    /**
+     * Report the raw chain head to the scheduler.
+     * @returns Current mutable raw chain head.
+     */
     getHead: () => head,
     confirmations: 5n,
     headPollMs: 5
@@ -172,6 +237,11 @@ test('minIntervalMs enforces a completed-pass gap across manual triggers', async
   const client = new FakeClient()
   const scanStarts: number[] = []
   const scanEnds: number[] = []
+  /**
+   * Record pass start/end timestamps.
+   * @param params - Scan parameters.
+   * @returns The scanned-to block.
+   */
   client.scanImpl = async (params) => {
     scanStarts.push(Date.now())
     scanEnds.push(Date.now())
@@ -182,6 +252,10 @@ test('minIntervalMs enforces a completed-pass gap across manual triggers', async
     network: NetworkName.EthereumSepolia,
     wallets: [{ walletId: 'wallet-a', encryptionKey: KEY_A }],
     dataSourceFactory: dataSource,
+    /**
+     * Report the raw chain head to the scheduler.
+     * @returns Fixed raw chain head.
+     */
     getHead: () => 10n,
     minIntervalMs: 25
   })
@@ -202,6 +276,10 @@ test('failures back off and reset after the next successful pass', async () => {
   const client = new FakeClient()
   let shouldFail = true
   const observedErrors: Array<{ message: string, failures: number }> = []
+  /**
+   * Fail until `shouldFail` is cleared, then succeed.
+   * @returns The scanned-to block on success.
+   */
   client.scanImpl = async () => {
     if (shouldFail) {
       throw new Error('scan failed')
@@ -213,8 +291,17 @@ test('failures back off and reset after the next successful pass', async () => {
     network: NetworkName.EthereumSepolia,
     wallets: [{ walletId: 'wallet-a', encryptionKey: KEY_A }],
     dataSourceFactory: dataSource,
+    /**
+     * Report the raw chain head to the scheduler.
+     * @returns Fixed raw chain head.
+     */
     getHead: () => 10n,
     backoff: { initialMs: 20, maxMs: 50, multiplier: 2 },
+    /**
+     * Capture each error and the running failure count.
+     * @param error - The error thrown by the failed pass.
+     * @param context - Scheduler error context.
+     */
     onError: (error, context) => {
       observedErrors.push({
         message: error instanceof Error ? error.message : String(error),
@@ -245,6 +332,12 @@ test('post-tx requests during an active pass collapse to one queued follow-up', 
   const client = new FakeClient()
   const firstScan = deferred<void>()
   let head = 10n
+  /**
+   * Block the first pass on `firstScan` so later requests can queue up.
+   * @param params - Scan parameters.
+   * @param callNumber - 1-based call index.
+   * @returns The scanned-to block.
+   */
   client.scanImpl = async (params, callNumber) => {
     if (callNumber === 1) {
       await firstScan.promise
@@ -256,6 +349,10 @@ test('post-tx requests during an active pass collapse to one queued follow-up', 
     network: NetworkName.EthereumSepolia,
     wallets: [{ walletId: 'wallet-a', encryptionKey: KEY_A }],
     dataSourceFactory: dataSource,
+    /**
+     * Report the raw chain head to the scheduler.
+     * @returns Current mutable raw chain head.
+     */
     getHead: () => head,
     confirmations: 0n,
     headPollMs: 5
@@ -280,6 +377,11 @@ test('post-tx requests during an active pass collapse to one queued follow-up', 
 test('wallets added and removed during a scan affect later decrypts', async () => {
   const client = new FakeClient()
   const firstScan = deferred<void>()
+  /**
+   * Block the pass on `firstScan` so wallets can change mid-scan.
+   * @param params - Scan parameters.
+   * @returns The scanned-to block.
+   */
   client.scanImpl = async (params) => {
     await firstScan.promise
     return params.endBlock
@@ -289,6 +391,10 @@ test('wallets added and removed during a scan affect later decrypts', async () =
     network: NetworkName.EthereumSepolia,
     wallets: [{ walletId: 'wallet-a', encryptionKey: KEY_A }],
     dataSourceFactory: dataSource,
+    /**
+     * Report the raw chain head to the scheduler.
+     * @returns Fixed raw chain head.
+     */
     getHead: () => 10n
   })
 
@@ -316,6 +422,10 @@ test('stop rejects queued post-tx work and prevents later scans', async () => {
     network: NetworkName.EthereumSepolia,
     wallets: [{ walletId: 'wallet-a', encryptionKey: KEY_A }],
     dataSourceFactory: dataSource,
+    /**
+     * Report the raw chain head to the scheduler.
+     * @returns Fixed raw chain head.
+     */
     getHead: () => 0n,
     headPollMs: 5
   })
@@ -340,6 +450,10 @@ test('start schedules periodic refreshes from the end of each pass', async () =>
     network: NetworkName.EthereumSepolia,
     wallets: [{ walletId: 'wallet-a', encryptionKey: KEY_A }],
     dataSourceFactory: dataSource,
+    /**
+     * Report the raw chain head to the scheduler.
+     * @returns Fixed raw chain head.
+     */
     getHead: () => 10n,
     intervalMs: 25
   })
