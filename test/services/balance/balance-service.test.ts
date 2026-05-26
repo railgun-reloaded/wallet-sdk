@@ -10,6 +10,7 @@ import { BalanceService, mapNoteRow } from '../../../src/services/balance/balanc
 
 const ERC20_NULL_SUB_ID_HEX = `0x${'00'.repeat(32)}`
 const ERC721_SUB_ID_HEX = `0x${'ab'.repeat(32)}`
+const CHAIN_ID = 11155111
 
 /**
  * Build a fresh in-memory wallet DB seeded with one wallet, returning the
@@ -72,6 +73,7 @@ test('BalanceService.getNotes returns tokenType and tokenSubID for stored ERC20 
   insertNote(db, {
     commitment: hexToBytes(`0x${'aa'.repeat(32)}`),
     walletId,
+    chainId: CHAIN_ID,
     nullifier: hexToBytes(`0x${'bb'.repeat(32)}`),
     token: '0x0000000000000000000000000000000000000000',
     amount: 500n,
@@ -85,6 +87,7 @@ test('BalanceService.getNotes returns tokenType and tokenSubID for stored ERC20 
   insertNote(db, {
     commitment: hexToBytes(`0x${'cc'.repeat(32)}`),
     walletId,
+    chainId: CHAIN_ID,
     nullifier: hexToBytes(`0x${'dd'.repeat(32)}`),
     token: '0x1111111111111111111111111111111111111111',
     amount: 1n,
@@ -96,7 +99,7 @@ test('BalanceService.getNotes returns tokenType and tokenSubID for stored ERC20 
   })
 
   const service = new BalanceService(db)
-  const notes = await service.getNotes(walletId)
+  const notes = await service.getNotes(walletId, CHAIN_ID)
 
   assert.equal(notes.length, 2)
   const erc20 = notes.find((n) => n.tokenType === 0)

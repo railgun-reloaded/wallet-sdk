@@ -1,6 +1,5 @@
 export {
   BalanceService,
-  mapBalanceRow,
   mapNoteRow
 } from './balance-service'
 export type {
