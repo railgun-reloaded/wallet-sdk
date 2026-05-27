@@ -17,14 +17,12 @@ npm add @railgun-reloaded/wallet-sdk
 import { randomBytes } from 'node:crypto'
 
 import { RailgunClient } from '@railgun-reloaded/wallet-sdk'
-import { Mnemonic, initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
+import { Mnemonic } from '@railgun-reloaded/wallet-node'
 
-await initializeCryptographyLibs()
+const client = new RailgunClient()
 
-const client = new RailgunClient()                        
-
-const mnemonic = Mnemonic.generate()                      
-const encryptionKey = new Uint8Array(randomBytes(32))     
+const mnemonic = Mnemonic.generate()
+const encryptionKey = new Uint8Array(randomBytes(32))
 
 const info = await client.createWallet({
   mnemonic,
@@ -43,6 +41,31 @@ console.log({
 })
 
 client.close()
+```
+
+## Initialization
+
+`RailgunClient` initializes the underlying cryptography libraries (ed25519,
+circomlib, EdDSA) automatically on the first call to `createWallet`,
+`loadWallet`, `decrypt`, or `sync`. The init is cached, so subsequent calls
+and additional `RailgunClient` instances in the same process share the same
+one-time setup.
+
+To pay the init cost up front — for example at app startup, before serving
+any UI that depends on wallet ops — call `initialize()` explicitly:
+
+```typescript
+const client = new RailgunClient()
+await client.initialize()
+```
+
+The same effect is available as a stand-alone function for callers that need
+it outside the client (e.g. direct `deriveWalletKeys` usage):
+
+```typescript
+import { initializeCrypto } from '@railgun-reloaded/wallet-sdk'
+
+await initializeCrypto()
 ```
 
 ## Events

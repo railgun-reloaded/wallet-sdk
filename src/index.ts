@@ -29,6 +29,8 @@ export type {
 
 export { RailgunEngine } from './engine'
 
+export { initializeCrypto } from './init/crypto'
+
 export type { NetworkConfig } from './network-config'
 export { NETWORK_CONFIG, NetworkName } from './network-config'
 

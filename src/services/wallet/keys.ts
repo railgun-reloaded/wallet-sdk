@@ -24,6 +24,11 @@ type WalletKeys = {
  * This is the shared code path between loadWallet and scripts / REPL
  * consumers that don't need a DB — intentionally exported as a free function.
  *
+ * Precondition: the cryptography libraries must be initialized before calling.
+ * `RailgunClient` callers get this for free — it auto-initializes on
+ * `createWallet`/`loadWallet`. Direct callers (scripts, REPL) must `await`
+ * `initializeCrypto()` (from `@railgun-reloaded/wallet-sdk`) first.
+ *
  * Implementation note: the underlying wallet-node RailgunWallet eagerly
  * derives the spending keypair and holds it in memory for the object's
  * lifetime. This function does not retain that object beyond the call, but

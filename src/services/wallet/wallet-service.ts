@@ -117,6 +117,11 @@ class WalletService {
 
   /**
    * Load a wallet by ID and return its decrypted key material.
+   *
+   * Precondition: the cryptography libraries must be initialized before
+   * calling. `RailgunClient` callers get this for free — it auto-initializes
+   * on `loadWallet`. Direct `WalletService` callers must `await`
+   * `initializeCrypto()` (from `@railgun-reloaded/wallet-sdk`) first.
    * @param walletId - Deterministic wallet ID to look up.
    * @param encryptionKey - The same 32-byte key used at createWallet time.
    * @returns Full WalletContext (minus spending key).
