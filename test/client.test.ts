@@ -11,7 +11,6 @@ import {
   getSyncState,
   insertNotesBatch
 } from '@railgun-reloaded/storage'
-import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
 
 import { RailgunClient, SyncPhase } from '../src/client'
 import { NetworkName } from '../src/network-config'
@@ -82,7 +81,6 @@ function seedNotes (
 }
 
 test('RailgunClient delegates createWallet / listWallets / deleteWallet', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
@@ -118,7 +116,6 @@ test('RailgunClient exposes engine property', async () => {
 })
 
 test('RailgunClient.getBalances returns note-derived aggregated balances', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
@@ -153,7 +150,6 @@ test('RailgunClient.getBalances returns note-derived aggregated balances', async
 })
 
 test('RailgunClient.getBalances omits zero balance rows', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
@@ -176,7 +172,6 @@ test('RailgunClient.getBalances omits zero balance rows', async () => {
 })
 
 test('RailgunClient balance API returns empty values for an empty wallet', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
@@ -189,7 +184,6 @@ test('RailgunClient balance API returns empty values for an empty wallet', async
 })
 
 test('RailgunClient.getBalances lowercases token values', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
@@ -207,7 +201,6 @@ test('RailgunClient.getBalances lowercases token values', async () => {
 })
 
 test('RailgunClient.getNotes maps all and unspent notes', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))
@@ -375,7 +368,6 @@ test('RailgunClient.decrypt throws when chain DB is uninitialized', async () => 
 })
 
 test('RailgunClient.decrypt is a no-op when chain has no commitments', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -402,7 +394,6 @@ test('RailgunClient.decrypt is a no-op when chain has no commitments', async () 
 })
 
 test('RailgunClient.sync composes scan() then decrypt()', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -433,7 +424,6 @@ test('RailgunClient.sync composes scan() then decrypt()', async () => {
 })
 
 test('RailgunClient.sync fires onProgress for both phases in order', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -486,7 +476,6 @@ test('RailgunClient.sync fires onProgress for both phases in order', async () =>
 })
 
 test('RailgunClient loadWallet returns correct keys', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })
   const key = new Uint8Array(randomBytes(32))

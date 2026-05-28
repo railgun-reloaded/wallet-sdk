@@ -306,11 +306,15 @@ class RailgunClient {
 
   /**
    * Create and persist an encrypted wallet. Delegates to WalletService.
+   *
+   * Does not initialize the cryptography libraries — wallet creation only
+   * runs BIP39 validation, ID derivation, and AES-GCM blob encryption, none
+   * of which need wallet-node's circomlib/EdDSA setup. Init happens lazily
+   * on the first operation that actually derives or decrypts notes.
    * @param params - Mnemonic + encryption key + optional index/name.
    * @returns Decrypt-free WalletInfo.
    */
-  async createWallet (params: CreateWalletParams): Promise<WalletInfo> {
-    await initializeCrypto()
+  createWallet (params: CreateWalletParams): Promise<WalletInfo> {
     return this.#walletService.createWallet(params)
   }
 

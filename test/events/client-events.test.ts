@@ -17,7 +17,6 @@ import {
   insertNullifiersBatch,
   updateSyncState
 } from '@railgun-reloaded/storage'
-import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
 
 import { RailgunClient } from '../../src/client'
 import { NetworkName } from '../../src/network-config'
@@ -224,7 +223,6 @@ function fakeSepoliaSource (): SourceAggregator<EVMBlock> {
 }
 
 test('decrypt() emits sync:start then sync:complete; no balance:update on no-op', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -253,7 +251,6 @@ test('decrypt() emits sync:start then sync:complete; no balance:update on no-op'
 })
 
 test('decrypt no-op suppresses balance:update when notes are unchanged', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -276,7 +273,6 @@ test('decrypt no-op suppresses balance:update when notes are unchanged', async (
 })
 
 test('balance:update fires with a fresh snapshot when decrypt marks a note spent', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -320,7 +316,6 @@ test('balance:update fires with a fresh snapshot when decrypt marks a note spent
 })
 
 test('balance:update fires with a fresh snapshot when decrypt adds notes', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -412,7 +407,6 @@ test('scan() complete reports covered blocks even when no event blocks yield', a
 })
 
 test('every sync:progress emitted by decrypt() carries phase=decrypt', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -435,7 +429,6 @@ test('every sync:progress emitted by decrypt() carries phase=decrypt', async () 
 })
 
 test('sync() emits all three start/complete pairs', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -466,7 +459,6 @@ test('sync() emits all three start/complete pairs', async () => {
 })
 
 test('sync() emits balance:update before outer completion when balances change', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -510,7 +502,6 @@ test('sync() emits balance:update before outer completion when balances change',
 })
 
 test('argument-validation throws happen before bus emission', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const client = new RailgunClient({ walletDB })
   const encryptionKey = new Uint8Array(randomBytes(32))
@@ -556,7 +547,6 @@ test('scan() emits sync:error before rethrow and suppresses complete', async () 
 })
 
 test('decrypt() emits sync:error before rethrow and suppresses complete', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -587,7 +577,6 @@ test('decrypt() emits sync:error before rethrow and suppresses complete', async 
 })
 
 test('a buggy balance:update handler does not break lifecycle completion', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -618,7 +607,6 @@ test('a buggy balance:update handler does not break lifecycle completion', async
 })
 
 test('walletId filter scopes events to the matching wallet', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -645,7 +633,6 @@ test('walletId filter scopes events to the matching wallet', async () => {
 })
 
 test('close() removes existing listeners', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -666,7 +653,6 @@ test('close() removes existing listeners', async () => {
 })
 
 test('on() after close returns an inert unsubscribe', async () => {
-  await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()
   const client = new RailgunClient({ walletDB, chainDB })
@@ -688,7 +674,6 @@ test('on() after close returns an inert unsubscribe', async () => {
 })
 
 test('two clients have independent buses', async () => {
-  await initializeCryptographyLibs()
   const walletDBA = memWalletDB()
   const walletDBB = memWalletDB()
   const chainDBA = memChainDB()

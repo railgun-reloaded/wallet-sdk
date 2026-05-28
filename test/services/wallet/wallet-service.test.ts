@@ -5,7 +5,6 @@ import { test } from 'node:test'
 import { bytesToHex } from '@railgun-reloaded/bytes'
 import type { WalletDB } from '@railgun-reloaded/storage'
 import { createWalletDB } from '@railgun-reloaded/storage'
-import { initializeCryptographyLibs } from '@railgun-reloaded/wallet-node'
 
 import {
   InvalidEncryptionKeyError,
@@ -32,7 +31,6 @@ function fixture (): { service: WalletService, db: WalletDB, key: Uint8Array } {
 }
 
 test('createWallet returns WalletInfo with matching walletId', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   const info = await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   assert.equal(info.walletId, VECTORS[0]!.walletId)
@@ -41,14 +39,12 @@ test('createWallet returns WalletInfo with matching walletId', async () => {
 })
 
 test('createWallet with a name persists the name', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   const info = await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
   assert.equal(info.name, 'primary')
 })
 
 test('createWallet duplicate (mnemonic, index) throws WalletAlreadyExistsError with walletId', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   try {
@@ -61,7 +57,6 @@ test('createWallet duplicate (mnemonic, index) throws WalletAlreadyExistsError w
 })
 
 test('createWallet same mnemonic, different index => separate wallets', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, index: 0 })
   const info1 = await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, index: 1 })
@@ -70,7 +65,6 @@ test('createWallet same mnemonic, different index => separate wallets', async ()
 })
 
 test('createWallet with invalid mnemonic throws InvalidMnemonicError', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   try {
     await service.createWallet({ mnemonic: 'not a valid mnemonic at all', encryptionKey: key })
@@ -81,7 +75,6 @@ test('createWallet with invalid mnemonic throws InvalidMnemonicError', async () 
 })
 
 test('createWallet with non-32-byte key throws InvalidEncryptionKeyError', async () => {
-  await initializeCryptographyLibs()
   const { service } = fixture()
   try {
     await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: new Uint8Array(31) })
@@ -92,7 +85,6 @@ test('createWallet with non-32-byte key throws InvalidEncryptionKeyError', async
 })
 
 test('loadWallet returns keys matching fixtures', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'test' })
   const ctx = await service.loadWallet(VECTORS[0]!.walletId, key)
@@ -105,7 +97,6 @@ test('loadWallet returns keys matching fixtures', async () => {
 })
 
 test('loadWallet with unknown id throws WalletNotFoundError', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   try {
     await service.loadWallet('deadbeef'.repeat(8), key)
@@ -116,7 +107,6 @@ test('loadWallet with unknown id throws WalletNotFoundError', async () => {
 })
 
 test('loadWallet with wrong key throws InvalidEncryptionKeyError', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const wrongKey = new Uint8Array(randomBytes(32))
@@ -129,7 +119,6 @@ test('loadWallet with wrong key throws InvalidEncryptionKeyError', async () => {
 })
 
 test('listWallets returns wallets sorted by createdAt ASC', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, index: 0 })
   await new Promise((resolve) => setTimeout(resolve, 1100))
@@ -140,7 +129,6 @@ test('listWallets returns wallets sorted by createdAt ASC', async () => {
 })
 
 test('deleteWallet removes the wallet; second delete is a no-op', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   await service.deleteWallet(VECTORS[0]!.walletId)
@@ -150,7 +138,6 @@ test('deleteWallet removes the wallet; second delete is a no-op', async () => {
 })
 
 test('full lifecycle: create -> list -> load -> delete -> load throws', async () => {
-  await initializeCryptographyLibs()
   const { service, key } = fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
   assert.equal((await service.listWallets()).length, 1)

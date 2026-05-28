@@ -1,6 +1,8 @@
 import { CHAIN_ID_ANY, ChainType, stringify } from '@railgun-reloaded/0zk-addresses'
 import { RailgunWallet } from '@railgun-reloaded/wallet-node'
 
+import { initializeCrypto } from '../../init/crypto'
+
 import { generateWalletId } from './wallet-id'
 
 /**
@@ -24,10 +26,8 @@ type WalletKeys = {
  * This is the shared code path between loadWallet and scripts / REPL
  * consumers that don't need a DB — intentionally exported as a free function.
  *
- * Precondition: the cryptography libraries must be initialized before calling.
- * `RailgunClient` callers get this for free — it auto-initializes on
- * `createWallet`/`loadWallet`. Direct callers (scripts, REPL) must `await`
- * `initializeCrypto()` (from `@railgun-reloaded/wallet-sdk`) first.
+ * Awaits `initializeCrypto()` internally, so callers never need to set up
+ * the cryptography libraries themselves.
  *
  * Implementation note: the underlying wallet-node RailgunWallet eagerly
  * derives the spending keypair and holds it in memory for the object's
@@ -38,7 +38,9 @@ type WalletKeys = {
  * @param index - BIP44-style derivation index (default 0).
  * @returns The derived key material plus walletId and 0zk address.
  */
-function deriveWalletKeys (mnemonic: string, index: number = 0): WalletKeys {
+async function deriveWalletKeys (mnemonic: string, index: number = 0): Promise<WalletKeys> {
+  await initializeCrypto()
+
   const railgunWallet = new RailgunWallet(mnemonic, index)
 
   const masterPublicKey = railgunWallet.getMasterPublicKey()
