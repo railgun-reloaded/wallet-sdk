@@ -1,5 +1,5 @@
 import { bytesToBigInt, bytesToHex } from '@railgun-reloaded/bytes'
-import type { DBNote, NotePoiStatusUpdate, WalletDB } from '@railgun-reloaded/storage'
+import type { DBNote, NoteIdentity, NotePoiStatusUpdate, WalletDB } from '@railgun-reloaded/storage'
 import {
   getAllNotes,
   updateNotePoiStatusBatch
@@ -42,8 +42,7 @@ type RefreshOptions = {
   onProgress?: (progress: SyncProgress) => void
 }
 
-type RefreshEntry = {
-  commitment: Uint8Array
+type RefreshEntry = NoteIdentity & {
   blindedCommitment: Uint8Array
   blindedCommitmentHex: string
   type: BlindedCommitmentType.Shield | BlindedCommitmentType.Transact
@@ -96,6 +95,8 @@ class PoiStatusService {
     const blindedOnlyUpdates = entries
       .filter(entry => !entry.hadStoredBlindedCommitment)
       .map(entry => ({
+        walletId: entry.walletId,
+        chainId: entry.chainId,
         commitment: entry.commitment,
         blindedCommitment: entry.blindedCommitment,
         poisPerList: null
@@ -144,6 +145,8 @@ class PoiStatusService {
           continue
         }
         updates.push({
+          walletId: entry.walletId,
+          chainId: entry.chainId,
           commitment: entry.commitment,
           blindedCommitment: entry.blindedCommitment,
           poisPerList
@@ -188,6 +191,8 @@ function noteToRefreshEntry (note: DBNote): RefreshEntry {
     deriveBlindedCommitment(note)
 
   return {
+    walletId: note.walletId,
+    chainId: note.chainId,
     commitment: note.commitment,
     blindedCommitment,
     blindedCommitmentHex: bytesToHex(blindedCommitment, { prefix: true }),

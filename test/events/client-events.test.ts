@@ -452,6 +452,7 @@ test('sync() emits all three start/complete pairs', async () => {
     dataSource: fakeSepoliaSource(),
     endBlock: SEPOLIA_DEPLOYMENT_BLOCK + 1n,
     fromBlock: SEPOLIA_DEPLOYMENT_BLOCK,
+    refreshPoi: false,
     toBlock: SEPOLIA_DEPLOYMENT_BLOCK + 1n
   })
 
@@ -492,6 +493,7 @@ test('sync() emits balance:update before outer completion when balances change',
     ]),
     endBlock: TEST_VECTOR_TRANSACT.number,
     fromBlock: TEST_VECTOR_TRANSACT.number,
+    refreshPoi: false,
     toBlock: TEST_VECTOR_TRANSACT.number
   })
 

@@ -6,8 +6,8 @@ import {
   getWallet
 } from '@railgun-reloaded/storage'
 
-import { NETWORK_CONFIG } from '../../network-config'
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config'
+import { NETWORK_CONFIG } from '../../network-config'
 import { classifyNote } from '../../poi/bucket-classifier'
 import { WalletBalanceBucket } from '../../poi/types'
 import { WalletNotFoundError } from '../wallet/errors'
@@ -191,8 +191,8 @@ class BalanceService {
 
   /**
    * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
-   * The default mode is the user-facing Monorail parity balance: spendable only
-   * on PPOI networks, and all unspent notes on non-PPOI networks.
+   * Balance reads require a configured PPOI network.
+   * The default mode returns only notes classified as Spendable.
    * @param walletId - Wallet ID returned by `createWallet`.
    * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
    * @param mode - Balance mode: default spendable, all unspent, or one bucket.
@@ -204,6 +204,7 @@ class BalanceService {
     mode: BalanceMode = 'spendable'
   ): Promise<TokenBalance[]> {
     this.#assertWalletExists(walletId)
+    const network = getPoiNetworkConfigByChainId(chainId)
     const notes = getUnspentNotes(this.#db, walletId, chainId)
     if (notes.length === 0) {
       return []
@@ -217,8 +218,6 @@ class BalanceService {
       }
       return mapBalanceAccumulator(balances)
     }
-
-    const network = getPoiNetworkConfigByChainId(chainId)
 
     const targetBucket = mode === 'spendable'
       ? WalletBalanceBucket.Spendable
@@ -245,13 +244,13 @@ class BalanceService {
     chainId: number
   ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
     this.#assertWalletExists(walletId)
+    const network = getPoiNetworkConfigByChainId(chainId)
 
     const notes = getUnspentNotes(this.#db, walletId, chainId)
     if (notes.length === 0) {
       return createEmptyBucketBalances()
     }
 
-    const network = getPoiNetworkConfigByChainId(chainId)
     const accumulators = createBucketAccumulators()
     for (const note of notes) {
       addNoteBalance(accumulators[classifyNote(note, network)], note)

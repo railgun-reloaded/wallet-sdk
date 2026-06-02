@@ -312,8 +312,7 @@ class RailgunClient {
 
   /**
    * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
-   * Default mode returns the user-facing spendable balance: only Spendable on
-   * PPOI networks, and all unspent notes on non-PPOI networks.
+   * Balance reads require a configured PPOI network.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
    * @param mode - Balance mode: default spendable, all unspent, or one bucket.

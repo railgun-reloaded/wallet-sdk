@@ -8,6 +8,7 @@ import type {
   ChainDB,
   DBCommitment,
   DBNullifier,
+  NoteIdentity,
   WalletDB
 } from '@railgun-reloaded/storage'
 import {
@@ -279,26 +280,30 @@ async function runWalletDecryption (
     if (nullifierRows.length > 0) {
       const ownedNotes = getUnspentNotes(walletDb, walletId, chainId)
       if (ownedNotes.length > 0) {
-        const ownedByNullifier = new Map<string, Uint8Array>()
+        const ownedByNullifier = new Map<string, NoteIdentity>()
         for (const note of ownedNotes) {
-          ownedByNullifier.set(nullifierKey(note.nullifier, note.treeNumber), note.commitment)
+          ownedByNullifier.set(nullifierKey(note.nullifier, note.treeNumber), {
+            walletId: note.walletId,
+            chainId: note.chainId,
+            commitment: note.commitment
+          })
         }
 
-        const spendsByTxid = new Map<string, { txHash: Uint8Array, commitments: Uint8Array[] }>()
+        const spendsByTxid = new Map<string, { txHash: Uint8Array, identities: NoteIdentity[] }>()
         for (const row of nullifierRows) {
-          const commitment = ownedByNullifier.get(nullifierKey(row.nullifier, row.treeNumber))
-          if (!commitment) continue
+          const identity = ownedByNullifier.get(nullifierKey(row.nullifier, row.treeNumber))
+          if (!identity) continue
           const txKey = bytesToHex(row.transactionHash)
           const bucket = spendsByTxid.get(txKey)
           if (bucket) {
-            bucket.commitments.push(commitment)
+            bucket.identities.push(identity)
           } else {
-            spendsByTxid.set(txKey, { txHash: row.transactionHash, commitments: [commitment] })
+            spendsByTxid.set(txKey, { txHash: row.transactionHash, identities: [identity] })
           }
         }
 
-        for (const { txHash, commitments } of spendsByTxid.values()) {
-          notesSpent += markNotesSpentBatch(walletDb, commitments, txHash)
+        for (const { txHash, identities } of spendsByTxid.values()) {
+          notesSpent += markNotesSpentBatch(walletDb, identities, txHash)
         }
       }
     }
