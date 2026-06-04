@@ -46,10 +46,12 @@ client.close()
 ## Initialization
 
 `RailgunClient` initializes the underlying cryptography libraries (ed25519,
-circomlib, EdDSA) automatically on the first call to `createWallet`,
-`loadWallet`, `decrypt`, or `sync`. The init is cached, so subsequent calls
-and additional `RailgunClient` instances in the same process share the same
-one-time setup.
+circomlib, EdDSA) automatically on the first call to `loadWallet`, `decrypt`,
+or `sync`. The init is cached, so subsequent calls and additional
+`RailgunClient` instances in the same process share the same one-time setup.
+
+`createWallet` does not trigger init — it only runs BIP39 validation, ID
+derivation, and AES-GCM blob encryption.
 
 To pay the init cost up front — for example at app startup, before serving
 any UI that depends on wallet ops — call `initialize()` explicitly:
@@ -59,8 +61,8 @@ const client = new RailgunClient()
 await client.initialize()
 ```
 
-The same effect is available as a stand-alone function for callers that need
-it outside the client (e.g. direct `deriveWalletKeys` usage):
+The same effect is available as a stand-alone function for callers that
+don't have a client at hand (e.g. direct `deriveWalletKeys` usage):
 
 ```typescript
 import { initializeCrypto } from '@railgun-reloaded/wallet-sdk'

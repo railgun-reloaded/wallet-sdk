@@ -292,12 +292,9 @@ class RailgunClient {
 
   /**
    * Eagerly initialize the cryptography libraries this client depends on.
-   *
-   * All wallet operations (`createWallet`, `loadWallet`, `decrypt`, `sync`)
-   * auto-initialize on first use, so calling this method is optional. Call it
-   * at startup when you want to pay the one-time init cost up front instead of
-   * lazily on the first wallet operation. Idempotent and safe to call across
-   * multiple `RailgunClient` instances in the same process.
+   * Wallet operations otherwise initialize lazily via `deriveWalletKeys` on
+   * first use; call this at startup to pay the cost up front. Idempotent
+   * across calls and across `RailgunClient` instances in the same process.
    * @returns A promise that resolves once the cryptography libraries are ready.
    */
   initialize (): Promise<void> {
@@ -306,11 +303,6 @@ class RailgunClient {
 
   /**
    * Create and persist an encrypted wallet. Delegates to WalletService.
-   *
-   * Does not initialize the cryptography libraries — wallet creation only
-   * runs BIP39 validation, ID derivation, and AES-GCM blob encryption, none
-   * of which need wallet-node's circomlib/EdDSA setup. Init happens lazily
-   * on the first operation that actually derives or decrypts notes.
    * @param params - Mnemonic + encryption key + optional index/name.
    * @returns Decrypt-free WalletInfo.
    */
@@ -324,8 +316,7 @@ class RailgunClient {
    * @param encryptionKey - 32-byte key used at creation time.
    * @returns Full WalletContext (minus spending key).
    */
-  async loadWallet (walletId: string, encryptionKey: Uint8Array): Promise<WalletContext> {
-    await initializeCrypto()
+  loadWallet (walletId: string, encryptionKey: Uint8Array): Promise<WalletContext> {
     return this.#walletService.loadWallet(walletId, encryptionKey)
   }
 
@@ -532,7 +523,6 @@ class RailgunClient {
     encryptionKey: Uint8Array,
     params: DecryptParams
   ): Promise<DecryptSummary> {
-    await initializeCrypto()
     const chainDb = this.#engine.db
     if (!chainDb) {
       throw new Error('Decrypt failed: chain DB not initialized — call scan() first')
@@ -619,7 +609,6 @@ class RailgunClient {
     encryptionKey: Uint8Array,
     params: SyncParams
   ): Promise<SyncSummary> {
-    await initializeCrypto()
     const chainId = NETWORK_CONFIG[params.network].chainID
     const startedAt = Date.now()
     const outerToBlock = params.toBlock ?? params.endBlock
