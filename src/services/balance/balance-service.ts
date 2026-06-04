@@ -86,6 +86,10 @@ function mapNoteRow (row: DBNote): DecryptedNote {
 
 type BucketBalanceAccumulators = Record<WalletBalanceBucket, Map<string, bigint>>
 
+/**
+ * Create empty balance accumulators for every wallet bucket.
+ * @returns Bucket accumulators keyed by wallet balance bucket.
+ */
 function createBucketAccumulators (): BucketBalanceAccumulators {
   return {
     [WalletBalanceBucket.Spendable]: new Map(),
@@ -98,6 +102,10 @@ function createBucketAccumulators (): BucketBalanceAccumulators {
   }
 }
 
+/**
+ * Create the public empty bucket balance response.
+ * @returns Empty token-balance arrays keyed by wallet balance bucket.
+ */
 function createEmptyBucketBalances (): Record<WalletBalanceBucket, TokenBalance[]> {
   return {
     [WalletBalanceBucket.Spendable]: [],
@@ -110,6 +118,11 @@ function createEmptyBucketBalances (): Record<WalletBalanceBucket, TokenBalance[
   }
 }
 
+/**
+ * Resolve the PPOI-enabled network config for a chain ID.
+ * @param chainId - Chain ID to resolve.
+ * @returns Network config with PPOI settings.
+ */
 function getPoiNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
   const network = Object.values(NETWORK_CONFIG)
     .find(network => network.chainID === chainId)
@@ -119,6 +132,11 @@ function getPoiNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
   return network
 }
 
+/**
+ * Add a note amount to a token balance accumulator.
+ * @param balances - Mutable token balance map.
+ * @param note - Stored note whose amount should be added.
+ */
 function addNoteBalance (
   balances: Map<string, bigint>,
   note: DBNote
@@ -126,6 +144,11 @@ function addNoteBalance (
   balances.set(note.token, (balances.get(note.token) ?? 0n) + note.amount)
 }
 
+/**
+ * Convert a token balance accumulator to the public array shape.
+ * @param balances - Token balance accumulator.
+ * @returns Positive token balances.
+ */
 function mapBalanceAccumulator (
   balances: Map<string, bigint>
 ): TokenBalance[] {
@@ -134,6 +157,11 @@ function mapBalanceAccumulator (
     .map(([token, balance]) => ({ token, balance }))
 }
 
+/**
+ * Convert bucket accumulators to public bucket balances.
+ * @param accumulators - Mutable bucket accumulators.
+ * @returns Token balances keyed by wallet balance bucket.
+ */
 function mapBucketAccumulators (
   accumulators: BucketBalanceAccumulators
 ): Record<WalletBalanceBucket, TokenBalance[]> {

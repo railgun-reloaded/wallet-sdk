@@ -178,7 +178,7 @@ function noteFixture (
 }
 
 /**
- * Seed wallet notes and refresh cached balances.
+ * Seed wallet notes.
  * @param walletDB - Wallet database.
  * @param walletId - Owning wallet ID.
  * @param notes - Notes to insert.
@@ -252,7 +252,7 @@ test('decrypt() emits sync:start then sync:complete; no balance:update on no-op'
   client.close()
 })
 
-test('decrypt no-op suppresses balance:update even with cached balances', async () => {
+test('decrypt no-op suppresses balance:update when notes are unchanged', async () => {
   await initializeCryptographyLibs()
   const walletDB = memWalletDB()
   const chainDB = memChainDB()

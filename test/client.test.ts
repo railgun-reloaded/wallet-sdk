@@ -117,7 +117,7 @@ test('RailgunClient exposes engine property', async () => {
   client.close()
 })
 
-test('RailgunClient.getBalances returns cached aggregated balances', async () => {
+test('RailgunClient.getBalances returns note-derived aggregated balances', async () => {
   await initializeCryptographyLibs()
   const walletDB = memDB()
   const client = new RailgunClient({ walletDB })

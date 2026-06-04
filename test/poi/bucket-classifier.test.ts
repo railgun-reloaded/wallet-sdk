@@ -1,9 +1,10 @@
-import type { DBNote } from '@railgun-reloaded/storage'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
+import type { DBNote } from '@railgun-reloaded/storage'
+
 import type { NetworkConfig } from '../../src/network-config'
-import { classifyNote, POIStatus, WalletBalanceBucket } from '../../src/poi'
+import { POIStatus, WalletBalanceBucket, classifyNote } from '../../src/poi'
 
 const LIST_A = 'list-a'
 const LIST_B = 'list-b'
@@ -25,10 +26,20 @@ const PPOI_NETWORK: NetworkConfig = {
   }
 }
 
+/**
+ * Create deterministic 32-byte fixture data.
+ * @param value - Byte value to repeat.
+ * @returns Fixture bytes.
+ */
 function bytes (value: number): Uint8Array {
   return new Uint8Array(32).fill(value)
 }
 
+/**
+ * Create a note fixture for bucket classification tests.
+ * @param overrides - Optional note fields to override.
+ * @returns Stored note row.
+ */
 function noteFixture (overrides: Partial<DBNote> = {}): DBNote {
   return {
     commitment: bytes(1),

@@ -1,7 +1,7 @@
 import type { NetworkName } from '../network-config'
 
-import { POIListType } from './types'
 import type { POIList, RequiredListKey } from './types'
+import { POIListType } from './types'
 
 type NetworkPoiConfig = {
   launchBlock: bigint
@@ -36,10 +36,21 @@ const POI_CONFIG_BY_NETWORK: Partial<Record<NetworkName, NetworkPoiConfig>> = {
   EthereumSepolia: SEPOLIA_POI_CONFIG
 }
 
+/**
+ * Look up PPOI config for a network.
+ * @param network - Wallet-sdk network name.
+ * @returns PPOI config when the network has one.
+ */
 function getPoiConfig (network: NetworkName): NetworkPoiConfig | undefined {
   return POI_CONFIG_BY_NETWORK[network]
 }
 
+/**
+ * Check whether PPOI applies at a block height.
+ * @param network - Wallet-sdk network name.
+ * @param blockNumber - Candidate block number.
+ * @returns True when the network has launched PPOI by that block.
+ */
 function isPOIRequired (
   network: NetworkName,
   blockNumber: bigint
@@ -48,6 +59,11 @@ function isPOIRequired (
   return config !== undefined && blockNumber >= config.launchBlock
 }
 
+/**
+ * Get required PPOI list keys for a network.
+ * @param network - Wallet-sdk network name.
+ * @returns Required list keys, or an empty array for non-PPOI networks.
+ */
 function getRequiredListKeys (network: NetworkName): RequiredListKey[] {
   return [...(getPoiConfig(network)?.requiredListKeys ?? [])]
 }

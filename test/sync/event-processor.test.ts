@@ -1,9 +1,9 @@
-import type { Transact } from '@railgun-reloaded/scanner'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { denormalizeBlockData } from '../../src/sync'
+import type { Transact } from '@railgun-reloaded/scanner'
 
+import { denormalizeBlockData } from '../../src/sync'
 import { TEST_VECTOR_TRANSACT } from '../test-vector'
 
 /**

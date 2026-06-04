@@ -21,6 +21,12 @@ import type {
 } from './events'
 import { EventBus } from './events'
 import { NETWORK_CONFIG, NetworkName } from './network-config'
+import type { RefreshSummary, WalletBalanceBucket } from './poi'
+import {
+  PoiNodeClient,
+  PoiNodeUrlsRequiredError,
+  PoiStatusService
+} from './poi'
 import type {
   BalanceMode,
   DecryptedNote,
@@ -35,12 +41,6 @@ import type {
 import { WalletService } from './services/wallet/wallet-service'
 import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor'
 import { SyncPhase, runWalletDecryption } from './sync/wallet-decryptor'
-import {
-  PoiNodeClient,
-  PoiNodeUrlsRequiredError,
-  PoiStatusService
-} from './poi'
-import type { RefreshSummary, WalletBalanceBucket } from './poi'
 
 /**
  * Inputs for `RailgunClient.scan()`.
@@ -185,6 +185,11 @@ function makeScanOnBatch (
   }
 }
 
+/**
+ * Clone PPOI node URL options so caller-owned arrays are not mutated.
+ * @param poiNodeUrls - Optional PPOI node URLs by network.
+ * @returns Cloned PPOI node URL map.
+ */
 function clonePoiNodeUrls (
   poiNodeUrls: RailgunClientOptions['poiNodeUrls'] = {}
 ): Partial<Record<NetworkName, string[]>> {
@@ -198,10 +203,20 @@ function clonePoiNodeUrls (
   return cloned
 }
 
+/**
+ * Check whether a network has at least one non-empty PPOI node URL.
+ * @param urls - Candidate node URLs.
+ * @returns True when at least one URL remains after trimming.
+ */
 function hasUsablePoiNodeUrls (urls: string[] | undefined): boolean {
   return urls?.some(url => url.trim().length > 0) ?? false
 }
 
+/**
+ * Resolve a wallet-sdk network name from a chain ID.
+ * @param chainId - EVM chain ID.
+ * @returns Matching network name when configured.
+ */
 function findNetworkByChainId (chainId: number): NetworkName | undefined {
   return (Object.values(NetworkName) as NetworkName[])
     .find(network => NETWORK_CONFIG[network].chainID === chainId)
@@ -522,6 +537,10 @@ class RailgunClient {
         ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
         ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
         ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
+        /**
+         * Forward decrypt progress to caller and event subscribers.
+         * @param progress - Wallet decryption progress update.
+         */
         onProgress: (progress) => {
           params.onProgress?.(progress)
           this.#emitProgress(progress, chainId, walletId)
@@ -644,6 +663,14 @@ class RailgunClient {
     }
   }
 
+  /**
+   * Refresh PPOI status for a PPOI-enabled network after sync.
+   * @param walletId - Wallet whose notes should be refreshed.
+   * @param chainId - Chain ID to scope note updates.
+   * @param network - Network whose PPOI config applies.
+   * @param onProgress - Optional sync progress callback.
+   * @returns PPOI refresh summary.
+   */
   #refreshPoiStatusForNetwork (
     walletId: string,
     chainId: number,
@@ -661,6 +688,10 @@ class RailgunClient {
     })
   }
 
+  /**
+   * Ensure configured PPOI networks have usable node URLs.
+   * @param network - Network to validate.
+   */
   #assertPoiNodeUrls (network: NetworkName): void {
     if (
       NETWORK_CONFIG[network].poi !== undefined &&
@@ -708,6 +739,11 @@ class RailgunClient {
     }
   }
 
+  /**
+   * Emit an event when the client is still open.
+   * @param event - Event name.
+   * @param payload - Event payload.
+   */
   #emit<E extends keyof RailgunEventMap> (
     event: E,
     payload: RailgunEventMap[E]
@@ -716,6 +752,12 @@ class RailgunClient {
     this.#bus.emit(event, payload)
   }
 
+  /**
+   * Map internal sync progress to public event payloads.
+   * @param progress - Internal sync progress update.
+   * @param chainId - Chain ID for the event payload.
+   * @param walletId - Optional wallet ID for wallet-scoped phases.
+   */
   #emitProgress (
     progress: SyncProgress,
     chainId: number,
@@ -758,6 +800,11 @@ function countCoveredBlocks (
   return toBlock - fromBlock + 1n
 }
 
+/**
+ * Convert thrown values to Error instances.
+ * @param err - Thrown value.
+ * @returns Error instance.
+ */
 function toError (err: unknown): Error {
   return err instanceof Error ? err : new Error(String(err))
 }

@@ -1,15 +1,16 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+
 import type { DBNewNote, WalletDB } from '@railgun-reloaded/storage'
 import {
   createWallet,
   createWalletDB,
   insertNotesBatch
 } from '@railgun-reloaded/storage'
-import assert from 'node:assert/strict'
-import { test } from 'node:test'
 
 import { POIStatus, WalletBalanceBucket } from '../../src/poi'
-import { BalanceService } from '../../src/services/balance/balance-service'
 import type { TokenBalance } from '../../src/services/balance/balance-service'
+import { BalanceService } from '../../src/services/balance/balance-service'
 
 const WALLET_ID = 'wallet-id'
 const CHAIN_ID = 11155111
@@ -21,6 +22,10 @@ const TRANSACT_COMMITMENT_TYPE = 1
 const OUTPUT_TYPE_TRANSFER = 0
 const OUTPUT_TYPE_CHANGE = 2
 
+/**
+ * Create an in-memory wallet database for bucket tests.
+ * @returns Wallet database.
+ */
 function memWalletDB (): WalletDB {
   return createWalletDB({
     path: ':memory:',
@@ -29,6 +34,10 @@ function memWalletDB (): WalletDB {
   })
 }
 
+/**
+ * Seed the bucket test wallet.
+ * @param db - Wallet database.
+ */
 function seedWallet (db: WalletDB): void {
   createWallet(db, {
     id: WALLET_ID,
@@ -37,10 +46,21 @@ function seedWallet (db: WalletDB): void {
   })
 }
 
+/**
+ * Create deterministic 32-byte fixture data.
+ * @param value - Byte value to repeat.
+ * @returns Fixture bytes.
+ */
 function bytes (value: number): Uint8Array {
   return new Uint8Array(32).fill(value)
 }
 
+/**
+ * Create a note fixture with spendable defaults.
+ * @param index - Fixture index used for unique bytes and positions.
+ * @param overrides - Optional note fields to override.
+ * @returns New note row.
+ */
 function noteFixture (
   index: number,
   overrides: Partial<DBNewNote> = {}
@@ -65,18 +85,39 @@ function noteFixture (
   }
 }
 
+/**
+ * Insert note fixtures into the wallet database.
+ * @param db - Wallet database.
+ * @param notes - Note rows to insert.
+ */
 function seedNotes (db: WalletDB, notes: DBNewNote[]): void {
   insertNotesBatch(db, notes)
 }
 
+/**
+ * Read one token balance from an array.
+ * @param balances - Token balances to search.
+ * @param token - Token address to find.
+ * @returns Balance for the token, or zero when absent.
+ */
 function balanceOf (balances: TokenBalance[], token: string): bigint {
   return balances.find(balance => balance.token === token)?.balance ?? 0n
 }
 
+/**
+ * Sort balances by token address for deterministic assertions.
+ * @param balances - Token balances to sort.
+ * @returns Sorted token balances.
+ */
 function sortBalances (balances: TokenBalance[]): TokenBalance[] {
   return [...balances].sort((a, b) => a.token.localeCompare(b.token))
 }
 
+/**
+ * Sum every bucket into aggregate token balances.
+ * @param byBucket - Bucketed balance response.
+ * @returns Aggregate balances across all buckets.
+ */
 function sumBucketBalances (
   byBucket: Record<WalletBalanceBucket, TokenBalance[]>
 ): TokenBalance[] {

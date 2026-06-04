@@ -2,9 +2,9 @@ import type { NetworkName } from '../network-config'
 
 import type {
   BlindedCommitmentData,
-  POIsPerList
+  POIsPerList,
+  TXIDVersion
 } from './types'
-import type { TXIDVersion } from './types'
 
 enum POIJSONRPCMethod {
   POIsPerList = 'ppoi_pois_per_list'

@@ -332,6 +332,12 @@ async function runWalletDecryption (
   }
 }
 
+/**
+ * Build a stable key for a nullifier scoped to one tree.
+ * @param nullifier - Nullifier bytes.
+ * @param treeNumber - Tree number containing the nullifier.
+ * @returns String key for map lookups.
+ */
 function nullifierKey (nullifier: Uint8Array, treeNumber: number): string {
   return `${bytesToHex(nullifier)}:${treeNumber}`
 }

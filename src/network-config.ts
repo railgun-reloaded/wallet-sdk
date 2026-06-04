@@ -1,5 +1,5 @@
-import { SEPOLIA_POI_CONFIG } from './poi/network-config'
 import type { NetworkPoiConfig } from './poi/network-config'
+import { SEPOLIA_POI_CONFIG } from './poi/network-config'
 
 enum NetworkName {
   Ethereum = 'Ethereum',

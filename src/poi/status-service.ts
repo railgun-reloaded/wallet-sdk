@@ -6,17 +6,17 @@ import {
 } from '@railgun-reloaded/storage'
 
 import type { NetworkName } from '../network-config'
-import { SyncPhase } from '../sync/wallet-decryptor'
 import type { SyncProgress } from '../sync/wallet-decryptor'
+import { SyncPhase } from '../sync/wallet-decryptor'
 
 import { getBlindedCommitmentForShieldOrTransact } from './blinded-commitment'
-import { GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS } from './node-client'
+import { getRequiredListKeys } from './network-config'
 import type { PoiNodeClient } from './node-client'
+import { GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS } from './node-client'
 import {
   PoiNodeAllUrlsFailedError,
   PoiNodeNetworkError
 } from './node-client-errors'
-import { getRequiredListKeys } from './network-config'
 import type { GetPOIsPerListParams } from './node-client-types'
 import type { RequiredListKey } from './types'
 import { BlindedCommitmentType, POIStatus, TXIDVersion } from './types'
@@ -54,13 +54,25 @@ const TRANSACT_COMMITMENT_TYPE = 1
 const TREE_LEAF_COUNT = 65536n
 const ZERO_BLOCK = 0n
 
+/**
+ * Refreshes stored note PPOI statuses from a PPOI node.
+ */
 class PoiStatusService {
+  /** Wallet database containing decrypted notes. */
   readonly #walletDb: WalletDB
+  /** PPOI node client used for status lookups. */
   readonly #poiNodeClient: PoiStatusClient
+  /** Network whose PPOI config is being refreshed. */
   readonly #network: NetworkName
+  /** Required PPOI list keys to check. */
   readonly #listKeys: RequiredListKey[]
+  /** TXID version sent to the PPOI node. */
   readonly #txidVersion: TXIDVersion
 
+  /**
+   * Build a PPOI status refresh service.
+   * @param options - Wallet DB, node client, network, and optional list config.
+   */
   constructor (options: PoiStatusServiceOptions) {
     this.#walletDb = options.walletDb
     this.#poiNodeClient = options.poiNodeClient
@@ -69,6 +81,13 @@ class PoiStatusService {
     this.#txidVersion = options.txidVersion ?? TXIDVersion.V2_PoseidonMerkle
   }
 
+  /**
+   * Refresh persisted PPOI status for candidate notes in one wallet.
+   * @param walletId - Wallet whose notes should be refreshed.
+   * @param chainId - Chain ID to scope note reads and writes.
+   * @param options - Optional progress callback.
+   * @returns Refresh summary counters.
+   */
   async refresh (
     walletId: string,
     chainId: number,
@@ -114,11 +133,16 @@ class PoiStatusService {
       await this.#refreshEntries(batch, summary, options.onProgress)
     }
 
-    // T5 sent_commitments / unshield_poi_status refresh is deferred for the demo path.
     emitPoiProgress(options.onProgress, summary)
     return summary
   }
 
+  /**
+   * Refresh one batch of blinded commitments, splitting retryable failures.
+   * @param entries - Candidate note entries for this batch.
+   * @param summary - Mutable summary counters for the full refresh.
+   * @param onProgress - Optional progress callback.
+   */
   async #refreshEntries (
     entries: RefreshEntry[],
     summary: RefreshSummary,
@@ -170,6 +194,12 @@ class PoiStatusService {
   }
 }
 
+/**
+ * Decide whether a stored note needs a PPOI refresh.
+ * @param note - Stored note row.
+ * @param listKeys - Required list keys for the network.
+ * @returns True when the note is missing a valid required status.
+ */
 function shouldRefreshPoiStatus (
   note: DBNote,
   listKeys: RequiredListKey[]
@@ -185,6 +215,11 @@ function shouldRefreshPoiStatus (
   return listKeys.some(key => poisPerList[key] !== POIStatus.Valid)
 }
 
+/**
+ * Convert a note row into a PPOI node request entry.
+ * @param note - Stored note row.
+ * @returns Request entry with blinded commitment metadata.
+ */
 function noteToRefreshEntry (note: DBNote): RefreshEntry {
   const type = getBlindedCommitmentType(note.commitmentType)
   const blindedCommitment = note.blindedCommitment ??
@@ -201,6 +236,11 @@ function noteToRefreshEntry (note: DBNote): RefreshEntry {
   }
 }
 
+/**
+ * Map storage commitment type integers to PPOI blinded commitment types.
+ * @param commitmentType - Stored note commitment type.
+ * @returns PPOI blinded commitment type.
+ */
 function getBlindedCommitmentType (
   commitmentType: number
 ): BlindedCommitmentType.Shield | BlindedCommitmentType.Transact {
@@ -213,6 +253,11 @@ function getBlindedCommitmentType (
   throw new Error(`Unsupported commitment type: ${commitmentType}`)
 }
 
+/**
+ * Derive a stored note's blinded commitment when it is not yet persisted.
+ * @param note - Stored note row with commitment, NPK, and tree position.
+ * @returns Derived blinded commitment bytes.
+ */
 function deriveBlindedCommitment (note: DBNote): Uint8Array {
   if (note.npk === null) {
     throw new Error('Cannot derive blinded commitment without npk')
@@ -226,6 +271,11 @@ function deriveBlindedCommitment (note: DBNote): Uint8Array {
   })
 }
 
+/**
+ * Decide whether a failed batch should be split and retried.
+ * @param error - Error thrown while refreshing a batch.
+ * @returns True for retryable non-network failures.
+ */
 function shouldSplitFailure (error: Error): boolean {
   if (error instanceof PoiNodeNetworkError) {
     return false
@@ -237,6 +287,12 @@ function shouldSplitFailure (error: Error): boolean {
   return true
 }
 
+/**
+ * Emit a PPOI refresh progress update.
+ * @param onProgress - Optional progress callback.
+ * @param summary - Current refresh summary counters.
+ * @param error - Optional error for failed entries.
+ */
 function emitPoiProgress (
   onProgress: RefreshOptions['onProgress'],
   summary: RefreshSummary,
@@ -255,12 +311,23 @@ function emitPoiProgress (
   })
 }
 
+/**
+ * Convert thrown values to Error instances.
+ * @param error - Thrown value.
+ * @returns Error instance.
+ */
 function toError (error: unknown): Error {
   return error instanceof Error
     ? error
     : new Error(String(error))
 }
 
+/**
+ * Split an array into fixed-size chunks.
+ * @param values - Values to split.
+ * @param size - Maximum chunk size.
+ * @returns Chunked values.
+ */
 function chunk<T> (values: T[], size: number): T[][] {
   const chunks: T[][] = []
   for (let index = 0; index < values.length; index += size) {

@@ -146,6 +146,8 @@ class RailgunEngine {
    * @param options.onBatch - Fired after each batch is committed to chain.db
    *   with the resolved scan start and the highest block number in that
    *   batch. Synchronous; throwing aborts the run.
+   * @param options.persistRailgunTransactions - Whether to persist PPOI
+   *   Railgun transaction rows while denormalizing blocks.
    * @returns Last block number written to chain.db, or `undefined` when the
    *   source had nothing to yield.
    */

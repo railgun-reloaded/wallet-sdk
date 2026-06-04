@@ -2,14 +2,33 @@ import type { NetworkName } from '../network-config'
 
 import type { POIJSONRPCMethod } from './node-client-types'
 
+/**
+ * Error returned by a PPOI node JSON-RPC response.
+ */
 class PoiNodeRpcError extends Error {
+  /** Error class name. */
   override readonly name = 'PoiNodeRpcError'
+  /** PPOI node URL that returned the error. */
   readonly url: string
+  /** Network targeted by the request. */
   readonly network: NetworkName
+  /** JSON-RPC method that failed. */
   readonly method: POIJSONRPCMethod
+  /** JSON-RPC error code. */
   readonly code: number
+  /** Optional JSON-RPC error data payload. */
   readonly data: unknown | undefined
 
+  /**
+   * Build a typed JSON-RPC error.
+   * @param params - Error construction params.
+   * @param params.url - PPOI node URL that returned the error.
+   * @param params.network - Network targeted by the request.
+   * @param params.method - JSON-RPC method that failed.
+   * @param params.code - JSON-RPC error code.
+   * @param params.message - JSON-RPC error message.
+   * @param params.data - Optional JSON-RPC error data.
+   */
   constructor (
     params: {
       url: string
@@ -29,15 +48,36 @@ class PoiNodeRpcError extends Error {
   }
 }
 
+/**
+ * Transport or malformed-response error from a PPOI node request.
+ */
 class PoiNodeNetworkError extends Error {
+  /** Error class name. */
   override readonly name = 'PoiNodeNetworkError'
+  /** PPOI node URL that failed. */
   readonly url: string
+  /** Network targeted by the request. */
   readonly network: NetworkName
+  /** JSON-RPC method that failed. */
   readonly method: POIJSONRPCMethod
+  /** HTTP status code when a response was received. */
   readonly status: number | undefined
+  /** Raw response body when it could be read. */
   readonly responseBody: string | undefined
+  /** Underlying thrown value, if any. */
   override readonly cause: unknown
 
+  /**
+   * Build a typed network or decoding error.
+   * @param params - Error construction params.
+   * @param params.url - PPOI node URL that failed.
+   * @param params.network - Network targeted by the request.
+   * @param params.method - JSON-RPC method that failed.
+   * @param params.message - Error message.
+   * @param params.status - Optional HTTP status code.
+   * @param params.responseBody - Optional raw response body.
+   * @param params.cause - Optional underlying thrown value.
+   */
   constructor (
     params: {
       url: string
@@ -59,14 +99,31 @@ class PoiNodeNetworkError extends Error {
   }
 }
 
+/**
+ * Aggregate error thrown after every configured PPOI node URL fails.
+ */
 class PoiNodeAllUrlsFailedError extends Error {
+  /** Error class name. */
   override readonly name = 'PoiNodeAllUrlsFailedError'
+  /** Network targeted by the request. */
   readonly network: NetworkName
+  /** JSON-RPC method that failed. */
   readonly method: POIJSONRPCMethod
+  /** URLs attempted in order. */
   readonly attemptedUrls: string[]
+  /** Per-URL errors captured during retries. */
   readonly errors: Error[]
+  /** Last captured error, when at least one URL was attempted. */
   readonly lastError: Error | undefined
 
+  /**
+   * Build an aggregate PPOI node failure.
+   * @param params - Error construction params.
+   * @param params.network - Network targeted by the request.
+   * @param params.method - JSON-RPC method that failed.
+   * @param params.attemptedUrls - URLs attempted in order.
+   * @param params.errors - Per-URL errors captured during retries.
+   */
   constructor (
     params: {
       network: NetworkName

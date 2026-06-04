@@ -3,16 +3,16 @@ import { test } from 'node:test'
 
 import { bytesToBigInt, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 
+import type {
+  ShieldOrTransactBlindedCommitmentInput,
+  UnshieldBlindedCommitmentInput
+} from '../../src/poi'
 import {
   BlindedCommitmentInputError,
   BlindedCommitmentType,
   getBlindedCommitment,
   getBlindedCommitmentForShieldOrTransact,
   getBlindedCommitmentForUnshield
-} from '../../src/poi'
-import type {
-  ShieldOrTransactBlindedCommitmentInput,
-  UnshieldBlindedCommitmentInput
 } from '../../src/poi'
 
 type ShieldOrTransactFixture = ShieldOrTransactBlindedCommitmentInput & { expected: string }
@@ -83,11 +83,21 @@ const UNSHIELD_FIXTURES: UnshieldFixture[] = [
   }
 ]
 
+/**
+ * Assert that bytes match an expected 32-byte hex string.
+ * @param actual - Actual byte output.
+ * @param expected - Expected lowercase hex string.
+ */
 function assertHex (actual: Uint8Array, expected: string): void {
   assert.strictEqual(actual.length, 32)
   assert.strictEqual(bytesToHex(actual), expected)
 }
 
+/**
+ * Assert that a derivation call fails validation for one field.
+ * @param fn - Function expected to throw.
+ * @param field - Expected failing field name.
+ */
 function assertInputError (fn: () => void, field: string): void {
   try {
     fn()
