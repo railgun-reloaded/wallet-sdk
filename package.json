@@ -8,6 +8,7 @@
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "tsc --build",
+    "prepare": "tsc --build",
     "clean": "tsc --build --clean && find src test -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete && rm -f tsconfig.tsbuildinfo tsconfig.test.tsbuildinfo",
     "rebuild": "npm run clean && npm run build",
     "pretest": "npm run rebuild",
