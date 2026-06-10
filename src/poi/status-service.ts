@@ -18,6 +18,7 @@ import {
   PoiNodeNetworkError
 } from './node-client-errors'
 import type { GetPOIsPerListParams } from './node-client-types'
+import { PoiStatusRefreshError } from './status-errors'
 import type { RequiredListKey } from './types'
 import { BlindedCommitmentType, POIStatus, TXIDVersion } from './types'
 
@@ -46,7 +47,6 @@ type RefreshEntry = NoteIdentity & {
   blindedCommitment: Uint8Array
   blindedCommitmentHex: string
   type: BlindedCommitmentType.Shield | BlindedCommitmentType.Transact
-  hadStoredBlindedCommitment: boolean
 }
 
 const SHIELD_COMMITMENT_TYPE = 0
@@ -106,22 +106,17 @@ class PoiStatusService {
     for (const note of candidates) {
       try {
         entries.push(noteToRefreshEntry(note))
-      } catch {
-        summary.skipped += 1
+      } catch (error) {
+        summary.failed += 1
+        emitPoiProgress(options.onProgress, summary, new PoiStatusRefreshError({
+          code: 'BlindedCommitmentDerivationFailed',
+          walletId: note.walletId,
+          chainId: note.chainId,
+          message: 'Failed to derive blinded commitment for received note',
+          cause: error
+        }))
       }
     }
-
-    const blindedOnlyUpdates = entries
-      .filter(entry => !entry.hadStoredBlindedCommitment)
-      .map(entry => ({
-        walletId: entry.walletId,
-        chainId: entry.chainId,
-        commitment: entry.commitment,
-        blindedCommitment: entry.blindedCommitment,
-        poisPerList: null
-      }))
-
-    updateNotePoiStatusBatch(this.#walletDb, blindedOnlyUpdates)
 
     if (this.#listKeys.length === 0) {
       summary.skipped += entries.length
@@ -150,8 +145,9 @@ class PoiStatusService {
   ): Promise<void> {
     if (entries.length === 0) return
 
+    let response: Awaited<ReturnType<PoiStatusClient['getPOIsPerList']>>
     try {
-      const response = await this.#poiNodeClient.getPOIsPerList({
+      response = await this.#poiNodeClient.getPOIsPerList({
         network: this.#network,
         txidVersion: this.#txidVersion,
         listKeys: this.#listKeys,
@@ -160,25 +156,6 @@ class PoiStatusService {
           type: entry.type
         }))
       } satisfies GetPOIsPerListParams)
-
-      const updates: NotePoiStatusUpdate[] = []
-      for (const entry of entries) {
-        const poisPerList = response[entry.blindedCommitmentHex]
-        if (poisPerList === undefined) {
-          summary.skipped += 1
-          continue
-        }
-        updates.push({
-          walletId: entry.walletId,
-          chainId: entry.chainId,
-          commitment: entry.commitment,
-          blindedCommitment: entry.blindedCommitment,
-          poisPerList
-        })
-      }
-
-      summary.updated += updateNotePoiStatusBatch(this.#walletDb, updates)
-      emitPoiProgress(onProgress, summary)
     } catch (error) {
       const typedError = toError(error)
       if (entries.length > 1 && shouldSplitFailure(typedError)) {
@@ -190,7 +167,62 @@ class PoiStatusService {
 
       summary.failed += entries.length
       emitPoiProgress(onProgress, summary, typedError)
+      return
     }
+
+    const updates: NotePoiStatusUpdate[] = []
+    const missingEntries: RefreshEntry[] = []
+    for (const entry of entries) {
+      const poisPerList = response[entry.blindedCommitmentHex]
+      if (poisPerList === undefined) {
+        missingEntries.push(entry)
+        continue
+      }
+      updates.push({
+        walletId: entry.walletId,
+        chainId: entry.chainId,
+        commitment: entry.commitment,
+        blindedCommitment: entry.blindedCommitment,
+        poisPerList
+      })
+    }
+
+    if (updates.length > 0) {
+      try {
+        const persisted = updateNotePoiStatusBatch(this.#walletDb, updates)
+        summary.updated += persisted
+        if (persisted < updates.length) {
+          summary.failed += updates.length - persisted
+          emitPoiProgress(onProgress, summary, new PoiStatusRefreshError({
+            code: 'StatusPersistenceFailed',
+            walletId: entries[0]!.walletId,
+            chainId: entries[0]!.chainId,
+            message: `Failed to persist ${updates.length - persisted} POI status update(s)`
+          }))
+        }
+      } catch (error) {
+        summary.failed += updates.length
+        emitPoiProgress(onProgress, summary, new PoiStatusRefreshError({
+          code: 'StatusPersistenceFailed',
+          walletId: entries[0]!.walletId,
+          chainId: entries[0]!.chainId,
+          message: `Failed to persist ${updates.length} POI status update(s)`,
+          cause: error
+        }))
+      }
+    }
+
+    if (missingEntries.length > 0) {
+      summary.failed += missingEntries.length
+      emitPoiProgress(onProgress, summary, new PoiStatusRefreshError({
+        code: 'MissingStatusResponse',
+        walletId: missingEntries[0]!.walletId,
+        chainId: missingEntries[0]!.chainId,
+        message: `PPOI node omitted ${missingEntries.length} requested status result(s)`
+      }))
+    }
+
+    emitPoiProgress(onProgress, summary)
   }
 }
 
@@ -231,8 +263,7 @@ function noteToRefreshEntry (note: DBNote): RefreshEntry {
     commitment: note.commitment,
     blindedCommitment,
     blindedCommitmentHex: bytesToHex(blindedCommitment, { prefix: true }),
-    type,
-    hadStoredBlindedCommitment: note.blindedCommitment !== null
+    type
   }
 }
 

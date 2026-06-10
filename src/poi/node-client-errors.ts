@@ -115,6 +115,8 @@ class PoiNodeAllUrlsFailedError extends Error {
   readonly errors: Error[]
   /** Last captured error, when at least one URL was attempted. */
   readonly lastError: Error | undefined
+  /** Final typed failure exposed through the standard error chain. */
+  override readonly cause: Error | undefined
 
   /**
    * Build an aggregate PPOI node failure.
@@ -142,6 +144,7 @@ class PoiNodeAllUrlsFailedError extends Error {
     this.attemptedUrls = [...params.attemptedUrls]
     this.errors = [...params.errors]
     this.lastError = lastError
+    this.cause = lastError
   }
 }
 

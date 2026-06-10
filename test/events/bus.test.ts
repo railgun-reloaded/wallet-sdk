@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { EventBus } from '../../src/events/bus'
+import { WalletBalanceBucket } from '../../src/poi'
 
 /**
  * Default balance:update payload — override only fields a test cares about.
@@ -15,7 +16,17 @@ function balancePayload (overrides: Partial<{
   return {
     walletId: 'w',
     chainId: 1,
-    balances: [],
+    total: [],
+    spendable: [],
+    byBucket: {
+      [WalletBalanceBucket.Spendable]: [],
+      [WalletBalanceBucket.ShieldPending]: [],
+      [WalletBalanceBucket.ShieldBlocked]: [],
+      [WalletBalanceBucket.ProofSubmitted]: [],
+      [WalletBalanceBucket.MissingInternalPOI]: [],
+      [WalletBalanceBucket.MissingExternalPOI]: [],
+      [WalletBalanceBucket.Spent]: []
+    },
     notesAdded: 0,
     notesSpent: 0,
     timestamp: new Date(),

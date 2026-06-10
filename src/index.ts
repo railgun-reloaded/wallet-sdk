@@ -1,6 +1,7 @@
 export { RailgunClient } from './client'
 export type {
   BalanceMode,
+  BalanceSnapshot,
   DecryptedNote,
   DecryptParams,
   RailgunClientOptions,
@@ -44,6 +45,8 @@ export {
   PoiNodeNetworkError,
   PoiNodeRpcError,
   PoiNodeUrlsRequiredError,
+  PoiRpcSourceUnsupportedError,
+  PoiStatusRefreshError,
   PoiStatusService,
   SEPOLIA_POI_CONFIG,
   SEPOLIA_REQUIRED_LIST_KEYS,
@@ -73,6 +76,7 @@ export type {
   POIsPerListResponse,
   PoiNodeClientOptions,
   PoiStatusClient,
+  PoiStatusRefreshErrorCode,
   PoiStatusServiceOptions,
   RefreshOptions,
   RefreshSummary,

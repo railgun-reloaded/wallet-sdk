@@ -59,7 +59,7 @@ function missingPoiBucket (note: DBNote): WalletBalanceBucket {
 /**
  * Classify a note into a wallet balance bucket.
  * @param note - Stored wallet note.
- * @param network - Network config containing required PPOI lists.
+ * @param network - Network config with optional PPOI requirements.
  * @returns Balance bucket for spendability and PPOI state.
  */
 function classifyNote (
@@ -71,7 +71,7 @@ function classifyNote (
   }
 
   if (network.poi === undefined) {
-    throw new Error(`Missing PPOI config for chain ${network.chainID}`)
+    return WalletBalanceBucket.Spendable
   }
 
   if (note.poisPerList == null) {

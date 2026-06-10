@@ -2,7 +2,10 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 
-import type { EVMBlock } from '@railgun-reloaded/scanner'
+import type {
+  EVMBlock,
+  PpoiDataSourceCapability
+} from '@railgun-reloaded/scanner'
 import { SourceAggregator } from '@railgun-reloaded/scanner'
 import type {
   ChainDB,
@@ -55,6 +58,8 @@ function memChainDB () {
  * Minimal data source fake for scan/sync event tests.
  */
 class FakeSource {
+  /** PPOI transaction data guarantee for this fixture. */
+  readonly capabilities: { ppoiData: PpoiDataSourceCapability }
   /** Required by SourceAggregator to treat this as finite history. */
   isLiveProvider = false
   /** Buffered blocks to replay. */
@@ -66,10 +71,16 @@ class FakeSource {
    * Construct a fake source.
    * @param blocks - Blocks to yield in ascending order.
    * @param headHeight - Optional source head override.
+   * @param ppoiData - PPOI data guarantee for the buffered blocks.
    */
-  constructor (blocks: EVMBlock[], headHeight?: bigint) {
+  constructor (
+    blocks: EVMBlock[],
+    headHeight?: bigint,
+    ppoiData: PpoiDataSourceCapability = 'incomplete'
+  ) {
     this.#blocks = blocks
     this.#headHeight = headHeight
+    this.capabilities = { ppoiData }
   }
 
   /**
@@ -108,6 +119,8 @@ class FakeSource {
  * Source that fails after scan starts, used to assert sync:error emission.
  */
 class FailingSource {
+  /** The source fails before it can provide PPOI transaction data. */
+  readonly capabilities = { ppoiData: 'incomplete' } as const
   /** Required by SourceAggregator to treat this as finite history. */
   isLiveProvider = false
   /** Error thrown from iteration. */
@@ -260,7 +273,7 @@ test('decrypt no-op suppresses balance:update when notes are unchanged', async (
   seedNotes(walletDB, wallet.walletId, [noteFixture(wallet.walletId)])
 
   const balanceEvents: number[] = []
-  client.on('balance:update', (e) => balanceEvents.push(e.balances.length))
+  client.on('balance:update', (e) => balanceEvents.push(e.total.length))
 
   await client.decrypt(wallet.walletId, encryptionKey, {
     chainId: SEPOLIA_CHAIN_ID,
@@ -297,8 +310,8 @@ test('balance:update fires with a fresh snapshot when decrypt marks a note spent
   const balanceEvents: Array<{ spent: number, len: number, balance: bigint | undefined }> = []
   client.on('balance:update', (e) => balanceEvents.push({
     spent: e.notesSpent,
-    len: e.balances.length,
-    balance: e.balances[0]?.balance
+    len: e.total.length,
+    balance: e.total[0]?.balance
   }))
 
   const summary = await client.decrypt(wallet.walletId, encryptionKey, {
@@ -329,7 +342,7 @@ test('balance:update fires with a fresh snapshot when decrypt adds notes', async
     order.push('balance')
     balanceEvents.push({
       added: e.notesAdded,
-      len: e.balances.length,
+      len: e.total.length,
       walletId: e.walletId
     })
   })
@@ -338,7 +351,7 @@ test('balance:update fires with a fresh snapshot when decrypt adds notes', async
   await client.scan({
     network: NetworkName.EthereumSepolia,
     dataSource: new SourceAggregator<EVMBlock>([
-      new FakeSource([TEST_VECTOR_TRANSACT])
+      new FakeSource([TEST_VECTOR_TRANSACT], undefined, 'complete')
     ]),
     endBlock: TEST_VECTOR_TRANSACT.number
   })
@@ -467,11 +480,11 @@ test('sync() emits balance:update before outer completion when balances change',
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
 
   const order: string[] = []
-  const snapshots: Array<{ balances: number, chainId: number, walletId: string }> = []
+  const snapshots: Array<{ total: number, chainId: number, walletId: string }> = []
   client.on('balance:update', (event) => {
     order.push('balance')
     snapshots.push({
-      balances: event.balances.length,
+      total: event.total.length,
       chainId: event.chainId,
       walletId: event.walletId
     })
@@ -481,7 +494,7 @@ test('sync() emits balance:update before outer completion when balances change',
   const summary = await client.sync(wallet.walletId, encryptionKey, {
     network: NetworkName.EthereumSepolia,
     dataSource: new SourceAggregator<EVMBlock>([
-      new FakeSource([TEST_VECTOR_TRANSACT])
+      new FakeSource([TEST_VECTOR_TRANSACT], undefined, 'complete')
     ]),
     endBlock: TEST_VECTOR_TRANSACT.number,
     fromBlock: TEST_VECTOR_TRANSACT.number,
@@ -491,7 +504,7 @@ test('sync() emits balance:update before outer completion when balances change',
 
   assert.ok(summary.decrypt.notesAdded >= 1, 'sync decrypted a new note')
   assert.equal(snapshots.length, 1, 'one balance snapshot emitted')
-  assert.ok(snapshots[0]!.balances >= 1, 'snapshot includes persisted balances')
+  assert.ok(snapshots[0]!.total >= 1, 'snapshot includes persisted balances')
   assert.equal(snapshots[0]!.chainId, SEPOLIA_CHAIN_ID, 'snapshot scoped to chain')
   assert.equal(snapshots[0]!.walletId, wallet.walletId, 'snapshot scoped to wallet')
   assert.ok(

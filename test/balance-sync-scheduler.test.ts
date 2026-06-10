@@ -24,6 +24,8 @@ const KEY_B = new Uint8Array(32).fill(2)
  * non-live source so the aggregator drains immediately to head.
  */
 class EmptySource {
+  /** This scheduler fake does not provide PPOI transaction data. */
+  readonly capabilities = { ppoiData: 'incomplete' } as const
   /** Required by DataSource — non-live so the aggregator drains to its head. */
   isLiveProvider = false
 

@@ -3,6 +3,7 @@ import type {
   EVMBlock,
   EncryptedCommitment,
   GeneratedCommitment,
+  PpoiDataSourceCapability,
   ScannedRailgunTransaction,
   Shield,
   ShieldCommitment,
@@ -59,18 +60,27 @@ function padCommitmentHash (hash: Uint8Array): Uint8Array {
 /**
  * Denormalize blockData into nullifiers and commitments
  * @param block - Input BlockData
+ * @param options - Source-specific denormalization options.
+ * @param options.sourceCapability - PPOI data guarantee for the source.
  * @returns - Denormalized nullifiers and commitments
  */
-function denormalizeBlockData (block : EVMBlock) : {
-  nullifiers: DBNewNullifier[],
-  commitments: DBNewCommitment[],
-  unshields: DBNewUnshield[],
-  railgunTransactions: DBNewRailgunTransaction[]
-} {
+function denormalizeBlockData (
+  block: EVMBlock,
+  options: {
+    sourceCapability?: PpoiDataSourceCapability | undefined
+  } = {}
+) : {
+    nullifiers: DBNewNullifier[],
+    commitments: DBNewCommitment[],
+    unshields: DBNewUnshield[],
+    railgunTransactions: DBNewRailgunTransaction[]
+  } {
   const nullifiers = new Array<DBNewNullifier>()
   const commitments = new Array<DBNewCommitment>()
   const unshields = new Array<DBNewUnshield>()
-  const railgunTransactions = extractRailgunTransactions(block).map(toDBRow)
+  const railgunTransactions = extractRailgunTransactions(block, {
+    sourceCapability: options.sourceCapability ?? 'incomplete'
+  }).map(toDBRow)
 
   const blockNumber = block.number
   for (const tx of block.transactions) {

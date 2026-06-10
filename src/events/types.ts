@@ -1,3 +1,4 @@
+import type { WalletBalanceBucket } from '../poi'
 import type { TokenBalance } from '../services/balance/balance-service'
 
 /**
@@ -62,15 +63,15 @@ type SyncErrorEvent = {
 }
 
 /**
- * Fired after `decrypt`/`sync` when notes were added or spent and cached
- * balances have been recalculated. Carries the full balance snapshot read
- * fresh from wallet.db. No-op runs signal completion through `sync:complete`
- * without emitting this event.
+ * Fired after standalone decrypt changes, or once after sync finishes decrypt
+ * and optional POI refresh. Every view comes from one wallet-note snapshot.
  */
 type BalanceUpdateEvent = {
   walletId: string
   chainId: number
-  balances: TokenBalance[]
+  total: TokenBalance[]
+  spendable: TokenBalance[]
+  byBucket: Record<WalletBalanceBucket, TokenBalance[]>
   notesAdded: number
   notesSpent: number
   timestamp: Date

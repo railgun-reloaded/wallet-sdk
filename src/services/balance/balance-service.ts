@@ -22,6 +22,12 @@ type TokenBalance = {
 
 type BalanceMode = 'spendable' | 'all' | WalletBalanceBucket
 
+type BalanceSnapshot = {
+  total: TokenBalance[]
+  spendable: TokenBalance[]
+  byBucket: Record<WalletBalanceBucket, TokenBalance[]>
+}
+
 /**
  * A note owned by a wallet. Bytes columns are exposed as 0x-prefixed lowercase
  * hex; the leaf index is widened to bigint for uniformity with `blockNumber`
@@ -119,15 +125,15 @@ function createEmptyBucketBalances (): Record<WalletBalanceBucket, TokenBalance[
 }
 
 /**
- * Resolve the PPOI-enabled network config for a chain ID.
+ * Resolve the configured network for a chain ID.
  * @param chainId - Chain ID to resolve.
- * @returns Network config with PPOI settings.
+ * @returns Matching network config.
  */
-function getPoiNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
+function getNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
   const network = Object.values(NETWORK_CONFIG)
     .find(network => network.chainID === chainId)
-  if (network?.poi === undefined) {
-    throw new Error(`Missing PPOI config for chain ${chainId}`)
+  if (network === undefined) {
+    throw new Error(`Missing network config for chain ${chainId}`)
   }
   return network
 }
@@ -219,8 +225,8 @@ class BalanceService {
 
   /**
    * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
-   * Balance reads require a configured PPOI network.
-   * The default mode returns only notes classified as Spendable.
+   * The default mode returns only notes classified as Spendable. On non-PPOI
+   * networks every unspent note is Spendable, so the default equals `all`.
    * @param walletId - Wallet ID returned by `createWallet`.
    * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
    * @param mode - Balance mode: default spendable, all unspent, or one bucket.
@@ -231,38 +237,22 @@ class BalanceService {
     chainId: number,
     mode: BalanceMode = 'spendable'
   ): Promise<TokenBalance[]> {
-    this.#assertWalletExists(walletId)
-    const network = getPoiNetworkConfigByChainId(chainId)
-    const notes = getUnspentNotes(this.#db, walletId, chainId)
-    if (notes.length === 0) {
-      return []
-    }
-
-    const balances = new Map<string, bigint>()
-
+    const snapshot = await this.getBalanceSnapshot(walletId, chainId)
     if (mode === 'all') {
-      for (const note of notes) {
-        addNoteBalance(balances, note)
-      }
-      return mapBalanceAccumulator(balances)
+      return snapshot.total
     }
 
     const targetBucket = mode === 'spendable'
       ? WalletBalanceBucket.Spendable
       : mode
 
-    for (const note of notes) {
-      const bucket = classifyNote(note, network)
-      if (bucket === targetBucket) {
-        addNoteBalance(balances, note)
-      }
-    }
-
-    return mapBalanceAccumulator(balances)
+    return snapshot.byBucket[targetBucket]
   }
 
   /**
-   * Read unspent ERC-20 balances grouped by POI balance bucket.
+   * Read unspent ERC-20 balances grouped by POI balance bucket. The Spent
+   * diagnostic bucket is always empty because this read intentionally starts
+   * from unspent notes; callers can inspect spent rows through `getNotes`.
    * @param walletId - Wallet ID returned by `createWallet`.
    * @param chainId - Chain id to scope the lookup to.
    * @returns Token balances keyed by `WalletBalanceBucket`.
@@ -271,20 +261,43 @@ class BalanceService {
     walletId: string,
     chainId: number
   ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
-    this.#assertWalletExists(walletId)
-    const network = getPoiNetworkConfigByChainId(chainId)
+    return (await this.getBalanceSnapshot(walletId, chainId)).byBucket
+  }
 
+  /**
+   * Read total, spendable, and bucketed balances from one unspent-note query.
+   * @param walletId - Wallet ID returned by `createWallet`.
+   * @param chainId - Chain id to scope the lookup to.
+   * @returns Consistent balance views derived from one logical note snapshot.
+   */
+  async getBalanceSnapshot (
+    walletId: string,
+    chainId: number
+  ): Promise<BalanceSnapshot> {
+    this.#assertWalletExists(walletId)
+    const network = getNetworkConfigByChainId(chainId)
     const notes = getUnspentNotes(this.#db, walletId, chainId)
     if (notes.length === 0) {
-      return createEmptyBucketBalances()
+      return {
+        total: [],
+        spendable: [],
+        byBucket: createEmptyBucketBalances()
+      }
     }
 
+    const total = new Map<string, bigint>()
     const accumulators = createBucketAccumulators()
     for (const note of notes) {
+      addNoteBalance(total, note)
       addNoteBalance(accumulators[classifyNote(note, network)], note)
     }
 
-    return mapBucketAccumulators(accumulators)
+    const byBucket = mapBucketAccumulators(accumulators)
+    return {
+      total: mapBalanceAccumulator(total),
+      spendable: byBucket[WalletBalanceBucket.Spendable],
+      byBucket
+    }
   }
 
   /**
@@ -309,4 +322,9 @@ class BalanceService {
 }
 
 export { BalanceService, mapNoteRow }
-export type { BalanceMode, DecryptedNote, TokenBalance }
+export type {
+  BalanceMode,
+  BalanceSnapshot,
+  DecryptedNote,
+  TokenBalance
+}

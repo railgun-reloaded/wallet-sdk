@@ -3,7 +3,7 @@ import path from 'path'
 
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
-import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertRailgunTransactions, insertUnshieldBatch, runDBTransaction, setMerkleTree, setTxidSyncCursor, updateSyncState } from '@railgun-reloaded/storage'
+import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, getTxidSyncCursor, insertCommitmentBatch, insertNullifiersBatch, insertRailgunTransactions, insertUnshieldBatch, runDBTransaction, setMerkleTree, setTxidSyncCursor, updateSyncState } from '@railgun-reloaded/storage'
 
 import { NoteCommitmentTree } from './merkle'
 import type { NetworkConfig, NetworkName } from './network-config'
@@ -179,8 +179,18 @@ class RailgunEngine {
 
     this.#loadMerkleTree()
 
-    const lastSyncedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
-    const startHeight = lastSyncedBlock ? lastSyncedBlock + 1n : this.#networkConfig.deploymentBlock
+    const syncState = getSyncState(this.#db, this.#networkConfig.chainID)
+    const lastSyncedBlock = syncState?.lastBlockHeight
+    const startHeight = lastSyncedBlock !== undefined
+      ? lastSyncedBlock + 1n
+      : this.#networkConfig.deploymentBlock
+    const persistRailgunTransactions = options.persistRailgunTransactions !== false
+    const txidStartHeight = syncState?.lastTxidSyncBlockHeight
+      ? syncState.lastTxidSyncBlockHeight + 1n
+      : this.#networkConfig.deploymentBlock
+    const canAdvanceTxidCursor =
+      persistRailgunTransactions &&
+      startHeight <= txidStartHeight
 
     const onBatch = options.onBatch
     const wrappedOnBatch = onBatch
@@ -190,7 +200,7 @@ class RailgunEngine {
       startHeight,
       options.endBlock,
       wrappedOnBatch,
-      options.persistRailgunTransactions !== false
+      canAdvanceTxidCursor
     )
   }
 
@@ -215,13 +225,15 @@ class RailgunEngine {
    * @param unshieldBatch - Batched Unshields to insert
    * @param railgunTransactionBatch - Batched Railgun TXID transactions to insert
    * @param blockNumber - Block number of last batched entry
+   * @param txidCursorBlock - Last PPOI-complete block in the batch.
    */
   #insertBatch (
     nullifierBatch: DBNewNullifier[],
     commitmentBatch: DBNewCommitment[],
     unshieldBatch: DBNewUnshield[],
     railgunTransactionBatch: DBNewRailgunTransaction[],
-    blockNumber: bigint
+    blockNumber: bigint,
+    txidCursorBlock?: bigint
   ) {
     // Update commitmentTree
     const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
@@ -244,6 +256,10 @@ class RailgunEngine {
       }
     }
 
+    const persistedTxid = getTxidSyncCursor(
+      this.#db!,
+      this.#networkConfig.chainID
+    )
     runDBTransaction(this.#db!, (tx) => {
       // We insert in batch to reduce the cost of updating database
       if (nullifierBatch.length > 0) {
@@ -256,10 +272,13 @@ class RailgunEngine {
         insertUnshieldBatch(tx, unshieldBatch)
       }
       if (railgunTransactionBatch.length > 0) {
-        const inserted = insertRailgunTransactions(tx, railgunTransactionBatch)
-        if (inserted > 0) {
-          setTxidSyncCursor(tx, this.#networkConfig.chainID, blockNumber)
-        }
+        insertRailgunTransactions(tx, railgunTransactionBatch)
+      }
+      if (
+        txidCursorBlock !== undefined &&
+        txidCursorBlock > persistedTxid
+      ) {
+        setTxidSyncCursor(tx, this.#networkConfig.chainID, txidCursorBlock)
       }
 
       updateSyncState(tx, this.#networkConfig.chainID, blockNumber)
@@ -310,13 +329,21 @@ class RailgunEngine {
 
     let blocksInBatch = 0
     let lastBlockNumber: bigint | undefined
+    let txidCursorBlock: bigint | undefined
     for await (const block of eventIterator) {
-      const { nullifiers, commitments, unshields, railgunTransactions } = denormalizeBlockData(block)
+      const sourcePpoiComplete =
+        persistRailgunTransactions &&
+        this.#dataSource.currentSourcePpoiComplete
+      const { nullifiers, commitments, unshields, railgunTransactions } =
+        denormalizeBlockData(block, {
+          sourceCapability: sourcePpoiComplete ? 'complete' : 'incomplete'
+        })
       nullifierBatch.push(...nullifiers)
       commitmentBatch.push(...commitments)
       unshieldBatch.push(...unshields)
-      if (persistRailgunTransactions) {
+      if (sourcePpoiComplete) {
         railgunTransactionBatch.push(...railgunTransactions)
+        txidCursorBlock = block.number
       }
       blocksInBatch += 1
       lastBlockNumber = block.number
@@ -327,7 +354,8 @@ class RailgunEngine {
           commitmentBatch,
           unshieldBatch,
           railgunTransactionBatch,
-          block.number
+          block.number,
+          txidCursorBlock
         )
         onBatch?.(block.number)
         blocksInBatch = 0
@@ -335,6 +363,7 @@ class RailgunEngine {
         nullifierBatch = []
         unshieldBatch = []
         railgunTransactionBatch = []
+        txidCursorBlock = undefined
       }
 
       if (endBlock !== undefined && block.number >= endBlock) {
@@ -348,7 +377,8 @@ class RailgunEngine {
         commitmentBatch,
         unshieldBatch,
         railgunTransactionBatch,
-        lastBlockNumber
+        lastBlockNumber,
+        txidCursorBlock
       )
       onBatch?.(lastBlockNumber)
     }
@@ -360,11 +390,26 @@ class RailgunEngine {
     // last event. Otherwise re-syncs replay the empty tail and the wallet
     // decryptor reads a stale `toBlock`.
     const coveredThrough = this.#dataSource.lastIteratedHeight ?? lastBlockNumber
-    if (coveredThrough !== undefined) {
+    const ppoiCoveredThrough = persistRailgunTransactions
+      ? this.#dataSource.lastPpoiCompleteHeight
+      : undefined
+    if (coveredThrough !== undefined || ppoiCoveredThrough !== undefined) {
       const persisted = getSyncState(this.#db!, this.#networkConfig.chainID)?.lastBlockHeight
-      if (persisted === undefined || coveredThrough > persisted) {
-        updateSyncState(this.#db!, this.#networkConfig.chainID, coveredThrough)
-      }
+      const persistedTxid = getTxidSyncCursor(this.#db!, this.#networkConfig.chainID)
+      runDBTransaction(this.#db!, (tx) => {
+        if (
+          coveredThrough !== undefined &&
+          (persisted === undefined || coveredThrough > persisted)
+        ) {
+          updateSyncState(tx, this.#networkConfig.chainID, coveredThrough)
+        }
+        if (
+          ppoiCoveredThrough !== undefined &&
+          ppoiCoveredThrough > persistedTxid
+        ) {
+          setTxidSyncCursor(tx, this.#networkConfig.chainID, ppoiCoveredThrough)
+        }
+      })
     }
 
     return coveredThrough

@@ -26,6 +26,13 @@ const PPOI_NETWORK: NetworkConfig = {
   }
 }
 
+const NON_PPOI_NETWORK: NetworkConfig = {
+  chainID: 1,
+  deploymentBlock: 1n,
+  proxyContractAddress: '0x0000000000000000000000000000000000000000',
+  rpcURL: 'https://rpc.example'
+}
+
 /**
  * Create deterministic 32-byte fixture data.
  * @param value - Byte value to repeat.
@@ -79,6 +86,17 @@ test('classifyNote returns Spent before every POI branch', () => {
       poisPerList: null
     }), PPOI_NETWORK),
     WalletBalanceBucket.Spent
+  )
+})
+
+test('classifyNote maps every unspent non-PPOI note to Spendable', () => {
+  assert.equal(
+    classifyNote(noteFixture({
+      chainId: 1,
+      commitmentType: SHIELD_COMMITMENT_TYPE,
+      poisPerList: null
+    }), NON_PPOI_NETWORK),
+    WalletBalanceBucket.Spendable
   )
 })
 

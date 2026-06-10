@@ -28,8 +28,10 @@ import {
   PoiNodeUrlsRequiredError,
   PoiStatusService
 } from './poi'
+import { assertPpoiSourceCapable } from './poi/source-guard'
 import type {
   BalanceMode,
+  BalanceSnapshot,
   DecryptedNote,
   TokenBalance
 } from './services/balance/balance-service'
@@ -339,7 +341,7 @@ class RailgunClient {
 
   /**
    * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
-   * Balance reads require a configured PPOI network.
+   * Defaults to Spendable; on non-PPOI networks that equals all unspent notes.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
    * @param mode - Balance mode: default spendable, all unspent, or one bucket.
@@ -426,13 +428,13 @@ class RailgunClient {
    * @param chainId - Chain id to scope the refresh to.
    * @returns Refresh counters for notes checked, updated, skipped, and failed.
    */
-  refreshPoiStatus (
+  async refreshPoiStatus (
     walletId: string,
     chainId: number
   ): Promise<RefreshSummary> {
     const network = findNetworkByChainId(chainId)
     if (network === undefined || NETWORK_CONFIG[network].poi === undefined) {
-      return Promise.resolve({ ...EMPTY_REFRESH_SUMMARY })
+      return { ...EMPTY_REFRESH_SUMMARY }
     }
     return this.#refreshPoiStatusForNetwork(walletId, chainId, network)
   }
@@ -453,13 +455,19 @@ class RailgunClient {
    *   source had nothing to yield.
    */
   async scan (params: ScanParams): Promise<bigint | undefined> {
-    this.#engine.setDataSource(params.dataSource)
     this.#engine.setNetwork(params.network)
     const chainId = NETWORK_CONFIG[params.network].chainID
     const previousLastBlock = this.#getPreviousChainLastBlock(chainId)
     const scanStartBlock = previousLastBlock !== undefined
       ? previousLastBlock + 1n
       : NETWORK_CONFIG[params.network].deploymentBlock
+    await assertPpoiSourceCapable({
+      network: params.network,
+      dataSource: params.dataSource,
+      startBlock: scanStartBlock,
+      ...(params.endBlock !== undefined && { endBlock: params.endBlock })
+    })
+    this.#engine.setDataSource(params.dataSource)
     const startedAt = Date.now()
     let blocksScanned = 0n
 
@@ -518,10 +526,27 @@ class RailgunClient {
    * @param params - Decryption target plus optional bounds.
    * @returns Summary of blocks scanned and notes added/spent.
    */
-  async decrypt (
+  decrypt (
     walletId: string,
     encryptionKey: Uint8Array,
     params: DecryptParams
+  ): Promise<DecryptSummary> {
+    return this.#decrypt(walletId, encryptionKey, params, true)
+  }
+
+  /**
+   * Run wallet decryption with optional standalone balance event emission.
+   * @param walletId - Wallet ID to decrypt.
+   * @param encryptionKey - Wallet encryption key.
+   * @param params - Decryption bounds and progress callback.
+   * @param emitBalanceUpdate - Whether changed notes emit immediately.
+   * @returns Decryption summary.
+   */
+  async #decrypt (
+    walletId: string,
+    encryptionKey: Uint8Array,
+    params: DecryptParams,
+    emitBalanceUpdate: boolean
   ): Promise<DecryptSummary> {
     const chainDb = this.#engine.db
     if (!chainDb) {
@@ -559,15 +584,16 @@ class RailgunClient {
         }
       })
 
-      if (summary.notesAdded > 0 || summary.notesSpent > 0) {
-        this.#emit('balance:update', {
+      if (
+        emitBalanceUpdate &&
+        (summary.notesAdded > 0 || summary.notesSpent > 0)
+      ) {
+        await this.#emitBalanceUpdate(
           walletId,
           chainId,
-          balances: await this.#balanceService.getBalances(walletId, chainId, 'all'),
-          notesAdded: summary.notesAdded,
-          notesSpent: summary.notesSpent,
-          timestamp: new Date()
-        })
+          summary.notesAdded,
+          summary.notesSpent
+        )
       }
 
       this.#emit('sync:complete', {
@@ -629,13 +655,13 @@ class RailgunClient {
         ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
         ...(params.onProgress !== undefined && { onProgress: params.onProgress })
       })
-      const decrypt = await this.decrypt(walletId, encryptionKey, {
+      const decrypt = await this.#decrypt(walletId, encryptionKey, {
         chainId,
         ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
         ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
         ...(params.batchSize !== undefined && { batchSize: params.batchSize }),
         ...(params.onProgress !== undefined && { onProgress: params.onProgress })
-      })
+      }, false)
 
       const poi = NETWORK_CONFIG[params.network].poi !== undefined &&
         params.refreshPoi !== false
@@ -646,6 +672,13 @@ class RailgunClient {
           params.onProgress
         )
         : undefined
+
+      await this.#emitBalanceUpdate(
+        walletId,
+        chainId,
+        decrypt.notesAdded,
+        decrypt.notesSpent
+      )
 
       this.#emit('sync:complete', {
         walletId,
@@ -711,6 +744,31 @@ class RailgunClient {
     ) {
       throw new PoiNodeUrlsRequiredError(network)
     }
+  }
+
+  /**
+   * Emit one consistent balance snapshot.
+   * @param walletId - Wallet whose balances changed or were refreshed.
+   * @param chainId - Chain containing the wallet notes.
+   * @param notesAdded - Notes added during the preceding decrypt.
+   * @param notesSpent - Notes spent during the preceding decrypt.
+   */
+  async #emitBalanceUpdate (
+    walletId: string,
+    chainId: number,
+    notesAdded: number,
+    notesSpent: number
+  ): Promise<void> {
+    const snapshot: BalanceSnapshot =
+      await this.#balanceService.getBalanceSnapshot(walletId, chainId)
+    this.#emit('balance:update', {
+      walletId,
+      chainId,
+      ...snapshot,
+      notesAdded,
+      notesSpent,
+      timestamp: new Date()
+    })
   }
 
   /**
@@ -824,6 +882,7 @@ function toError (err: unknown): Error {
 export { RailgunClient, SyncPhase }
 export type {
   BalanceMode,
+  BalanceSnapshot,
   DecryptedNote,
   DecryptParams,
   RailgunClientOptions,

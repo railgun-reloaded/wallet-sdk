@@ -290,6 +290,8 @@ function memChainDB () {
  * non-live, drain-to-tip source.
  */
 class FakeSource {
+  /** This generic test source does not guarantee complete PPOI fields. */
+  readonly capabilities = { ppoiData: 'incomplete' } as const
   /** Required by DataSource — non-live so the aggregator drains to its head. */
   isLiveProvider = false
   /** Buffered blocks to replay. */

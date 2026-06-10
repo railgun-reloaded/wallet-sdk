@@ -48,7 +48,12 @@ export {
   PoiNodeNetworkError,
   PoiNodeRpcError
 } from './node-client-errors'
-export { PoiNodeUrlsRequiredError } from './status-errors'
+export {
+  PoiNodeUrlsRequiredError,
+  PoiStatusRefreshError
+} from './status-errors'
+export type { PoiStatusRefreshErrorCode } from './status-errors'
+export { PoiRpcSourceUnsupportedError } from './source-errors'
 export { PoiStatusService } from './status-service'
 export type {
   FetchLike,
