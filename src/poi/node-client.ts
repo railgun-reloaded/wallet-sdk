@@ -127,10 +127,6 @@ class PoiNodeClient {
       }
     }
 
-    if (errors.length === 1) {
-      throw errors[0]
-    }
-
     throw new PoiNodeAllUrlsFailedError({
       network,
       method,
