@@ -12,6 +12,7 @@ import {
   BlindedCommitmentType,
   POIJSONRPCMethod,
   POIStatus,
+  PoiNodeAllUrlsFailedError,
   PoiNodeClient,
   PoiNodeNetworkError,
   TXIDVersion
@@ -120,8 +121,9 @@ async function assertNetworkError (
     await run()
     assert.fail('expected PPOI node network error')
   } catch (error) {
-    assert.ok(error instanceof PoiNodeNetworkError)
-    return error
+    assert.ok(error instanceof PoiNodeAllUrlsFailedError)
+    assert.ok(error.cause instanceof PoiNodeNetworkError)
+    return error.cause
   }
 }
 
