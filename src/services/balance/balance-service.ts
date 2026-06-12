@@ -8,8 +8,8 @@ import {
 
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config'
 import { NETWORK_CONFIG } from '../../network-config'
-import { classifyNote } from '../../poi/bucket-classifier'
 import type { PoiNetworkConfig } from '../../poi/bucket-classifier'
+import { classifyNote } from '../../poi/bucket-classifier'
 import { WalletBalanceBucket } from '../../poi/types'
 import { WalletNotFoundError } from '../wallet/errors'
 
@@ -291,17 +291,18 @@ class BalanceService {
       return createEmptyBucketBalances()
     }
 
-    const accumulators = createBucketAccumulators()
     if (network.poi === undefined) {
+      const balances = new Map<string, bigint>()
       for (const note of notes) {
-        addNoteBalance(
-          accumulators[WalletBalanceBucket.Spendable],
-          note
-        )
+        addNoteBalance(balances, note)
       }
-      return mapBucketAccumulators(accumulators)
+      const byBucket = createEmptyBucketBalances()
+      byBucket[WalletBalanceBucket.Spendable] =
+        mapBalanceAccumulator(balances)
+      return byBucket
     }
 
+    const accumulators = createBucketAccumulators()
     const poiNetwork = network as PoiNetworkConfig
     for (const note of notes) {
       addNoteBalance(accumulators[classifyNote(note, poiNetwork)], note)
