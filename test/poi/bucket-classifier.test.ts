@@ -3,8 +3,8 @@ import { test } from 'node:test'
 
 import type { DBNote } from '@railgun-reloaded/storage'
 
-import type { NetworkConfig } from '../../src/network-config'
 import { POIStatus, WalletBalanceBucket, classifyNote } from '../../src/poi'
+import type { PoiNetworkConfig } from '../../src/poi/bucket-classifier'
 
 const LIST_A = 'list-a'
 const LIST_B = 'list-b'
@@ -14,7 +14,7 @@ const TRANSACT_COMMITMENT_TYPE = 1
 const OUTPUT_TYPE_TRANSFER = 0
 const OUTPUT_TYPE_CHANGE = 2
 
-const PPOI_NETWORK: NetworkConfig = {
+const PPOI_NETWORK: PoiNetworkConfig = {
   chainID: CHAIN_ID,
   deploymentBlock: 1n,
   proxyContractAddress: '0x0000000000000000000000000000000000000000',
