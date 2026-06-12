@@ -426,13 +426,13 @@ class RailgunClient {
    * @param chainId - Chain id to scope the refresh to.
    * @returns Refresh counters for notes checked, updated, skipped, and failed.
    */
-  refreshPoiStatus (
+  async refreshPoiStatus (
     walletId: string,
     chainId: number
   ): Promise<RefreshSummary> {
     const network = findNetworkByChainId(chainId)
     if (network === undefined || NETWORK_CONFIG[network].poi === undefined) {
-      return Promise.resolve({ ...EMPTY_REFRESH_SUMMARY })
+      return { ...EMPTY_REFRESH_SUMMARY }
     }
     return this.#refreshPoiStatusForNetwork(walletId, chainId, network)
   }
