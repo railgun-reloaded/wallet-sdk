@@ -14,6 +14,7 @@ import { BalanceService } from '../../src/services/balance/balance-service'
 
 const WALLET_ID = 'wallet-id'
 const CHAIN_ID = 11155111
+const NON_PPOI_CHAIN_ID = 1
 const LIST_KEY = 'efc6ddb59c098a13fb2b618fdae94c1c3a807abc8fb1837c93620c9143ee9e88'
 const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 const DAI = '0x6b175474e89094c44da98b954eedeac495271d0f'
@@ -197,4 +198,93 @@ test('BalanceService.getBalancesByBucket aggregates unspent notes by bucket and 
     await service.getBalances(WALLET_ID, CHAIN_ID, WalletBalanceBucket.Spent),
     []
   )
+})
+
+test('BalanceService treats every unspent note as Spendable without PPOI', async () => {
+  const db = memWalletDB()
+  seedWallet(db)
+  seedNotes(db, [
+    noteFixture(11, {
+      chainId: NON_PPOI_CHAIN_ID,
+      token: USDC,
+      amount: 100n,
+      commitmentType: SHIELD_COMMITMENT_TYPE,
+      outputType: null,
+      poisPerList: null
+    }),
+    noteFixture(12, {
+      chainId: NON_PPOI_CHAIN_ID,
+      token: USDC,
+      amount: 25n,
+      poisPerList: {
+        [LIST_KEY]: POIStatus.ShieldBlocked
+      }
+    }),
+    noteFixture(13, {
+      chainId: NON_PPOI_CHAIN_ID,
+      token: DAI,
+      amount: 9n,
+      outputType: OUTPUT_TYPE_CHANGE,
+      poisPerList: null
+    }),
+    noteFixture(14, {
+      chainId: NON_PPOI_CHAIN_ID,
+      token: USDC,
+      amount: 1000n,
+      spent: true
+    })
+  ])
+
+  const service = new BalanceService(db)
+  const expected = sortBalances([
+    { token: USDC, balance: 125n },
+    { token: DAI, balance: 9n }
+  ])
+
+  assert.deepEqual(
+    sortBalances(await service.getBalances(WALLET_ID, NON_PPOI_CHAIN_ID)),
+    expected
+  )
+  assert.deepEqual(
+    sortBalances(await service.getBalances(
+      WALLET_ID,
+      NON_PPOI_CHAIN_ID,
+      'spendable'
+    )),
+    expected
+  )
+  assert.deepEqual(
+    sortBalances(await service.getBalances(
+      WALLET_ID,
+      NON_PPOI_CHAIN_ID,
+      'all'
+    )),
+    expected
+  )
+
+  for (const bucket of Object.values(WalletBalanceBucket)) {
+    const balances = await service.getBalances(
+      WALLET_ID,
+      NON_PPOI_CHAIN_ID,
+      bucket
+    )
+    assert.deepEqual(
+      sortBalances(balances),
+      bucket === WalletBalanceBucket.Spendable ? expected : []
+    )
+  }
+
+  const byBucket = await service.getBalancesByBucket(
+    WALLET_ID,
+    NON_PPOI_CHAIN_ID
+  )
+  assert.deepEqual(
+    sortBalances(byBucket[WalletBalanceBucket.Spendable]),
+    expected
+  )
+  for (const bucket of Object.values(WalletBalanceBucket)) {
+    if (bucket !== WalletBalanceBucket.Spendable) {
+      assert.deepEqual(byBucket[bucket], [])
+    }
+  }
 })

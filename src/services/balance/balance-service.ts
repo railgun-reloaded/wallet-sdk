@@ -9,6 +9,7 @@ import {
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config'
 import { NETWORK_CONFIG } from '../../network-config'
 import { classifyNote } from '../../poi/bucket-classifier'
+import type { PoiNetworkConfig } from '../../poi/bucket-classifier'
 import { WalletBalanceBucket } from '../../poi/types'
 import { WalletNotFoundError } from '../wallet/errors'
 
@@ -119,15 +120,15 @@ function createEmptyBucketBalances (): Record<WalletBalanceBucket, TokenBalance[
 }
 
 /**
- * Resolve the PPOI-enabled network config for a chain ID.
+ * Resolve the network config for a chain ID.
  * @param chainId - Chain ID to resolve.
- * @returns Network config with PPOI settings.
+ * @returns Network config for the chain.
  */
-function getPoiNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
+function getNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
   const network = Object.values(NETWORK_CONFIG)
     .find(network => network.chainID === chainId)
-  if (network?.poi === undefined) {
-    throw new Error(`Missing PPOI config for chain ${chainId}`)
+  if (network === undefined) {
+    throw new Error(`Missing network config for chain ${chainId}`)
   }
   return network
 }
@@ -219,8 +220,8 @@ class BalanceService {
 
   /**
    * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
-   * Balance reads require a configured PPOI network.
-   * The default mode returns only notes classified as Spendable.
+   * The default mode returns notes classified as Spendable. On networks
+   * without PPOI configured, every unspent note is Spendable.
    * @param walletId - Wallet ID returned by `createWallet`.
    * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
    * @param mode - Balance mode: default spendable, all unspent, or one bucket.
@@ -232,7 +233,7 @@ class BalanceService {
     mode: BalanceMode = 'spendable'
   ): Promise<TokenBalance[]> {
     this.#assertWalletExists(walletId)
-    const network = getPoiNetworkConfigByChainId(chainId)
+    const network = getNetworkConfigByChainId(chainId)
     const notes = getUnspentNotes(this.#db, walletId, chainId)
     if (notes.length === 0) {
       return []
@@ -251,8 +252,19 @@ class BalanceService {
       ? WalletBalanceBucket.Spendable
       : mode
 
+    if (network.poi === undefined) {
+      if (targetBucket !== WalletBalanceBucket.Spendable) {
+        return []
+      }
+      for (const note of notes) {
+        addNoteBalance(balances, note)
+      }
+      return mapBalanceAccumulator(balances)
+    }
+
+    const poiNetwork = network as PoiNetworkConfig
     for (const note of notes) {
-      const bucket = classifyNote(note, network)
+      const bucket = classifyNote(note, poiNetwork)
       if (bucket === targetBucket) {
         addNoteBalance(balances, note)
       }
@@ -272,7 +284,7 @@ class BalanceService {
     chainId: number
   ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
     this.#assertWalletExists(walletId)
-    const network = getPoiNetworkConfigByChainId(chainId)
+    const network = getNetworkConfigByChainId(chainId)
 
     const notes = getUnspentNotes(this.#db, walletId, chainId)
     if (notes.length === 0) {
@@ -280,8 +292,19 @@ class BalanceService {
     }
 
     const accumulators = createBucketAccumulators()
+    if (network.poi === undefined) {
+      for (const note of notes) {
+        addNoteBalance(
+          accumulators[WalletBalanceBucket.Spendable],
+          note
+        )
+      }
+      return mapBucketAccumulators(accumulators)
+    }
+
+    const poiNetwork = network as PoiNetworkConfig
     for (const note of notes) {
-      addNoteBalance(accumulators[classifyNote(note, network)], note)
+      addNoteBalance(accumulators[classifyNote(note, poiNetwork)], note)
     }
 
     return mapBucketAccumulators(accumulators)
