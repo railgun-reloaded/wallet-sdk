@@ -27,7 +27,7 @@ const OUTPUT_TYPE_CHANGE = 2
  * Create an in-memory wallet database for bucket tests.
  * @returns Wallet database.
  */
-function memWalletDB (): WalletDB {
+function memWalletDB (): Promise<WalletDB> {
   return createWalletDB({
     path: ':memory:',
     runMigrations: true,
@@ -39,8 +39,8 @@ function memWalletDB (): WalletDB {
  * Seed the bucket test wallet.
  * @param db - Wallet database.
  */
-function seedWallet (db: WalletDB): void {
-  createWallet(db, {
+async function seedWallet (db: WalletDB): Promise<void> {
+  await createWallet(db, {
     id: WALLET_ID,
     encryptedKeys: new Uint8Array([1, 2, 3]),
     name: 'bucket fixture wallet'
@@ -91,8 +91,8 @@ function noteFixture (
  * @param db - Wallet database.
  * @param notes - Note rows to insert.
  */
-function seedNotes (db: WalletDB, notes: DBNewNote[]): void {
-  insertNotesBatch(db, notes)
+async function seedNotes (db: WalletDB, notes: DBNewNote[]): Promise<void> {
+  await insertNotesBatch(db, notes)
 }
 
 /**
@@ -132,9 +132,9 @@ function sumBucketBalances (
 }
 
 test('BalanceService.getBalancesByBucket aggregates unspent notes by bucket and token', async () => {
-  const db = memWalletDB()
-  seedWallet(db)
-  seedNotes(db, [
+  const db = await memWalletDB()
+  await seedWallet(db)
+  await seedNotes(db, [
     noteFixture(1, { token: USDC, amount: 100n }),
     noteFixture(2, { token: USDC, amount: 25n }),
     noteFixture(3, {
@@ -201,9 +201,9 @@ test('BalanceService.getBalancesByBucket aggregates unspent notes by bucket and 
 })
 
 test('BalanceService treats every unspent note as Spendable without PPOI', async () => {
-  const db = memWalletDB()
-  seedWallet(db)
-  seedNotes(db, [
+  const db = await memWalletDB()
+  await seedWallet(db)
+  await seedNotes(db, [
     noteFixture(11, {
       chainId: NON_PPOI_CHAIN_ID,
       token: USDC,

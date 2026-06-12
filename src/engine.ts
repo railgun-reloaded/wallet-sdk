@@ -3,7 +3,7 @@ import path from 'path'
 
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
-import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertCommitmentBatch, insertNullifiersBatch, insertRailgunTransactions, insertUnshieldBatch, runDBTransaction, setMerkleTree, setTxidSyncCursor, updateSyncState } from '@railgun-reloaded/storage'
+import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertScanBatch, updateSyncState } from '@railgun-reloaded/storage'
 
 import { NoteCommitmentTree } from './merkle'
 import type { NetworkConfig, NetworkName } from './network-config'
@@ -111,14 +111,14 @@ class RailgunEngine {
    * does not reset, so an injected chain DB survives the first call.
    * @param networkName - Input Network Name
    */
-  setNetwork (networkName: NetworkName) {
+  async setNetwork (networkName: NetworkName): Promise<void> {
     if (this.#currentNetwork === undefined) {
       this.#currentNetwork = networkName
       return
     }
     if (this.#currentNetwork === networkName) return
     if (this.#db && this.#ownsChainDB) {
-      closeChainDB(this.#db)
+      await closeChainDB(this.#db)
     }
     this.#db = undefined
     this.#noteCommitmentTree.clear()
@@ -171,15 +171,15 @@ class RailgunEngine {
       if (!existsSync(dirName)) {
         mkdirSync(dirName, { recursive: true })
       }
-      this.#db = createChainDB({
+      this.#db = await createChainDB({
         path: path.join(dirName, 'chain.db'),
         runMigrations: true
       })
     }
 
-    this.#loadMerkleTree()
+    await this.#loadMerkleTree()
 
-    const lastSyncedBlock = getSyncState(this.#db, this.#networkConfig.chainID)?.lastBlockHeight
+    const lastSyncedBlock = (await getSyncState(this.#db, this.#networkConfig.chainID))?.lastBlockHeight
     const startHeight = lastSyncedBlock ? lastSyncedBlock + 1n : this.#networkConfig.deploymentBlock
 
     const onBatch = options.onBatch
@@ -199,8 +199,8 @@ class RailgunEngine {
    * Trees are returned ordered by treeNumber, so map insertion order matches
    * on-disk order.
    */
-  #loadMerkleTree () {
-    for (const tree of getAllMerkleTrees(this.#db!)) {
+  async #loadMerkleTree (): Promise<void> {
+    for (const tree of await getAllMerkleTrees(this.#db!)) {
       this.#noteCommitmentTree.set(tree.treeNumber, new NoteCommitmentTree({
         buffer: tree.leaves,
         length: tree.leafCount
@@ -216,13 +216,13 @@ class RailgunEngine {
    * @param railgunTransactionBatch - Batched Railgun TXID transactions to insert
    * @param blockNumber - Block number of last batched entry
    */
-  #insertBatch (
+  async #insertBatch (
     nullifierBatch: DBNewNullifier[],
     commitmentBatch: DBNewCommitment[],
     unshieldBatch: DBNewUnshield[],
     railgunTransactionBatch: DBNewRailgunTransaction[],
     blockNumber: bigint
-  ) {
+  ): Promise<void> {
     // Update commitmentTree
     const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
     commitmentBatch.forEach((c) => {
@@ -244,35 +244,24 @@ class RailgunEngine {
       }
     }
 
-    runDBTransaction(this.#db!, (tx) => {
-      // We insert in batch to reduce the cost of updating database
-      if (nullifierBatch.length > 0) {
-        insertNullifiersBatch(tx, nullifierBatch)
+    const merkleTreeRows = [...treeSortedCommitments.keys()].map((key) => {
+      const tree = this.#noteCommitmentTree.get(key)!
+      const { length, buf } = tree.merkleTree.serialize()
+      return {
+        treeNumber: key,
+        leafCount: length,
+        leaves: buf
       }
-      if (commitmentBatch.length > 0) {
-        insertCommitmentBatch(tx, commitmentBatch)
-      }
-      if (unshieldBatch.length > 0) {
-        insertUnshieldBatch(tx, unshieldBatch)
-      }
-      if (railgunTransactionBatch.length > 0) {
-        const inserted = insertRailgunTransactions(tx, railgunTransactionBatch)
-        if (inserted > 0) {
-          setTxidSyncCursor(tx, this.#networkConfig.chainID, blockNumber)
-        }
-      }
+    })
 
-      updateSyncState(tx, this.#networkConfig.chainID, blockNumber)
-
-      for (const [key] of treeSortedCommitments) {
-        const tree = this.#noteCommitmentTree.get(key)!
-        const { length, buf } = tree.merkleTree.serialize()
-        setMerkleTree(tx, {
-          treeNumber: key,
-          leafCount: length,
-          leaves: buf
-        })
-      }
+    await insertScanBatch(this.#db!, {
+      chainID: this.#networkConfig.chainID,
+      blockNumber,
+      nullifiers: nullifierBatch,
+      commitments: commitmentBatch,
+      unshields: unshieldBatch,
+      railgunTransactions: railgunTransactionBatch,
+      merkleTrees: merkleTreeRows
     })
   }
 
@@ -322,7 +311,7 @@ class RailgunEngine {
       lastBlockNumber = block.number
 
       if (blocksInBatch >= batchInsertSize) {
-        this.#insertBatch(
+        await this.#insertBatch(
           nullifierBatch,
           commitmentBatch,
           unshieldBatch,
@@ -343,7 +332,7 @@ class RailgunEngine {
     }
 
     if (blocksInBatch > 0 && lastBlockNumber !== undefined) {
-      this.#insertBatch(
+      await this.#insertBatch(
         nullifierBatch,
         commitmentBatch,
         unshieldBatch,
@@ -361,9 +350,9 @@ class RailgunEngine {
     // decryptor reads a stale `toBlock`.
     const coveredThrough = this.#dataSource.lastIteratedHeight ?? lastBlockNumber
     if (coveredThrough !== undefined) {
-      const persisted = getSyncState(this.#db!, this.#networkConfig.chainID)?.lastBlockHeight
+      const persisted = (await getSyncState(this.#db!, this.#networkConfig.chainID))?.lastBlockHeight
       if (persisted === undefined || coveredThrough > persisted) {
-        updateSyncState(this.#db!, this.#networkConfig.chainID, coveredThrough)
+        await updateSyncState(this.#db!, this.#networkConfig.chainID, coveredThrough)
       }
     }
 
@@ -402,9 +391,9 @@ class RailgunEngine {
    * Release engine resources: close chain.db (only when owned) and tear
    * down the data source (when one was set).
    */
-  destroy () {
+  async destroy (): Promise<void> {
     if (this.#db && this.#ownsChainDB) {
-      closeChainDB(this.#db)
+      await closeChainDB(this.#db)
     }
     if (this.#dataSource) {
       this.#dataSource.destroy()

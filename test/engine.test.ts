@@ -18,8 +18,8 @@ const networkName = NetworkName.EthereumSepolia
 test('Should create NoteCommitmentTree and verify root', { timeout: 60_000 }, async (t) => {
   const dataDir = mkdtempSync(join(tmpdir(), 'wallet-sdk-engine-'))
   const engine = new RailgunEngine({ dataDir })
-  t.after(() => {
-    engine.destroy()
+  t.after(async () => {
+    await engine.destroy()
     rmSync(dataDir, { recursive: true, force: true })
   })
 
@@ -27,7 +27,7 @@ test('Should create NoteCommitmentTree and verify root', { timeout: 60_000 }, as
     new SubsquidProvider('https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql')
   ])
   engine.setDataSource(aggregator)
-  engine.setNetwork(networkName)
+  await engine.setNetwork(networkName)
 
   const networkConfig = NETWORK_CONFIG[networkName]
   const endBlock = networkConfig.deploymentBlock + 200_000n

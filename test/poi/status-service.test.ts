@@ -53,13 +53,13 @@ function fixtureBytes (value: number, namespace = 0): Uint8Array {
  * Create an in-memory wallet database with the fixture wallet.
  * @returns Fresh wallet database.
  */
-function memWalletDB (): WalletDB {
-  const db = createWalletDB({
+async function memWalletDB (): Promise<WalletDB> {
+  const db = await createWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
   })
-  createWallet(db, {
+  await createWallet(db, {
     id: WALLET_ID,
     encryptedKeys: fixtureBytes(1),
     name: 'status fixture wallet'
@@ -142,15 +142,15 @@ function validResponse (
  * @param db - Wallet database to seed.
  * @param notes - Notes to insert.
  */
-function seedNotes (db: WalletDB, notes: DBNewNote[]): void {
+async function seedNotes (db: WalletDB, notes: DBNewNote[]): Promise<void> {
   const batchSize = 500
   for (let index = 0; index < notes.length; index += batchSize) {
-    insertNotesBatch(db, notes.slice(index, index + batchSize))
+    await insertNotesBatch(db, notes.slice(index, index + batchSize))
   }
 }
 
 test('PoiStatusService returns an exact empty summary without an RPC call', async () => {
-  const db = memWalletDB()
+  const db = await memWalletDB()
   const client = recordingClient(validResponse)
   const service = new PoiStatusService({
     walletDb: db,
@@ -170,8 +170,8 @@ test('PoiStatusService returns an exact empty summary without an RPC call', asyn
 test('PoiStatusService batches 1, 1000, 1001, and 2500 candidates exactly', async (t) => {
   for (const candidateCount of [1, 1000, 1001, 2500]) {
     await t.test(`${candidateCount} candidates`, async () => {
-      const db = memWalletDB()
-      seedNotes(db, Array.from(
+      const db = await memWalletDB()
+      await seedNotes(db, Array.from(
         { length: candidateCount },
         (_, index) => noteFixture(index + 1)
       ))
@@ -204,8 +204,8 @@ test('PoiStatusService batches 1, 1000, 1001, and 2500 candidates exactly', asyn
 })
 
 test('PoiStatusService rechecks null and non-valid states but excludes Valid notes', async () => {
-  const db = memWalletDB()
-  insertNotesBatch(db, [
+  const db = await memWalletDB()
+  await insertNotesBatch(db, [
     noteFixture(1),
     noteFixture(2, { poisPerList: { [LIST_KEY]: POIStatus.Missing } }),
     noteFixture(3, { poisPerList: { [LIST_KEY]: POIStatus.Valid } })
@@ -230,8 +230,8 @@ test('PoiStatusService rechecks null and non-valid states but excludes Valid not
 })
 
 test('derivation failures are typed, counted, and preserve prior status', async () => {
-  const db = memWalletDB()
-  insertNotesBatch(db, [
+  const db = await memWalletDB()
+  await insertNotesBatch(db, [
     noteFixture(1),
     noteFixture(2, {
       blindedCommitment: null,
@@ -266,7 +266,7 @@ test('derivation failures are typed, counted, and preserve prior status', async 
   const error = progress.find(event => event.error !== undefined)?.error
   assert.ok(error instanceof PoiStatusRefreshError)
   assert.equal(error.code, 'BlindedCommitmentDerivationFailed')
-  const failedNote = getAllNotes(db, WALLET_ID, CHAIN_ID)
+  const failedNote = (await getAllNotes(db, WALLET_ID, CHAIN_ID))
     .find(note => bytesToHex(note.commitment) === bytesToHex(fixtureBytes(2, 1)))
   assert.deepStrictEqual(failedNote?.poisPerList, {
     [LIST_KEY]: POIStatus.Missing
@@ -275,8 +275,8 @@ test('derivation failures are typed, counted, and preserve prior status', async 
 })
 
 test('one failed network batch leaves a later successful batch persisted', async () => {
-  const db = memWalletDB()
-  insertNotesBatch(db, Array.from({ length: 1001 }, (_, index) => noteFixture(
+  const db = await memWalletDB()
+  await insertNotesBatch(db, Array.from({ length: 1001 }, (_, index) => noteFixture(
     index + 1,
     { poisPerList: { [LIST_KEY]: POIStatus.Missing } }
   )))
@@ -306,7 +306,7 @@ test('one failed network batch leaves a later successful batch persisted', async
     failed: 1000
   })
   assert.equal(client.calls.length, 2)
-  const notes = getAllNotes(db, WALLET_ID, CHAIN_ID)
+  const notes = await getAllNotes(db, WALLET_ID, CHAIN_ID)
   assert.deepStrictEqual(notes[0]!.poisPerList, {
     [LIST_KEY]: POIStatus.Missing
   })
@@ -316,8 +316,8 @@ test('one failed network batch leaves a later successful batch persisted', async
 })
 
 test('node failure does not pre-persist a newly derived blinded commitment', async () => {
-  const db = memWalletDB()
-  insertNotesBatch(db, [noteFixture(1, {
+  const db = await memWalletDB()
+  await insertNotesBatch(db, [noteFixture(1, {
     blindedCommitment: null,
     npk: fixtureBytes(50, 4),
     poisPerList: { [LIST_KEY]: POIStatus.Missing }
@@ -344,7 +344,7 @@ test('node failure does not pre-persist a newly derived blinded commitment', asy
     skipped: 0,
     failed: 1
   })
-  const note = getAllNotes(db, WALLET_ID, CHAIN_ID)[0]!
+  const note = (await getAllNotes(db, WALLET_ID, CHAIN_ID))[0]!
   assert.equal(note.blindedCommitment, null)
   assert.deepStrictEqual(note.poisPerList, {
     [LIST_KEY]: POIStatus.Missing
@@ -352,8 +352,8 @@ test('node failure does not pre-persist a newly derived blinded commitment', asy
 })
 
 test('one bad commitment is isolated while unrelated rows succeed', async () => {
-  const db = memWalletDB()
-  insertNotesBatch(db, [noteFixture(1), noteFixture(2), noteFixture(3)])
+  const db = await memWalletDB()
+  await insertNotesBatch(db, [noteFixture(1), noteFixture(2), noteFixture(3)])
   const badCommitment = `0x${bytesToHex(fixtureBytes(2, 3))}`
   const client = recordingClient((params) => {
     if (params.blindedCommitmentDatas.some(
@@ -383,7 +383,7 @@ test('one bad commitment is isolated while unrelated rows succeed', async () => 
     skipped: 0,
     failed: 1
   })
-  const notes = getAllNotes(db, WALLET_ID, CHAIN_ID)
+  const notes = await getAllNotes(db, WALLET_ID, CHAIN_ID)
   assert.equal(notes.filter(note => note.poisPerList !== null).length, 2)
   assert.equal(
     notes.find(note => bytesToHex(note.commitment) === bytesToHex(fixtureBytes(2, 1)))
@@ -393,8 +393,8 @@ test('one bad commitment is isolated while unrelated rows succeed', async () => 
 })
 
 test('omitted node results are typed failures and do not erase prior state', async () => {
-  const db = memWalletDB()
-  insertNotesBatch(db, [
+  const db = await memWalletDB()
+  await insertNotesBatch(db, [
     noteFixture(1),
     noteFixture(2, { poisPerList: { [LIST_KEY]: POIStatus.Missing } })
   ])
@@ -431,7 +431,7 @@ test('omitted node results are typed failures and do not erase prior state', asy
     event.error.code === 'MissingStatusResponse'
   ))?.error
   assert.ok(error instanceof PoiStatusRefreshError)
-  const notes = getAllNotes(db, WALLET_ID, CHAIN_ID)
+  const notes = await getAllNotes(db, WALLET_ID, CHAIN_ID)
   assert.deepStrictEqual(notes[1]!.poisPerList, {
     [LIST_KEY]: POIStatus.Missing
   })
@@ -439,8 +439,8 @@ test('omitted node results are typed failures and do not erase prior state', asy
 })
 
 test('empty required-list configuration counts candidates as skipped', async () => {
-  const db = memWalletDB()
-  insertNotesBatch(db, [noteFixture(1), noteFixture(2)])
+  const db = await memWalletDB()
+  await insertNotesBatch(db, [noteFixture(1), noteFixture(2)])
   const client = recordingClient(validResponse)
   const service = new PoiStatusService({
     walletDb: db,
@@ -459,8 +459,8 @@ test('empty required-list configuration counts candidates as skipped', async () 
 })
 
 test('status requests preserve commitment type metadata', async () => {
-  const db = memWalletDB()
-  insertNotesBatch(db, [
+  const db = await memWalletDB()
+  await insertNotesBatch(db, [
     noteFixture(1, {
       commitmentType: 0,
       blindedCommitment: null,
@@ -486,7 +486,7 @@ test('status requests preserve commitment type metadata', async () => {
     [BlindedCommitmentType.Shield, BlindedCommitmentType.Transact]
   )
   assert.equal(
-    getAllNotes(db, WALLET_ID, CHAIN_ID)
+    (await getAllNotes(db, WALLET_ID, CHAIN_ID))
       .every(note => note.blindedCommitment !== null),
     true
   )

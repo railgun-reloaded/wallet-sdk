@@ -17,10 +17,10 @@ const CHAIN_ID = 11155111
  * DB handle and the wallet's id for use in tests.
  * @returns New fixture state per test.
  */
-function fixture (): { db: WalletDB, walletId: string } {
-  const db = createWalletDB({ path: ':memory:', runMigrations: true })
+async function fixture (): Promise<{ db: WalletDB, walletId: string }> {
+  const db = await createWalletDB({ path: ':memory:', runMigrations: true })
   const walletId = 'test-wallet'
-  createWallet(db, { id: walletId, encryptedKeys: Buffer.from('keys') })
+  await createWallet(db, { id: walletId, encryptedKeys: Buffer.from('keys') })
   return { db, walletId }
 }
 
@@ -77,9 +77,9 @@ test('mapNoteRow: ERC721 row exposes tokenType 1 and the original tokenSubID byt
 })
 
 test('BalanceService.getNotes returns tokenType and tokenSubID for stored ERC20 + ERC721 notes', async () => {
-  const { db, walletId } = fixture()
+  const { db, walletId } = await fixture()
 
-  insertNote(db, {
+  await insertNote(db, {
     commitment: hexToBytes(`0x${'aa'.repeat(32)}`),
     walletId,
     chainId: CHAIN_ID,
@@ -94,7 +94,7 @@ test('BalanceService.getNotes returns tokenType and tokenSubID for stored ERC20 
     commitmentType: 1,
   })
 
-  insertNote(db, {
+  await insertNote(db, {
     commitment: hexToBytes(`0x${'cc'.repeat(32)}`),
     walletId,
     chainId: CHAIN_ID,

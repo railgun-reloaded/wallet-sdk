@@ -182,12 +182,12 @@ function noteFixture (
  * @param walletId - Owning wallet ID.
  * @param notes - Notes to insert.
  */
-function seedNotes (
+async function seedNotes (
   walletDB: WalletDB,
   walletId: string,
   notes: DBNewNote[]
-): void {
-  insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
+): Promise<void> {
+  await insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
 }
 
 /**
@@ -196,19 +196,19 @@ function seedNotes (
  * @param nullifier - Owned note nullifier.
  * @param blockNumber - Block carrying the nullifier.
  */
-function seedChainNullifier (
+async function seedChainNullifier (
   chainDB: ChainDB,
   nullifier: Uint8Array,
   blockNumber: bigint
-): void {
+): Promise<void> {
   const row: DBNewNullifier = {
     nullifier,
     transactionHash: filledBytes(90),
     blockNumber,
     treeNumber: 0
   }
-  insertNullifiersBatch(chainDB, [row])
-  updateSyncState(chainDB, SEPOLIA_CHAIN_ID, blockNumber)
+  await insertNullifiersBatch(chainDB, [row])
+  await updateSyncState(chainDB, SEPOLIA_CHAIN_ID, blockNumber)
 }
 
 /**
@@ -223,9 +223,9 @@ function fakeSepoliaSource (): SourceAggregator<EVMBlock> {
 }
 
 test('decrypt() emits sync:start then sync:complete; no balance:update on no-op', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
@@ -247,17 +247,17 @@ test('decrypt() emits sync:start then sync:complete; no balance:update on no-op'
   assert.ok(events.includes('complete:decrypt'), 'sync:complete fired')
   assert.ok(!events.includes('balance'), 'balance:update suppressed when no notes changed')
 
-  client.close()
+  await client.close()
 })
 
 test('decrypt no-op suppresses balance:update when notes are unchanged', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
-  seedNotes(walletDB, wallet.walletId, [noteFixture(wallet.walletId)])
+  await seedNotes(walletDB, wallet.walletId, [noteFixture(wallet.walletId)])
 
   const balanceEvents: number[] = []
   client.on('balance:update', (e) => balanceEvents.push(e.balances.length))
@@ -269,18 +269,18 @@ test('decrypt no-op suppresses balance:update when notes are unchanged', async (
   })
 
   assert.equal(balanceEvents.length, 0, 'pre-existing balances do not trigger the event')
-  client.close()
+  await client.close()
 })
 
 test('balance:update fires with a fresh snapshot when decrypt marks a note spent', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
   const spentNullifier = filledBytes(12)
-  seedNotes(walletDB, wallet.walletId, [
+  await seedNotes(walletDB, wallet.walletId, [
     noteFixture(wallet.walletId, {
       commitment: filledBytes(11),
       nullifier: spentNullifier,
@@ -292,7 +292,7 @@ test('balance:update fires with a fresh snapshot when decrypt marks a note spent
       amount: 7n
     })
   ])
-  seedChainNullifier(chainDB, spentNullifier, 1n)
+  await seedChainNullifier(chainDB, spentNullifier, 1n)
 
   const balanceEvents: Array<{ spent: number, len: number, balance: bigint | undefined }> = []
   client.on('balance:update', (e) => balanceEvents.push({
@@ -312,13 +312,13 @@ test('balance:update fires with a fresh snapshot when decrypt marks a note spent
   assert.equal(balanceEvents[0]!.spent, 1, 'notesSpent reflected in event')
   assert.equal(balanceEvents[0]!.len, 1, 'snapshot contains remaining positive balance')
   assert.equal(balanceEvents[0]!.balance, 7n, 'snapshot was read after recompute')
-  client.close()
+  await client.close()
 })
 
 test('balance:update fires with a fresh snapshot when decrypt adds notes', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
@@ -357,13 +357,13 @@ test('balance:update fires with a fresh snapshot when decrypt adds notes', async
     order.indexOf('balance') < order.lastIndexOf('complete:decrypt'),
     'balance:update fired before decrypt complete'
   )
-  client.close()
+  await client.close()
 })
 
 test('scan() emits sync:start, sync:progress, sync:complete', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const events: Array<{ name: string, phase?: string }> = []
   client.on('sync:start', (e) => events.push({ name: 'start', phase: e.phase }))
@@ -379,13 +379,13 @@ test('scan() emits sync:start, sync:progress, sync:complete', async () => {
   assert.ok(events.find(e => e.name === 'start' && e.phase === 'scan'), 'scan start fired')
   assert.ok(events.find(e => e.name === 'progress' && e.phase === 'scan'), 'scan progress fired')
   assert.ok(events.find(e => e.name === 'complete' && e.phase === 'scan'), 'scan complete fired')
-  client.close()
+  await client.close()
 })
 
 test('scan() complete reports covered blocks even when no event blocks yield', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   let startFrom: bigint | undefined
   let completeBlocks: bigint | undefined
@@ -403,13 +403,13 @@ test('scan() complete reports covered blocks even when no event blocks yield', a
 
   assert.equal(startFrom, SEPOLIA_DEPLOYMENT_BLOCK, 'scan start reports resolved fromBlock')
   assert.equal(completeBlocks, 2n, 'complete reports covered empty range')
-  client.close()
+  await client.close()
 })
 
 test('every sync:progress emitted by decrypt() carries phase=decrypt', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
@@ -425,13 +425,13 @@ test('every sync:progress emitted by decrypt() carries phase=decrypt', async () 
 
   assert.ok(phases.length > 0, 'decrypt emitted progress')
   assert.ok(phases.every(p => p === 'decrypt'), 'all progress events tagged decrypt')
-  client.close()
+  await client.close()
 })
 
 test('sync() emits all three start/complete pairs', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
@@ -455,13 +455,13 @@ test('sync() emits all three start/complete pairs', async () => {
   assert.ok(phases.includes('complete:scan'), 'inner scan complete fired')
   assert.ok(phases.includes('complete:decrypt'), 'inner decrypt complete fired')
   assert.ok(phases.includes('complete:sync'), 'outer sync:complete fired')
-  client.close()
+  await client.close()
 })
 
 test('sync() emits balance:update before outer completion when balances change', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
@@ -498,12 +498,12 @@ test('sync() emits balance:update before outer completion when balances change',
     order.indexOf('balance') < order.lastIndexOf('complete:sync'),
     'balance:update fired before outer sync completion'
   )
-  client.close()
+  await client.close()
 })
 
 test('argument-validation throws happen before bus emission', async () => {
-  const walletDB = memWalletDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memWalletDB()
+  const client = await RailgunClient.create({ walletDB })
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
 
@@ -518,13 +518,13 @@ test('argument-validation throws happen before bus emission', async () => {
 
   assert.ok(!events.includes('start'), 'pre-bus validation did not emit start')
   assert.ok(!events.includes('error'), 'pre-bus validation did not emit error')
-  client.close()
+  await client.close()
 })
 
 test('scan() emits sync:error before rethrow and suppresses complete', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
   const events: string[] = []
 
   client.on('sync:start', (e) => events.push(`start:${e.phase}`))
@@ -543,13 +543,13 @@ test('scan() emits sync:error before rethrow and suppresses complete', async () 
   )
 
   assert.deepEqual(events, ['start:scan', 'error:scan:source boom'])
-  client.close()
+  await client.close()
 })
 
 test('decrypt() emits sync:error before rethrow and suppresses complete', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
   const events: string[] = []
@@ -573,21 +573,21 @@ test('decrypt() emits sync:error before rethrow and suppresses complete', async 
   )
 
   assert.deepEqual(events, ['start:decrypt', 'error:decrypt:progress boom'])
-  client.close()
+  await client.close()
 })
 
 test('a buggy balance:update handler does not break lifecycle completion', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
   const spentNullifier = filledBytes(22)
-  seedNotes(walletDB, wallet.walletId, [
+  await seedNotes(walletDB, wallet.walletId, [
     noteFixture(wallet.walletId, { commitment: filledBytes(21), nullifier: spentNullifier })
   ])
-  seedChainNullifier(chainDB, spentNullifier, 1n)
+  await seedChainNullifier(chainDB, spentNullifier, 1n)
 
   let completeFired = false
   let handlerError = ''
@@ -603,13 +603,13 @@ test('a buggy balance:update handler does not break lifecycle completion', async
 
   assert.equal(handlerError, 'handler boom', 'handler error was re-emitted')
   assert.ok(completeFired, 'sync:complete still fires')
-  client.close()
+  await client.close()
 })
 
 test('walletId filter scopes events to the matching wallet', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const keyA = new Uint8Array(randomBytes(32))
   const keyB = new Uint8Array(randomBytes(32))
@@ -629,19 +629,19 @@ test('walletId filter scopes events to the matching wallet', async () => {
 
   assert.equal(aHits, 1, 'wallet A filter received its own decrypt complete')
   assert.equal(bHits, 0, 'wallet B filter received nothing')
-  client.close()
+  await client.close()
 })
 
 test('close() removes existing listeners', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
 
   let hits = 0
   client.on('sync:start', () => { hits += 1 })
-  client.close()
+  await client.close()
 
   await client.decrypt(wallet.walletId, encryptionKey, {
     chainId: SEPOLIA_CHAIN_ID,
@@ -653,13 +653,13 @@ test('close() removes existing listeners', async () => {
 })
 
 test('on() after close returns an inert unsubscribe', async () => {
-  const walletDB = memWalletDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
   const encryptionKey = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
 
-  client.close()
+  await client.close()
   let hits = 0
   const unsubscribe = client.on('sync:start', () => { hits += 1 })
 
@@ -674,12 +674,12 @@ test('on() after close returns an inert unsubscribe', async () => {
 })
 
 test('two clients have independent buses', async () => {
-  const walletDBA = memWalletDB()
-  const walletDBB = memWalletDB()
-  const chainDBA = memChainDB()
-  const chainDBB = memChainDB()
-  const clientA = new RailgunClient({ walletDB: walletDBA, chainDB: chainDBA })
-  const clientB = new RailgunClient({ walletDB: walletDBB, chainDB: chainDBB })
+  const walletDBA = await memWalletDB()
+  const walletDBB = await memWalletDB()
+  const chainDBA = await memChainDB()
+  const chainDBB = await memChainDB()
+  const clientA = await RailgunClient.create({ walletDB: walletDBA, chainDB: chainDBA })
+  const clientB = await RailgunClient.create({ walletDB: walletDBB, chainDB: chainDBB })
 
   let aHits = 0
   let bHits = 0
@@ -696,6 +696,6 @@ test('two clients have independent buses', async () => {
 
   assert.equal(aHits, 1, 'client A subscriber heard A events')
   assert.equal(bHits, 0, 'client B subscriber heard nothing from A')
-  clientA.close()
-  clientB.close()
+  await clientA.close()
+  await clientB.close()
 })

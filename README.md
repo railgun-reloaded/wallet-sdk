@@ -19,7 +19,7 @@ import { randomBytes } from 'node:crypto'
 import { RailgunClient } from '@railgun-reloaded/wallet-sdk'
 import { Mnemonic } from '@railgun-reloaded/wallet-node'
 
-const client = new RailgunClient()
+const client = await RailgunClient.create()
 
 const mnemonic = Mnemonic.generate()
 const encryptionKey = new Uint8Array(randomBytes(32))
@@ -40,7 +40,7 @@ console.log({
   viewingPublicKey: ctx.viewingPublicKey  // Uint8Array(32)
 })
 
-client.close()
+await client.close()
 ```
 
 ## Initialization
@@ -57,7 +57,7 @@ To pay the init cost up front — for example at app startup, before serving
 any UI that depends on wallet ops — call `initialize()` explicitly:
 
 ```typescript
-const client = new RailgunClient()
+const client = await RailgunClient.create()
 await client.initialize()
 ```
 

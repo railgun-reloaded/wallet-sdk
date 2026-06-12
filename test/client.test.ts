@@ -72,17 +72,17 @@ function noteFixture (overrides: Partial<DBNewNote>): DBNewNote {
  * @param walletId - Existing wallet ID.
  * @param notes - Notes to insert.
  */
-function seedNotes (
+async function seedNotes (
   walletDB: WalletDB,
   walletId: string,
   notes: DBNewNote[]
-): void {
-  insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
+): Promise<void> {
+  await insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
 }
 
 test('RailgunClient delegates createWallet / listWallets / deleteWallet', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const key = new Uint8Array(randomBytes(32))
 
   const info = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
@@ -94,30 +94,30 @@ test('RailgunClient delegates createWallet / listWallets / deleteWallet', async 
   await client.deleteWallet(info.walletId)
   assert.equal((await client.listWallets()).length, 0)
 
-  client.close()
+  await client.close()
   assert.ok(true, 'close did not throw')
 })
 
 test('RailgunClient close() does not close injected walletDB', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
-  client.close()
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
+  await client.close()
   // If close() had closed the injected DB, this query would throw.
   const rows = walletDB.$client.prepare('SELECT 1 as one').all() as { one: number }[]
   assert.equal(rows[0]!.one, 1)
 })
 
 test('RailgunClient exposes engine property', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   assert.ok(client.engine)
   assert.equal(typeof client.engine.setNetwork, 'function')
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient.getBalances returns note-derived aggregated balances', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const usdc = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
@@ -126,7 +126,7 @@ test('RailgunClient.getBalances returns note-derived aggregated balances', async
     [CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY]: POIStatus.Valid
   }
 
-  seedNotes(walletDB, wallet.walletId, [
+  await seedNotes(walletDB, wallet.walletId, [
     noteFixture({ commitment: filledBytes(10), nullifier: filledBytes(11), token: usdc, amount: 100n, poisPerList: validPoi }),
     noteFixture({ commitment: filledBytes(12), nullifier: filledBytes(13), token: usdc, amount: 200n, poisPerList: validPoi }),
     noteFixture({ commitment: filledBytes(14), nullifier: filledBytes(15), token: usdc, amount: 50n, spent: true }),
@@ -146,17 +146,17 @@ test('RailgunClient.getBalances returns note-derived aggregated balances', async
   assert.equal(balances.length, 2)
   assert.equal(balances.find(balance => balance.token === usdc)?.balance, 300n)
   assert.equal(balances.find(balance => balance.token === dai)?.balance, 500n)
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient.getBalances omits zero balance rows', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 
-  seedNotes(walletDB, wallet.walletId, [
+  await seedNotes(walletDB, wallet.walletId, [
     noteFixture({
       commitment: filledBytes(18),
       nullifier: filledBytes(19),
@@ -168,47 +168,47 @@ test('RailgunClient.getBalances omits zero balance rows', async () => {
 
   const balances = await client.getBalances(wallet.walletId, 11155111)
   assert.deepEqual(balances, [])
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient balance API returns empty values for an empty wallet', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
 
   const balances = await client.getBalances(wallet.walletId, 11155111)
   assert.deepEqual(balances, [])
   assert.deepEqual(await client.getNotes(wallet.walletId, 11155111), [])
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient.getBalances lowercases token values', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 
-  seedNotes(walletDB, wallet.walletId, [
+  await seedNotes(walletDB, wallet.walletId, [
     noteFixture({ commitment: filledBytes(20), nullifier: filledBytes(21), token, amount: 123n })
   ])
 
   const balances = await client.getBalances(wallet.walletId, 11155111, 'all')
   assert.equal(balances.find(balance => balance.token === token)?.balance, 123n)
   assert.equal(balances.some(balance => balance.token === token.toUpperCase()), false)
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient.getNotes maps all and unspent notes', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const tokenMixed = '0xA0b86991C6218b36c1d19D4a2e9Eb0cE3606eB48'
   const spentTxid = filledBytes(33)
 
-  seedNotes(walletDB, wallet.walletId, [
+  await seedNotes(walletDB, wallet.walletId, [
     noteFixture({
       commitment: filledBytes(30),
       nullifier: filledBytes(31),
@@ -245,12 +245,12 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
   assert.equal(first?.leafIndex, 7n)
   assert.equal(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
   assert.equal(spent?.spentTxid, `0x${'21'.repeat(32)}`)
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const unknown = 'missing-wallet'
 
   for (const action of [
@@ -269,7 +269,7 @@ test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', 
     }
   }
 
-  client.close()
+  await client.close()
 })
 
 /**
@@ -333,9 +333,9 @@ class FakeSource {
 }
 
 test('RailgunClient.scan drains a fake source into chain.db', async () => {
-  const walletDB = memDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
 
   const blocks: EVMBlock[] = [
     { number: 5784866n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] },
@@ -350,27 +350,27 @@ test('RailgunClient.scan drains a fake source into chain.db', async () => {
   })
 
   assert.equal(last, 5784867n, 'returns the last block written')
-  const cursor = getSyncState(chainDB, 11155111)?.lastBlockHeight
+  const cursor = (await getSyncState(chainDB, 11155111))?.lastBlockHeight
   assert.equal(cursor, 5784867n, 'sync cursor advanced to tip')
 
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient.decrypt throws when chain DB is uninitialized', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const key = new Uint8Array(randomBytes(32))
   await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
 
   await assert.rejects(() => client.decrypt(VECTORS[0]!.walletId, key, { chainId: 11155111 }),
     /chain DB not initialized/)
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient.decrypt is a no-op when chain has no commitments', async () => {
-  const walletDB = memDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
   const key = new Uint8Array(randomBytes(32))
   await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
 
@@ -390,13 +390,13 @@ test('RailgunClient.decrypt is a no-op when chain has no commitments', async () 
   assert.equal(summary.notesAdded, 0, 'no commitments to decrypt')
   assert.equal(summary.notesSpent, 0, 'no nullifiers to match')
 
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient.sync composes scan() then decrypt()', async () => {
-  const walletDB = memDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
   const key = new Uint8Array(randomBytes(32))
   await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
 
@@ -417,16 +417,16 @@ test('RailgunClient.sync composes scan() then decrypt()', async () => {
   assert.equal(summary.decrypt.chainId, 11155111, 'decrypt chainId derived from network')
   assert.equal(summary.decrypt.notesAdded, 0, 'no commitments → no notes added')
   assert.equal(summary.decrypt.notesSpent, 0, 'no nullifiers → no notes spent')
-  assert.equal(getSyncState(chainDB, 11155111)?.lastBlockHeight, 5784867n,
+  assert.equal((await getSyncState(chainDB, 11155111))?.lastBlockHeight, 5784867n,
     'chain cursor advanced through scan()')
 
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient.sync fires onProgress for both phases in order', async () => {
-  const walletDB = memDB()
-  const chainDB = memChainDB()
-  const client = new RailgunClient({ walletDB, chainDB })
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
   const key = new Uint8Array(randomBytes(32))
   await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
 
@@ -472,12 +472,12 @@ test('RailgunClient.sync fires onProgress for both phases in order', async () =>
   }
   assert.ok(monotonic, 'currentBlock monotonic within each phase')
 
-  client.close()
+  await client.close()
 })
 
 test('RailgunClient loadWallet returns correct keys', async () => {
-  const walletDB = memDB()
-  const client = new RailgunClient({ walletDB })
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
   const key = new Uint8Array(randomBytes(32))
 
   await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
@@ -487,5 +487,5 @@ test('RailgunClient loadWallet returns correct keys', async () => {
   assert.equal(ctx.name, 'primary')
   assert.ok(ctx.railgunAddress.startsWith('0zk1'))
 
-  client.close()
+  await client.close()
 })

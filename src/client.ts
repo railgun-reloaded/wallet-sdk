@@ -258,36 +258,52 @@ class RailgunClient {
   readonly #poiNodeUrls: Partial<Record<NetworkName, string[]>>
 
   /**
-   * Construct a RailgunClient.
-   * @param options - Optional `{ dataDir?, walletDB?, chainDB? }`. Injected
-   *   DBs are not owned by the client and won't be closed by `close()`.
-   *   When omitted, DBs are created under `dataDir` (default: `./.railgun`).
+   * Wire up services around an already-opened wallet DB. Private because
+   * opening a wallet DB is asynchronous — use the static `create()` factory.
+   * @param walletDB - Opened wallet DB instance.
+   * @param ownsWalletDB - True when the client opened the DB itself and is
+   *   responsible for closing it.
+   * @param options - Construction options.
    */
-  constructor (options: RailgunClientOptions = {}) {
-    const dataDir = options.dataDir ?? DEFAULT_DATA_DIR
-    this.#dataDir = dataDir
-
-    if (options.walletDB) {
-      this.#walletDB = options.walletDB
-      this.#ownsWalletDB = false
-    } else {
-      if (!existsSync(dataDir)) {
-        mkdirSync(dataDir, { recursive: true })
-      }
-      this.#walletDB = createWalletDB({
-        path: path.join(dataDir, 'wallets.db'),
-        runMigrations: true,
-        migrationsFolder: resolveWalletMigrationsFolder()
-      })
-      this.#ownsWalletDB = true
-    }
+  private constructor (
+    walletDB: WalletDB,
+    ownsWalletDB: boolean,
+    options: RailgunClientOptions
+  ) {
+    this.#dataDir = options.dataDir ?? DEFAULT_DATA_DIR
+    this.#walletDB = walletDB
+    this.#ownsWalletDB = ownsWalletDB
 
     this.#walletService = new WalletService(this.#walletDB)
     this.#balanceService = new BalanceService(this.#walletDB)
     this.#poiNodeUrls = clonePoiNodeUrls(options.poiNodeUrls)
     this.#engine = new RailgunEngine(
-      options.chainDB ? { chainDB: options.chainDB } : { dataDir }
+      options.chainDB ? { chainDB: options.chainDB } : { dataDir: this.#dataDir }
     )
+  }
+
+  /**
+   * Create a RailgunClient.
+   * @param options - Optional `{ dataDir?, walletDB?, chainDB? }`. Injected
+   *   DBs are not owned by the client and won't be closed by `close()`.
+   *   When omitted, DBs are created under `dataDir` (default: `./.railgun`).
+   * @returns Ready-to-use client with its wallet DB opened and migrated.
+   */
+  static async create (options: RailgunClientOptions = {}): Promise<RailgunClient> {
+    if (options.walletDB) {
+      return new RailgunClient(options.walletDB, false, options)
+    }
+
+    const dataDir = options.dataDir ?? DEFAULT_DATA_DIR
+    if (!existsSync(dataDir)) {
+      mkdirSync(dataDir, { recursive: true })
+    }
+    const walletDB = await createWalletDB({
+      path: path.join(dataDir, 'wallets.db'),
+      runMigrations: true,
+      migrationsFolder: resolveWalletMigrationsFolder()
+    })
+    return new RailgunClient(walletDB, true, options)
   }
 
   /**
@@ -454,9 +470,9 @@ class RailgunClient {
    */
   async scan (params: ScanParams): Promise<bigint | undefined> {
     this.#engine.setDataSource(params.dataSource)
-    this.#engine.setNetwork(params.network)
+    await this.#engine.setNetwork(params.network)
     const chainId = NETWORK_CONFIG[params.network].chainID
-    const previousLastBlock = this.#getPreviousChainLastBlock(chainId)
+    const previousLastBlock = await this.#getPreviousChainLastBlock(chainId)
     const scanStartBlock = previousLastBlock !== undefined
       ? previousLastBlock + 1n
       : NETWORK_CONFIG[params.network].deploymentBlock
@@ -719,12 +735,12 @@ class RailgunClient {
    * data source when one was set) and closes the wallet DB only when it
    * was created internally. Injected DBs remain the caller's responsibility.
    */
-  close (): void {
+  async close (): Promise<void> {
     this.#closed = true
     this.#bus.removeAllListeners()
-    this.#engine.destroy()
+    await this.#engine.destroy()
     if (this.#ownsWalletDB) {
-      closeWalletDB(this.#walletDB)
+      await closeWalletDB(this.#walletDB)
     }
   }
 
@@ -733,9 +749,9 @@ class RailgunClient {
    * @param chainId - Chain ID for the configured network.
    * @returns Previous persisted last scanned block, if any.
    */
-  #getPreviousChainLastBlock (chainId: number): bigint | undefined {
+  async #getPreviousChainLastBlock (chainId: number): Promise<bigint | undefined> {
     if (this.#engine.db) {
-      return getSyncState(this.#engine.db, chainId)?.lastBlockHeight
+      return (await getSyncState(this.#engine.db, chainId))?.lastBlockHeight
     }
 
     const chainDbPath = path.join(this.#dataDir, 'chains', `${chainId}`, 'chain.db')
@@ -743,11 +759,11 @@ class RailgunClient {
       return undefined
     }
 
-    const chainDB = createChainDB({ path: chainDbPath })
+    const chainDB = await createChainDB({ path: chainDbPath })
     try {
-      return getSyncState(chainDB, chainId)?.lastBlockHeight
+      return (await getSyncState(chainDB, chainId))?.lastBlockHeight
     } finally {
-      closeChainDB(chainDB)
+      await closeChainDB(chainDB)
     }
   }
 

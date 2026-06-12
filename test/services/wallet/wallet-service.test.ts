@@ -19,8 +19,8 @@ import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors'
  * Build a fresh in-memory WalletService and a random 32-byte encryption key.
  * @returns New fixture state per test.
  */
-function fixture (): { service: WalletService, db: WalletDB, key: Uint8Array } {
-  const db = createWalletDB({
+async function fixture (): Promise<{ service: WalletService, db: WalletDB, key: Uint8Array }> {
+  const db = await createWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
@@ -31,7 +31,7 @@ function fixture (): { service: WalletService, db: WalletDB, key: Uint8Array } {
 }
 
 test('createWallet returns WalletInfo with matching walletId', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   const info = await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   assert.equal(info.walletId, VECTORS[0]!.walletId)
   assert.equal(info.name, null)
@@ -39,13 +39,13 @@ test('createWallet returns WalletInfo with matching walletId', async () => {
 })
 
 test('createWallet with a name persists the name', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   const info = await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
   assert.equal(info.name, 'primary')
 })
 
 test('createWallet duplicate (mnemonic, index) throws WalletAlreadyExistsError with walletId', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   try {
     await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
@@ -57,7 +57,7 @@ test('createWallet duplicate (mnemonic, index) throws WalletAlreadyExistsError w
 })
 
 test('createWallet same mnemonic, different index => separate wallets', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, index: 0 })
   const info1 = await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, index: 1 })
   assert.equal(info1.walletId, VECTORS[1]!.walletId)
@@ -65,7 +65,7 @@ test('createWallet same mnemonic, different index => separate wallets', async ()
 })
 
 test('createWallet with invalid mnemonic throws InvalidMnemonicError', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   try {
     await service.createWallet({ mnemonic: 'not a valid mnemonic at all', encryptionKey: key })
     assert.fail('expected throw')
@@ -75,7 +75,7 @@ test('createWallet with invalid mnemonic throws InvalidMnemonicError', async () 
 })
 
 test('createWallet with non-32-byte key throws InvalidEncryptionKeyError', async () => {
-  const { service } = fixture()
+  const { service } = await fixture()
   try {
     await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: new Uint8Array(31) })
     assert.fail('expected throw')
@@ -85,7 +85,7 @@ test('createWallet with non-32-byte key throws InvalidEncryptionKeyError', async
 })
 
 test('loadWallet returns keys matching fixtures', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'test' })
   const ctx = await service.loadWallet(VECTORS[0]!.walletId, key)
   assert.equal(ctx.walletId, VECTORS[0]!.walletId)
@@ -97,7 +97,7 @@ test('loadWallet returns keys matching fixtures', async () => {
 })
 
 test('loadWallet with unknown id throws WalletNotFoundError', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   try {
     await service.loadWallet('deadbeef'.repeat(8), key)
     assert.fail('expected throw')
@@ -107,7 +107,7 @@ test('loadWallet with unknown id throws WalletNotFoundError', async () => {
 })
 
 test('loadWallet with wrong key throws InvalidEncryptionKeyError', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const wrongKey = new Uint8Array(randomBytes(32))
   try {
@@ -119,7 +119,7 @@ test('loadWallet with wrong key throws InvalidEncryptionKeyError', async () => {
 })
 
 test('listWallets returns wallets sorted by createdAt ASC', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, index: 0 })
   await new Promise((resolve) => setTimeout(resolve, 1100))
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, index: 1 })
@@ -129,7 +129,7 @@ test('listWallets returns wallets sorted by createdAt ASC', async () => {
 })
 
 test('deleteWallet removes the wallet; second delete is a no-op', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   await service.deleteWallet(VECTORS[0]!.walletId)
   assert.equal((await service.listWallets()).length, 0)
@@ -138,7 +138,7 @@ test('deleteWallet removes the wallet; second delete is a no-op', async () => {
 })
 
 test('full lifecycle: create -> list -> load -> delete -> load throws', async () => {
-  const { service, key } = fixture()
+  const { service, key } = await fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
   assert.equal((await service.listWallets()).length, 1)
   const ctx = await service.loadWallet(VECTORS[0]!.walletId, key)

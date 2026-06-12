@@ -212,8 +212,8 @@ class BalanceService {
    * Throw `WalletNotFoundError` if no wallet with this ID exists.
    * @param walletId - Wallet ID to check.
    */
-  #assertWalletExists (walletId: string): void {
-    if (!getWallet(this.#db, walletId)) {
+  async #assertWalletExists (walletId: string): Promise<void> {
+    if (!(await getWallet(this.#db, walletId))) {
       throw new WalletNotFoundError(walletId)
     }
   }
@@ -232,9 +232,9 @@ class BalanceService {
     chainId: number,
     mode: BalanceMode = 'spendable'
   ): Promise<TokenBalance[]> {
-    this.#assertWalletExists(walletId)
+    await this.#assertWalletExists(walletId)
     const network = getNetworkConfigByChainId(chainId)
-    const notes = getUnspentNotes(this.#db, walletId, chainId)
+    const notes = await getUnspentNotes(this.#db, walletId, chainId)
     if (notes.length === 0) {
       return []
     }
@@ -283,10 +283,10 @@ class BalanceService {
     walletId: string,
     chainId: number
   ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
-    this.#assertWalletExists(walletId)
+    await this.#assertWalletExists(walletId)
     const network = getNetworkConfigByChainId(chainId)
 
-    const notes = getUnspentNotes(this.#db, walletId, chainId)
+    const notes = await getUnspentNotes(this.#db, walletId, chainId)
     if (notes.length === 0) {
       return createEmptyBucketBalances()
     }
@@ -324,10 +324,10 @@ class BalanceService {
     chainId: number,
     options: { unspent?: boolean } = {}
   ): Promise<DecryptedNote[]> {
-    this.#assertWalletExists(walletId)
+    await this.#assertWalletExists(walletId)
     const rows = options.unspent === true
-      ? getUnspentNotes(this.#db, walletId, chainId)
-      : getAllNotes(this.#db, walletId, chainId)
+      ? await getUnspentNotes(this.#db, walletId, chainId)
+      : await getAllNotes(this.#db, walletId, chainId)
     return rows.map(mapNoteRow)
   }
 }

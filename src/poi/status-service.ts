@@ -93,7 +93,7 @@ class PoiStatusService {
     chainId: number,
     options: RefreshOptions = {}
   ): Promise<RefreshSummary> {
-    const candidates = getAllNotes(this.#walletDb, walletId, chainId)
+    const candidates = (await getAllNotes(this.#walletDb, walletId, chainId))
       .filter(note => shouldRefreshPoiStatus(note, this.#listKeys))
     const summary: RefreshSummary = {
       checked: candidates.length,
@@ -189,7 +189,7 @@ class PoiStatusService {
 
     if (updates.length > 0) {
       try {
-        const persisted = updateNotePoiStatusBatch(this.#walletDb, updates)
+        const persisted = await updateNotePoiStatusBatch(this.#walletDb, updates)
         summary.updated += persisted
         if (persisted < updates.length) {
           summary.failed += updates.length - persisted
