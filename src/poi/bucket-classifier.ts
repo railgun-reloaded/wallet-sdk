@@ -5,6 +5,9 @@ import type { NetworkConfig as NetworkConfigEntry } from '../network-config'
 import { POIStatus, WalletBalanceBucket } from './types'
 
 type POIStatusMap = Record<string, POIStatus | string | undefined>
+type PoiNetworkConfig = NetworkConfigEntry & {
+  poi: NonNullable<NetworkConfigEntry['poi']>
+}
 
 const SHIELD_COMMITMENT_TYPE = 0
 const OUTPUT_TYPE_CHANGE = 2
@@ -64,14 +67,10 @@ function missingPoiBucket (note: DBNote): WalletBalanceBucket {
  */
 function classifyNote (
   note: DBNote,
-  network: NetworkConfigEntry
+  network: PoiNetworkConfig
 ): WalletBalanceBucket {
   if (note.spent === true) {
     return WalletBalanceBucket.Spent
-  }
-
-  if (network.poi === undefined) {
-    throw new Error(`Missing PPOI config for chain ${network.chainID}`)
   }
 
   if (note.poisPerList == null) {
@@ -112,3 +111,4 @@ function classifyNote (
 }
 
 export { classifyNote }
+export type { PoiNetworkConfig }
