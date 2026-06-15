@@ -8,8 +8,12 @@ import {
 
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config'
 import { NETWORK_CONFIG } from '../../network-config'
-import type { PoiNetworkConfig } from '../../poi/bucket-classifier'
-import { classifyNote } from '../../poi/bucket-classifier'
+import {
+  classifyPoi,
+  isSpendableProtocol,
+  toWalletBalanceBucket
+} from '../../poi/bucket-classifier'
+import type { NoteSpendState } from '../../poi/types'
 import { WalletBalanceBucket } from '../../poi/types'
 import { WalletNotFoundError } from '../wallet/errors'
 
@@ -134,6 +138,24 @@ function getNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
 }
 
 /**
+ * Build the protocol and optional POI tiers for a stored note.
+ * @param note - Stored wallet note.
+ * @param network - Network config for the note chain.
+ * @returns Two-tier note spend state.
+ */
+function buildNoteSpendState (
+  note: DBNote,
+  network: NetworkConfigEntry
+): NoteSpendState {
+  return {
+    spendable: isSpendableProtocol(note),
+    poi: network.poi === undefined
+      ? null
+      : classifyPoi(note, network.poi)
+  }
+}
+
+/**
  * Add a note amount to a token balance accumulator.
  * @param balances - Mutable token balance map.
  * @param note - Stored note whose amount should be added.
@@ -252,19 +274,10 @@ class BalanceService {
       ? WalletBalanceBucket.Spendable
       : mode
 
-    if (network.poi === undefined) {
-      if (targetBucket !== WalletBalanceBucket.Spendable) {
-        return []
-      }
-      for (const note of notes) {
-        addNoteBalance(balances, note)
-      }
-      return mapBalanceAccumulator(balances)
-    }
-
-    const poiNetwork = network as PoiNetworkConfig
     for (const note of notes) {
-      const bucket = classifyNote(note, poiNetwork)
+      const bucket = toWalletBalanceBucket(
+        buildNoteSpendState(note, network)
+      )
       if (bucket === targetBucket) {
         addNoteBalance(balances, note)
       }
@@ -291,21 +304,12 @@ class BalanceService {
       return createEmptyBucketBalances()
     }
 
-    if (network.poi === undefined) {
-      const balances = new Map<string, bigint>()
-      for (const note of notes) {
-        addNoteBalance(balances, note)
-      }
-      const byBucket = createEmptyBucketBalances()
-      byBucket[WalletBalanceBucket.Spendable] =
-        mapBalanceAccumulator(balances)
-      return byBucket
-    }
-
     const accumulators = createBucketAccumulators()
-    const poiNetwork = network as PoiNetworkConfig
     for (const note of notes) {
-      addNoteBalance(accumulators[classifyNote(note, poiNetwork)], note)
+      const bucket = toWalletBalanceBucket(
+        buildNoteSpendState(note, network)
+      )
+      addNoteBalance(accumulators[bucket], note)
     }
 
     return mapBucketAccumulators(accumulators)

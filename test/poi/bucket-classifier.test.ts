@@ -3,7 +3,18 @@ import { test } from 'node:test'
 
 import type { DBNote } from '@railgun-reloaded/storage'
 
-import { POIStatus, WalletBalanceBucket, classifyNote } from '../../src/poi'
+import type {
+  NoteSpendState,
+  PoiClassification
+} from '../../src/poi'
+import {
+  POIStatus,
+  WalletBalanceBucket,
+  classifyNote,
+  classifyPoi,
+  isSpendableProtocol,
+  toWalletBalanceBucket
+} from '../../src/poi'
 import type { PoiNetworkConfig } from '../../src/poi/bucket-classifier'
 
 const LIST_A = 'list-a'
@@ -70,6 +81,170 @@ function noteFixture (overrides: Partial<DBNote> = {}): DBNote {
     ...overrides
   }
 }
+
+test('isSpendableProtocol depends only on protocol spent state', () => {
+  assert.equal(
+    isSpendableProtocol(noteFixture({
+      spent: false,
+      poisPerList: {
+        [LIST_A]: POIStatus.ShieldBlocked,
+        [LIST_B]: POIStatus.ShieldBlocked
+      }
+    })),
+    true
+  )
+  assert.equal(
+    isSpendableProtocol(noteFixture({
+      spent: true,
+      poisPerList: {
+        [LIST_A]: POIStatus.Valid,
+        [LIST_B]: POIStatus.Valid
+      }
+    })),
+    false
+  )
+})
+
+test('classifyPoi returns only the POI service tier', () => {
+  const cases: Array<{
+    note: DBNote
+    expected: PoiClassification
+  }> = [
+    {
+      note: noteFixture({
+        commitmentType: SHIELD_COMMITMENT_TYPE,
+        poisPerList: null
+      }),
+      expected: { kind: 'pending', reason: 'ShieldPending' }
+    },
+    {
+      note: noteFixture({
+        outputType: OUTPUT_TYPE_CHANGE,
+        poisPerList: null
+      }),
+      expected: { kind: 'pending', reason: 'MissingInternalPOI' }
+    },
+    {
+      note: noteFixture({
+        outputType: OUTPUT_TYPE_TRANSFER,
+        poisPerList: null
+      }),
+      expected: { kind: 'pending', reason: 'MissingExternalPOI' }
+    },
+    {
+      note: noteFixture({
+        spent: true,
+        poisPerList: {
+          [LIST_A]: POIStatus.ShieldBlocked,
+          [LIST_B]: POIStatus.ProofSubmitted
+        }
+      }),
+      expected: { kind: 'blocked' }
+    },
+    {
+      note: noteFixture({
+        commitmentType: SHIELD_COMMITMENT_TYPE,
+        poisPerList: {
+          [LIST_A]: POIStatus.Valid,
+          [LIST_B]: POIStatus.ProofSubmitted
+        }
+      }),
+      expected: { kind: 'pending', reason: 'ShieldPending' }
+    },
+    {
+      note: noteFixture({
+        poisPerList: {
+          [LIST_A]: POIStatus.Valid,
+          [LIST_B]: POIStatus.ProofSubmitted
+        }
+      }),
+      expected: { kind: 'pending', reason: 'ProofSubmitted' }
+    },
+    {
+      note: noteFixture(),
+      expected: { kind: 'cleared' }
+    },
+    {
+      note: noteFixture({
+        outputType: OUTPUT_TYPE_CHANGE,
+        poisPerList: {
+          [LIST_A]: POIStatus.Valid
+        }
+      }),
+      expected: { kind: 'pending', reason: 'MissingInternalPOI' }
+    }
+  ]
+
+  for (const { note, expected } of cases) {
+    assert.deepEqual(classifyPoi(note, PPOI_NETWORK.poi), expected)
+  }
+})
+
+test('toWalletBalanceBucket preserves every flat wire value and precedence', () => {
+  assert.deepEqual(Object.values(WalletBalanceBucket), [
+    'Spendable',
+    'ShieldPending',
+    'ShieldBlocked',
+    'ProofSubmitted',
+    'MissingInternalPOI',
+    'MissingExternalPOI',
+    'Spent'
+  ])
+
+  const cases: Array<{
+    state: NoteSpendState
+    expected: WalletBalanceBucket
+  }> = [
+    {
+      state: { spendable: false, poi: { kind: 'blocked' } },
+      expected: WalletBalanceBucket.Spent
+    },
+    {
+      state: { spendable: true, poi: { kind: 'blocked' } },
+      expected: WalletBalanceBucket.ShieldBlocked
+    },
+    {
+      state: {
+        spendable: true,
+        poi: { kind: 'pending', reason: 'ShieldPending' }
+      },
+      expected: WalletBalanceBucket.ShieldPending
+    },
+    {
+      state: {
+        spendable: true,
+        poi: { kind: 'pending', reason: 'ProofSubmitted' }
+      },
+      expected: WalletBalanceBucket.ProofSubmitted
+    },
+    {
+      state: {
+        spendable: true,
+        poi: { kind: 'pending', reason: 'MissingInternalPOI' }
+      },
+      expected: WalletBalanceBucket.MissingInternalPOI
+    },
+    {
+      state: {
+        spendable: true,
+        poi: { kind: 'pending', reason: 'MissingExternalPOI' }
+      },
+      expected: WalletBalanceBucket.MissingExternalPOI
+    },
+    {
+      state: { spendable: true, poi: { kind: 'cleared' } },
+      expected: WalletBalanceBucket.Spendable
+    },
+    {
+      state: { spendable: true, poi: null },
+      expected: WalletBalanceBucket.Spendable
+    }
+  ]
+
+  for (const { state, expected } of cases) {
+    assert.equal(toWalletBalanceBucket(state), expected)
+  }
+})
 
 test('classifyNote returns Spent before every POI branch', () => {
   assert.equal(

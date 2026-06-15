@@ -15,6 +15,27 @@ enum WalletBalanceBucket {
   Spent = 'Spent'
 }
 
+/** POI-service classification, separate from protocol spent state. */
+type PoiClassification =
+  | { kind: 'cleared' }
+  | {
+    kind: 'pending'
+    reason:
+      | 'ShieldPending'
+      | 'ProofSubmitted'
+      | 'MissingInternalPOI'
+      | 'MissingExternalPOI'
+  }
+  | { kind: 'blocked' }
+
+/** Protocol spendability plus the POI tier when the network uses POI. */
+type NoteSpendState = {
+  /** Protocol-only result derived without consulting POI data. */
+  spendable: boolean
+  /** POI-service result, or null when POI is not configured for the network. */
+  poi: PoiClassification | null
+}
+
 enum BlindedCommitmentType {
   Shield = 'Shield',
   Transact = 'Transact',
@@ -58,7 +79,9 @@ export {
 }
 export type {
   BlindedCommitmentData,
+  NoteSpendState,
   POIList,
   POIsPerList,
+  PoiClassification,
   RequiredListKey
 }

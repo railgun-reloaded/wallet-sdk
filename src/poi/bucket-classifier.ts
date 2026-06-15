@@ -2,6 +2,8 @@ import type { DBNote } from '@railgun-reloaded/storage'
 
 import type { NetworkConfig as NetworkConfigEntry } from '../network-config'
 
+import type { NetworkPoiConfig } from './network-config'
+import type { NoteSpendState, PoiClassification } from './types'
 import { POIStatus, WalletBalanceBucket } from './types'
 
 type POIStatusMap = Record<string, POIStatus | string | undefined>
@@ -48,19 +50,113 @@ function hasAllRequiredLists (
 /**
  * Classify a note whose required POI data is missing or incomplete.
  * @param note - Stored wallet note.
- * @returns Bucket that best describes the missing POI state.
+ * @returns Pending POI classification for the note structure.
  */
-function missingPoiBucket (note: DBNote): WalletBalanceBucket {
+function missingPoiClassification (note: DBNote): PoiClassification {
   if (isShieldCommitment(note)) {
-    return WalletBalanceBucket.ShieldPending
+    return { kind: 'pending', reason: 'ShieldPending' }
   }
-  return isChangeOutput(note)
-    ? WalletBalanceBucket.MissingInternalPOI
-    : WalletBalanceBucket.MissingExternalPOI
+  return {
+    kind: 'pending',
+    reason: isChangeOutput(note)
+      ? 'MissingInternalPOI'
+      : 'MissingExternalPOI'
+  }
 }
 
 /**
- * Classify a note into a wallet balance bucket.
+ * Resolve protocol-level note spendability without consulting POI state.
+ * @param note - Stored wallet note.
+ * @returns True when the note has not been spent.
+ */
+function isSpendableProtocol (note: DBNote): boolean {
+  return note.spent !== true
+}
+
+/**
+ * Classify only the POI tier of a note.
+ * @param note - Stored wallet note.
+ * @param poiNetwork - Network POI config containing required list keys.
+ * @returns POI service classification, independent of spent state.
+ */
+function classifyPoi (
+  note: DBNote,
+  poiNetwork: NetworkPoiConfig
+): PoiClassification {
+  if (note.poisPerList == null) {
+    return missingPoiClassification(note)
+  }
+
+  const poisPerList = note.poisPerList as POIStatusMap
+  const requiredListKeys = poiNetwork.requiredListKeys
+
+  if (!hasAllRequiredLists(poisPerList, requiredListKeys)) {
+    return missingPoiClassification(note)
+  }
+
+  const requiredStatuses = requiredListKeys.map(key => poisPerList[key])
+
+  if (requiredStatuses.some(status => status === POIStatus.ShieldBlocked)) {
+    return { kind: 'blocked' }
+  }
+
+  if (
+    isShieldCommitment(note) &&
+    requiredStatuses.some(status => status !== POIStatus.Valid)
+  ) {
+    return { kind: 'pending', reason: 'ShieldPending' }
+  }
+
+  if (requiredStatuses.some(status => status === POIStatus.ProofSubmitted)) {
+    return { kind: 'pending', reason: 'ProofSubmitted' }
+  }
+
+  if (requiredStatuses.every(status => status === POIStatus.Valid)) {
+    return { kind: 'cleared' }
+  }
+
+  return {
+    kind: 'pending',
+    reason: isChangeOutput(note)
+      ? 'MissingInternalPOI'
+      : 'MissingExternalPOI'
+  }
+}
+
+/**
+ * Project the two-tier note state to the parity-critical flat bucket.
+ * @param state - Protocol spendability and optional POI classification.
+ * @returns Flat wallet balance bucket.
+ */
+function toWalletBalanceBucket (
+  state: NoteSpendState
+): WalletBalanceBucket {
+  if (!state.spendable) {
+    return WalletBalanceBucket.Spent
+  }
+
+  if (state.poi === null || state.poi.kind === 'cleared') {
+    return WalletBalanceBucket.Spendable
+  }
+
+  if (state.poi.kind === 'blocked') {
+    return WalletBalanceBucket.ShieldBlocked
+  }
+
+  switch (state.poi.reason) {
+    case 'ShieldPending':
+      return WalletBalanceBucket.ShieldPending
+    case 'ProofSubmitted':
+      return WalletBalanceBucket.ProofSubmitted
+    case 'MissingInternalPOI':
+      return WalletBalanceBucket.MissingInternalPOI
+    case 'MissingExternalPOI':
+      return WalletBalanceBucket.MissingExternalPOI
+  }
+}
+
+/**
+ * Classify a note into the parity-critical flat wallet balance bucket.
  * @param note - Stored wallet note.
  * @param network - Network config containing required PPOI lists.
  * @returns Balance bucket for spendability and PPOI state.
@@ -69,46 +165,16 @@ function classifyNote (
   note: DBNote,
   network: PoiNetworkConfig
 ): WalletBalanceBucket {
-  if (note.spent === true) {
-    return WalletBalanceBucket.Spent
-  }
-
-  if (note.poisPerList == null) {
-    return missingPoiBucket(note)
-  }
-
-  const poisPerList = note.poisPerList as POIStatusMap
-  const requiredListKeys = network.poi.requiredListKeys
-
-  if (!hasAllRequiredLists(poisPerList, requiredListKeys)) {
-    return missingPoiBucket(note)
-  }
-
-  const requiredStatuses = requiredListKeys.map(key => poisPerList[key])
-
-  if (requiredStatuses.some(status => status === POIStatus.ShieldBlocked)) {
-    return WalletBalanceBucket.ShieldBlocked
-  }
-
-  if (
-    isShieldCommitment(note) &&
-    requiredStatuses.some(status => status !== POIStatus.Valid)
-  ) {
-    return WalletBalanceBucket.ShieldPending
-  }
-
-  if (requiredStatuses.some(status => status === POIStatus.ProofSubmitted)) {
-    return WalletBalanceBucket.ProofSubmitted
-  }
-
-  if (requiredStatuses.every(status => status === POIStatus.Valid)) {
-    return WalletBalanceBucket.Spendable
-  }
-
-  return isChangeOutput(note)
-    ? WalletBalanceBucket.MissingInternalPOI
-    : WalletBalanceBucket.MissingExternalPOI
+  return toWalletBalanceBucket({
+    spendable: isSpendableProtocol(note),
+    poi: classifyPoi(note, network.poi)
+  })
 }
 
-export { classifyNote }
+export {
+  classifyNote,
+  classifyPoi,
+  isSpendableProtocol,
+  toWalletBalanceBucket
+}
 export type { PoiNetworkConfig }

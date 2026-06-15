@@ -7,12 +7,19 @@ export {
 } from './types'
 export type {
   BlindedCommitmentData,
+  NoteSpendState,
   POIList,
   POIsPerList,
+  PoiClassification,
   RequiredListKey
 } from './types'
 
-export { classifyNote } from './bucket-classifier'
+export {
+  classifyNote,
+  classifyPoi,
+  isSpendableProtocol,
+  toWalletBalanceBucket
+} from './bucket-classifier'
 
 export {
   BlindedCommitmentInputError,
