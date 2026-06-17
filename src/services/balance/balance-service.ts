@@ -334,7 +334,7 @@ class BalanceService {
     const rows = options.unspent === true
       ? await getUnspentNotes(this.#db, walletId, chainId)
       : await getAllNotes(this.#db, walletId, chainId)
-    return rows.map(mapNoteRow)
+    return rows.map((row) => mapNoteRow(row))
   }
 }
 
