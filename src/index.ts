@@ -55,6 +55,7 @@ export {
   POIJSONRPCMethod,
   POI_NODE_CLIENT_DEFAULT_TIMEOUT_MS,
   classifyNote,
+  classifyNoteSpendState,
   classifyPoi,
   getRequiredListKeys,
   isSpendableProtocol,

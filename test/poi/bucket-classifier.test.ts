@@ -3,6 +3,7 @@ import { test } from 'node:test'
 
 import type { DBNote } from '@railgun-reloaded/storage'
 
+import type { NetworkConfig } from '../../src/network-config'
 import type {
   NoteSpendState,
   PoiClassification
@@ -11,6 +12,7 @@ import {
   POIStatus,
   WalletBalanceBucket,
   classifyNote,
+  classifyNoteSpendState,
   classifyPoi,
   isSpendableProtocol,
   toWalletBalanceBucket
@@ -35,6 +37,13 @@ const PPOI_NETWORK: PoiNetworkConfig = {
     launchTimestamp: 0,
     requiredListKeys: [LIST_A, LIST_B]
   }
+}
+
+const NON_PPOI_NETWORK: NetworkConfig = {
+  chainID: 1,
+  deploymentBlock: 1n,
+  proxyContractAddress: '0x0000000000000000000000000000000000000000',
+  rpcURL: 'https://rpc.example'
 }
 
 /**
@@ -180,6 +189,32 @@ test('classifyPoi returns only the POI service tier', () => {
   }
 })
 
+test('classifyNoteSpendState models non-PPOI networks with an absent POI tier', () => {
+  assert.deepEqual(
+    classifyNoteSpendState(noteFixture({
+      commitmentType: SHIELD_COMMITMENT_TYPE,
+      poisPerList: null
+    }), NON_PPOI_NETWORK),
+    {
+      spendable: true,
+      poi: null
+    }
+  )
+  assert.deepEqual(
+    classifyNoteSpendState(noteFixture({
+      spent: true,
+      poisPerList: {
+        [LIST_A]: POIStatus.ShieldBlocked,
+        [LIST_B]: POIStatus.ShieldBlocked
+      }
+    }), NON_PPOI_NETWORK),
+    {
+      spendable: false,
+      poi: null
+    }
+  )
+})
+
 test('toWalletBalanceBucket preserves every flat wire value and precedence', () => {
   assert.deepEqual(Object.values(WalletBalanceBucket), [
     'Spendable',
@@ -254,6 +289,16 @@ test('classifyNote returns Spent before every POI branch', () => {
       poisPerList: null
     }), PPOI_NETWORK),
     WalletBalanceBucket.Spent
+  )
+})
+
+test('classifyNote maps non-PPOI unspent notes to Spendable', () => {
+  assert.equal(
+    classifyNote(noteFixture({
+      commitmentType: SHIELD_COMMITMENT_TYPE,
+      poisPerList: null
+    }), NON_PPOI_NETWORK),
+    WalletBalanceBucket.Spendable
   )
 })
 

@@ -1,8 +1,10 @@
 export {
   BalanceService,
-  mapNoteRow
+  mapNoteRow,
+  mapNoteSpendState
 } from './balance-service'
 export type {
+  BalanceMode,
   DecryptedNote,
   TokenBalance
 } from './balance-service'

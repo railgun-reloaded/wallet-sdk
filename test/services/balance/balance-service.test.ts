@@ -63,6 +63,13 @@ test('mapNoteRow: ERC20 row exposes tokenType 0 and the 32-zero-byte tokenSubID 
 
   assert.equal(note.tokenType, 0)
   assert.equal(note.tokenSubID, ERC20_NULL_SUB_ID_HEX)
+  assert.deepEqual(note.spendState, {
+    spendable: true,
+    poi: {
+      kind: 'pending',
+      reason: 'MissingExternalPOI'
+    }
+  })
 })
 
 test('mapNoteRow: ERC721 row exposes tokenType 1 and the original tokenSubID bytes as 0x-prefixed hex', () => {
@@ -129,4 +136,22 @@ test('mapNoteRow preserves bytesToHex format on tokenSubID (matches commitment/n
   assert.equal(note.commitment, bytesToHex(row.commitment, { prefix: true }))
   assert.equal(note.nullifier, bytesToHex(row.nullifier, { prefix: true }))
   assert.equal(note.tokenSubID, bytesToHex(row.tokenSubID, { prefix: true }))
+})
+
+test('mapNoteRow exposes spent state with public spentTxid hex', () => {
+  const spentTxid = hexToBytes(`0x${'cd'.repeat(32)}`)
+  const row = makeDBNote({
+    spent: true,
+    spentTxid
+  })
+  const note = mapNoteRow(row)
+
+  assert.equal(note.spentTxid, `0x${'cd'.repeat(32)}`)
+  assert.deepEqual(note.spendState, {
+    spendable: false,
+    poi: {
+      kind: 'pending',
+      reason: 'MissingExternalPOI'
+    }
+  })
 })

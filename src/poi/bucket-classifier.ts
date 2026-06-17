@@ -124,6 +124,24 @@ function classifyPoi (
 }
 
 /**
+ * Classify a note into the legible two-tier spend state.
+ * @param note - Stored wallet note.
+ * @param network - Network config, with optional POI config.
+ * @returns Protocol spendability with optional POI service classification.
+ */
+function classifyNoteSpendState (
+  note: DBNote,
+  network: NetworkConfigEntry
+): NoteSpendState {
+  return {
+    spendable: isSpendableProtocol(note),
+    poi: network.poi === undefined
+      ? null
+      : classifyPoi(note, network.poi)
+  }
+}
+
+/**
  * Project the two-tier note state to the parity-critical flat bucket.
  * @param state - Protocol spendability and optional POI classification.
  * @returns Flat wallet balance bucket.
@@ -158,21 +176,19 @@ function toWalletBalanceBucket (
 /**
  * Classify a note into the parity-critical flat wallet balance bucket.
  * @param note - Stored wallet note.
- * @param network - Network config containing required PPOI lists.
+ * @param network - Network config, with optional POI config.
  * @returns Balance bucket for spendability and PPOI state.
  */
 function classifyNote (
   note: DBNote,
-  network: PoiNetworkConfig
+  network: NetworkConfigEntry
 ): WalletBalanceBucket {
-  return toWalletBalanceBucket({
-    spendable: isSpendableProtocol(note),
-    poi: classifyPoi(note, network.poi)
-  })
+  return toWalletBalanceBucket(classifyNoteSpendState(note, network))
 }
 
 export {
   classifyNote,
+  classifyNoteSpendState,
   classifyPoi,
   isSpendableProtocol,
   toWalletBalanceBucket

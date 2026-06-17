@@ -16,6 +16,7 @@ export type {
 
 export {
   classifyNote,
+  classifyNoteSpendState,
   classifyPoi,
   isSpendableProtocol,
   toWalletBalanceBucket

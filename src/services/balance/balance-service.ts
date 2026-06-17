@@ -9,8 +9,7 @@ import {
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config'
 import { NETWORK_CONFIG } from '../../network-config'
 import {
-  classifyPoi,
-  isSpendableProtocol,
+  classifyNoteSpendState,
   toWalletBalanceBucket
 } from '../../poi/bucket-classifier'
 import type { NoteSpendState } from '../../poi/types'
@@ -32,7 +31,8 @@ type BalanceMode = 'spendable' | 'all' | WalletBalanceBucket
  * hex; the leaf index is widened to bigint for uniformity with `blockNumber`
  * and `amount`. `tokenType` is the integer token-class enum
  * (0 = ERC20, 1 = ERC721); `tokenSubID` is the 32-byte
- * sub-identifier (zero hex for ERC20).
+ * sub-identifier (zero hex for ERC20). `spendState` separates protocol
+ * spendability from optional POI-service state.
  */
 type DecryptedNote = {
   commitment: string
@@ -46,6 +46,7 @@ type DecryptedNote = {
   leafIndex: bigint
   spent: boolean
   spentTxid: string | null
+  spendState: NoteSpendState
   decryptedAt: Date
 }
 
@@ -54,9 +55,13 @@ type DecryptedNote = {
  * become 0x-prefixed lowercase hex; `treePosition` is widened to bigint and
  * exposed as `leafIndex`.
  * @param row - Row from `getAllNotes` / `getUnspentNotes`.
+ * @param network - Optional resolved network config for the note chain.
  * @returns Public-facing DecryptedNote.
  */
-function mapNoteRow (row: DBNote): DecryptedNote {
+function mapNoteRow (
+  row: DBNote,
+  network: NetworkConfigEntry = getNetworkConfigByChainId(row.chainId)
+): DecryptedNote {
   const {
     commitment,
     nullifier,
@@ -71,6 +76,9 @@ function mapNoteRow (row: DBNote): DecryptedNote {
     spentTxid,
     decryptedAt
   } = row
+  const publicSpentTxid = spentTxid === null
+    ? null
+    : bytesToHex(spentTxid, { prefix: true })
   return {
     commitment: bytesToHex(commitment, { prefix: true }),
     nullifier: bytesToHex(nullifier, { prefix: true }),
@@ -82,9 +90,8 @@ function mapNoteRow (row: DBNote): DecryptedNote {
     treeNumber,
     leafIndex: BigInt(treePosition),
     spent,
-    spentTxid: spentTxid === null
-      ? null
-      : bytesToHex(spentTxid, { prefix: true }),
+    spentTxid: publicSpentTxid,
+    spendState: mapNoteSpendState(row, network),
     decryptedAt
   }
 }
@@ -143,16 +150,11 @@ function getNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
  * @param network - Network config for the note chain.
  * @returns Two-tier note spend state.
  */
-function buildNoteSpendState (
+function mapNoteSpendState (
   note: DBNote,
   network: NetworkConfigEntry
 ): NoteSpendState {
-  return {
-    spendable: isSpendableProtocol(note),
-    poi: network.poi === undefined
-      ? null
-      : classifyPoi(note, network.poi)
-  }
+  return classifyNoteSpendState(note, network)
 }
 
 /**
@@ -276,7 +278,7 @@ class BalanceService {
 
     for (const note of notes) {
       const bucket = toWalletBalanceBucket(
-        buildNoteSpendState(note, network)
+        classifyNoteSpendState(note, network)
       )
       if (bucket === targetBucket) {
         addNoteBalance(balances, note)
@@ -307,7 +309,7 @@ class BalanceService {
     const accumulators = createBucketAccumulators()
     for (const note of notes) {
       const bucket = toWalletBalanceBucket(
-        buildNoteSpendState(note, network)
+        classifyNoteSpendState(note, network)
       )
       addNoteBalance(accumulators[bucket], note)
     }
@@ -336,5 +338,5 @@ class BalanceService {
   }
 }
 
-export { BalanceService, mapNoteRow }
+export { BalanceService, mapNoteRow, mapNoteSpendState }
 export type { BalanceMode, DecryptedNote, TokenBalance }
