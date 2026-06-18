@@ -1,8 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { generateWalletId } from '../../../src/services/wallet/wallet-id'
-import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors'
+import { generateWalletId } from '../../../src/services/wallet/wallet-id.js'
+import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors.js'
 
 test('generateWalletId matches vector for index 0', () => {
   assert.equal(generateWalletId(MNEMONIC, 0), VECTORS[0]!.walletId)

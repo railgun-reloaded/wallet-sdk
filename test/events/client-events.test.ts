@@ -18,10 +18,10 @@ import {
   updateSyncState
 } from '@railgun-reloaded/storage'
 
-import { RailgunClient } from '../../src/client'
-import { NetworkName } from '../../src/network-config'
-import { MNEMONIC } from '../fixtures/wallet-vectors'
-import { TEST_VECTOR_TRANSACT } from '../test-vector'
+import { RailgunClient } from '../../src/client.js'
+import { NetworkName } from '../../src/network-config.js'
+import { MNEMONIC } from '../fixtures/wallet-vectors.js'
+import { TEST_VECTOR_TRANSACT } from '../test-vector.js'
 
 const SEPOLIA_CHAIN_ID = 11155111
 const SEPOLIA_DEPLOYMENT_BLOCK = 5784866n

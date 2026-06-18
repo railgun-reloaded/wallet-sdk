@@ -1,2 +1,2 @@
-export * from './wallet/index'
-export * from './balance/index'
+export * from './wallet/index.js'
+export * from './balance/index.js'

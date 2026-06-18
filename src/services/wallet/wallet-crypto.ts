@@ -1,7 +1,7 @@
 import { combine } from '@railgun-reloaded/bytes'
 import { AES } from '@railgun-reloaded/cryptography'
 
-import { InvalidEncryptionKeyError } from './errors'
+import { InvalidEncryptionKeyError } from './errors.js'
 
 /**
  * The plaintext structure stored inside the encrypted wallet blob. Keeping

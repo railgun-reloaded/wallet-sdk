@@ -4,9 +4,9 @@ import { test } from 'node:test'
 import { bigIntToBytes, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import type { MerkleProof } from '@railgun-reloaded/merkle-tree'
 
-import { COMMITMENT_TREE_ZERO_ELEMENT, NoteCommitmentTree } from '../../src/merkle/note-commitment-tree'
+import { COMMITMENT_TREE_ZERO_ELEMENT, NoteCommitmentTree } from '../../src/merkle/note-commitment-tree.js'
 
-import { TEST_COMMITMENTS, TEST_COMMITMENTS_LARGE } from './test-vectors'
+import { TEST_COMMITMENTS, TEST_COMMITMENTS_LARGE } from './test-vectors.js'
 
 test('Should be a valid Railgun Commitment Tree Zero Element', () => {
   assert.deepEqual(COMMITMENT_TREE_ZERO_ELEMENT, new Uint8Array([

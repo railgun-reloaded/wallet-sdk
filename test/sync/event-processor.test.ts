@@ -3,8 +3,8 @@ import { test } from 'node:test'
 
 import type { Transact } from '@railgun-reloaded/scanner'
 
-import { denormalizeBlockData } from '../../src/sync'
-import { TEST_VECTOR_TRANSACT } from '../test-vector'
+import { denormalizeBlockData } from '../../src/sync/index.js'
+import { TEST_VECTOR_TRANSACT } from '../test-vector.js'
 
 /**
  * Compare two byte arrays by byte content only.

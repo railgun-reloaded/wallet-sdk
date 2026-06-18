@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { EventBus } from '../../src/events/bus'
+import { EventBus } from '../../src/events/bus.js'
 
 /**
  * Default balance:update payload — override only fields a test cares about.

@@ -6,14 +6,14 @@ import { bytesToBigInt, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import type {
   ShieldOrTransactBlindedCommitmentInput,
   UnshieldBlindedCommitmentInput
-} from '../../src/poi'
+} from '../../src/poi/index.js'
 import {
   BlindedCommitmentInputError,
   BlindedCommitmentType,
   getBlindedCommitment,
   getBlindedCommitmentForShieldOrTransact,
   getBlindedCommitmentForUnshield
-} from '../../src/poi'
+} from '../../src/poi/index.js'
 
 type ShieldOrTransactFixture = ShieldOrTransactBlindedCommitmentInput & { expected: string }
 type UnshieldFixture = UnshieldBlindedCommitmentInput & { expected: string }

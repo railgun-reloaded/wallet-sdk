@@ -4,9 +4,9 @@ import type {
   DecryptParams,
   RailgunClient,
   ScanParams
-} from '../../client'
-import type { NetworkName } from '../../network-config'
-import { NETWORK_CONFIG } from '../../network-config'
+} from '../../client.js'
+import type { NetworkName } from '../../network-config.js'
+import { NETWORK_CONFIG } from '../../network-config.js'
 
 type BalanceSyncSchedulerClient = Pick<RailgunClient, 'scan' | 'decrypt'>
 

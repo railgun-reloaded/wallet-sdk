@@ -1,7 +1,7 @@
-import type { NetworkName } from '../network-config'
+import type { NetworkName } from '../network-config.js'
 
-import type { POIList, RequiredListKey } from './types'
-import { POIListType } from './types'
+import type { POIList, RequiredListKey } from './types.js'
+import { POIListType } from './types.js'
 
 type NetworkPoiConfig = {
   launchBlock: bigint

@@ -12,36 +12,36 @@ import {
   getSyncState
 } from '@railgun-reloaded/storage'
 
-import { RailgunEngine } from './engine'
+import { RailgunEngine } from './engine.js'
 import type {
   EventFilter,
   EventHandler,
   RailgunEventMap,
   SyncProgressEvent
-} from './events'
-import { EventBus } from './events'
-import { initializeCrypto } from './init/crypto'
-import { NETWORK_CONFIG, NetworkName } from './network-config'
-import type { RefreshSummary, WalletBalanceBucket } from './poi'
+} from './events/index.js'
+import { EventBus } from './events/index.js'
+import { initializeCrypto } from './init/crypto.js'
+import { NETWORK_CONFIG, NetworkName } from './network-config.js'
+import type { RefreshSummary, WalletBalanceBucket } from './poi/index.js'
 import {
   PoiNodeClient,
   PoiNodeUrlsRequiredError,
   PoiStatusService
-} from './poi'
+} from './poi/index.js'
 import type {
   BalanceMode,
   DecryptedNote,
   TokenBalance
-} from './services/balance/balance-service'
-import { BalanceService } from './services/balance/balance-service'
+} from './services/balance/balance-service.js'
+import { BalanceService } from './services/balance/balance-service.js'
 import type {
   CreateWalletParams,
   WalletContext,
   WalletInfo
-} from './services/wallet/wallet-service'
-import { WalletService } from './services/wallet/wallet-service'
-import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor'
-import { SyncPhase, runWalletDecryption } from './sync/wallet-decryptor'
+} from './services/wallet/wallet-service.js'
+import { WalletService } from './services/wallet/wallet-service.js'
+import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor.js'
+import { SyncPhase, runWalletDecryption } from './sync/wallet-decryptor.js'
 
 /**
  * Inputs for `RailgunClient.scan()`.
@@ -142,7 +142,7 @@ const EMPTY_REFRESH_SUMMARY: RefreshSummary = {
   failed: 0
 }
 
-const requireFromHere = createRequire(__filename)
+const requireFromHere = createRequire(import.meta.url)
 
 /**
  * Resolve the absolute path to the storage package's wallet migrations,

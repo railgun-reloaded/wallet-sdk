@@ -1,4 +1,4 @@
-export { EventBus } from './bus'
+export { EventBus } from './bus.js'
 export type {
   BalanceUpdateEvent,
   BusErrorEvent,
@@ -10,4 +10,4 @@ export type {
   SyncPhaseTag,
   SyncProgressEvent,
   SyncStartEvent
-} from './types'
+} from './types.js'

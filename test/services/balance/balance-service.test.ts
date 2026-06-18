@@ -6,7 +6,7 @@ import { bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import type { DBNote, WalletDB } from '@railgun-reloaded/storage'
 import { createWallet, createWalletDB, insertNote } from '@railgun-reloaded/storage'
 
-import { BalanceService, mapNoteRow } from '../../../src/services/balance/balance-service'
+import { BalanceService, mapNoteRow } from '../../../src/services/balance/balance-service.js'
 
 const ERC20_NULL_SUB_ID_HEX = `0x${'00'.repeat(32)}`
 const ERC721_SUB_ID_HEX = `0x${'ab'.repeat(32)}`

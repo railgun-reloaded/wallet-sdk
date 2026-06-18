@@ -1,6 +1,6 @@
-import type { NetworkName } from '../network-config'
+import type { NetworkName } from '../network-config.js'
 
-import type { POIJSONRPCMethod } from './node-client-types'
+import type { POIJSONRPCMethod } from './node-client-types.js'
 
 /**
  * Error returned by a PPOI node JSON-RPC response.

@@ -12,10 +12,10 @@ import {
   InvalidMnemonicError,
   WalletAlreadyExistsError,
   WalletNotFoundError
-} from './errors'
-import { deriveWalletKeys } from './keys'
-import { decryptWalletBlob, encryptWalletBlob } from './wallet-crypto'
-import { generateWalletId } from './wallet-id'
+} from './errors.js'
+import { deriveWalletKeys } from './keys.js'
+import { decryptWalletBlob, encryptWalletBlob } from './wallet-crypto.js'
+import { generateWalletId } from './wallet-id.js'
 
 /**
  * Arguments for WalletService.createWallet.

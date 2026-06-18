@@ -24,10 +24,10 @@ import {
 import type { Chain } from '@railgun-reloaded/wallet-node'
 import { ChainType } from '@railgun-reloaded/wallet-node'
 
-import type { WalletContext } from '../services/wallet/wallet-service'
+import type { WalletContext } from '../services/wallet/wallet-service.js'
 
-import { rehydrateActions } from './event-rehydrator'
-import { erc20TokenDataGetter } from './token-data'
+import { rehydrateActions } from './event-rehydrator.js'
+import { erc20TokenDataGetter } from './token-data.js'
 
 enum SyncPhase {
   Scan = 'scan',

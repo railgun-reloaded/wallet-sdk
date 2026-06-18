@@ -7,14 +7,14 @@ import { SourceAggregator } from '@railgun-reloaded/scanner'
 import type {
   DecryptParams,
   ScanParams
-} from '../src/client'
-import { NetworkName } from '../src/network-config'
-import type { BalanceSyncSchedulerClient } from '../src/services/balance/balance-sync-scheduler'
+} from '../src/client.js'
+import { NetworkName } from '../src/network-config.js'
+import type { BalanceSyncSchedulerClient } from '../src/services/balance/balance-sync-scheduler.js'
 import {
   BalanceSyncScheduler,
   BalanceSyncSchedulerStoppedError
-} from '../src/services/balance/balance-sync-scheduler'
-import type { DecryptSummary } from '../src/sync/wallet-decryptor'
+} from '../src/services/balance/balance-sync-scheduler.js'
+import type { DecryptSummary } from '../src/sync/wallet-decryptor.js'
 
 const KEY_A = new Uint8Array(32).fill(1)
 const KEY_B = new Uint8Array(32).fill(2)

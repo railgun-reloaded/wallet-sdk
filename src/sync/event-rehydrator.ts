@@ -9,7 +9,7 @@ import type {
 import { ActionType } from '@railgun-reloaded/scanner'
 import type { DBCommitment, DBNullifier } from '@railgun-reloaded/storage'
 
-import { CommitmentType } from './event-processor'
+import { CommitmentType } from './event-processor.js'
 
 /**
  * Output of rehydrating a chain.db window into scanner-shaped actions.

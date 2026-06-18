@@ -5,10 +5,10 @@ import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
 import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertScanBatch, updateSyncState } from '@railgun-reloaded/storage'
 
-import { NoteCommitmentTree } from './merkle'
-import type { NetworkConfig, NetworkName } from './network-config'
-import { NETWORK_CONFIG } from './network-config'
-import { denormalizeBlockData } from './sync'
+import { NoteCommitmentTree } from './merkle/index.js'
+import type { NetworkConfig, NetworkName } from './network-config.js'
+import { NETWORK_CONFIG } from './network-config.js'
+import { denormalizeBlockData } from './sync/index.js'
 /**
  * RailgunEngine
  *

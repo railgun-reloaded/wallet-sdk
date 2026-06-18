@@ -1,8 +1,8 @@
 import type { DBNote } from '@railgun-reloaded/storage'
 
-import type { NetworkConfig as NetworkConfigEntry } from '../network-config'
+import type { NetworkConfig as NetworkConfigEntry } from '../network-config.js'
 
-import { POIStatus, WalletBalanceBucket } from './types'
+import { POIStatus, WalletBalanceBucket } from './types.js'
 
 type POIStatusMap = Record<string, POIStatus | string | undefined>
 type PoiNetworkConfig = NetworkConfigEntry & {

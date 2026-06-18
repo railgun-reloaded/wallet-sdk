@@ -1,13 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import { NetworkName } from '../../src/network-config'
+import { NetworkName } from '../../src/network-config.js'
 import type {
   FetchLike,
   FetchRequest,
   FetchResponse,
   JsonRpcRequest
-} from '../../src/poi'
+} from '../../src/poi/index.js'
 import {
   BlindedCommitmentType,
   POIJSONRPCMethod,
@@ -16,7 +16,7 @@ import {
   PoiNodeClient,
   PoiNodeNetworkError,
   TXIDVersion
-} from '../../src/poi'
+} from '../../src/poi/index.js'
 
 const NODE_URL = 'https://ppoi.example.test'
 const LIST_KEY = 'list-key'

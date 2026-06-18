@@ -8,9 +8,9 @@ import {
   insertNotesBatch
 } from '@railgun-reloaded/storage'
 
-import { POIStatus, WalletBalanceBucket } from '../../src/poi'
-import type { TokenBalance } from '../../src/services/balance/balance-service'
-import { BalanceService } from '../../src/services/balance/balance-service'
+import { POIStatus, WalletBalanceBucket } from '../../src/poi/index.js'
+import type { TokenBalance } from '../../src/services/balance/balance-service.js'
+import { BalanceService } from '../../src/services/balance/balance-service.js'
 
 const WALLET_ID = 'wallet-id'
 const CHAIN_ID = 11155111

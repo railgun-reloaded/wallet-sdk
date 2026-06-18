@@ -10,12 +10,12 @@ import {
   insertNotesBatch
 } from '@railgun-reloaded/storage'
 
-import { NetworkName } from '../../src/network-config'
+import { NetworkName } from '../../src/network-config.js'
 import type {
   GetPOIsPerListParams,
   POIsPerListResponse,
   PoiStatusClient
-} from '../../src/poi'
+} from '../../src/poi/index.js'
 import {
   BlindedCommitmentType,
   CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
@@ -25,8 +25,8 @@ import {
   PoiNodeRpcError,
   PoiStatusRefreshError,
   PoiStatusService
-} from '../../src/poi'
-import type { SyncProgress } from '../../src/sync/wallet-decryptor'
+} from '../../src/poi/index.js'
+import type { SyncProgress } from '../../src/sync/wallet-decryptor.js'
 
 const WALLET_ID = 'status-wallet'
 const CHAIN_ID = 11155111

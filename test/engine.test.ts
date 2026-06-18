@@ -7,8 +7,8 @@ import { test } from 'node:test'
 import { SourceAggregator, SubsquidProvider } from '@railgun-reloaded/scanner'
 import { Contract, JsonRpcProvider } from 'ethers'
 
-import { RailgunEngine } from '../src/engine'
-import { NETWORK_CONFIG, NetworkName } from '../src/network-config'
+import { RailgunEngine } from '../src/engine.js'
+import { NETWORK_CONFIG, NetworkName } from '../src/network-config.js'
 
 const CONTRACT_ROOT_HISTORY_ABI = [
   'function rootHistory(uint256, bytes32) view returns (bool)'

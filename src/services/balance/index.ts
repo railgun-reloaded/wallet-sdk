@@ -1,16 +1,16 @@
 export {
   BalanceService,
   mapNoteRow
-} from './balance-service'
+} from './balance-service.js'
 export type {
   DecryptedNote,
   TokenBalance
-} from './balance-service'
+} from './balance-service.js'
 
 export {
   BalanceSyncScheduler,
   BalanceSyncSchedulerStoppedError
-} from './balance-sync-scheduler'
+} from './balance-sync-scheduler.js'
 export type {
   BalanceSyncBackoffOptions,
   BalanceSyncDataSourceFactory,
@@ -24,4 +24,4 @@ export type {
   BalanceSyncSchedulerStatus,
   BalanceSyncSchedulerWallet,
   BalanceSyncSchedulerWalletState
-} from './balance-sync-scheduler'
+} from './balance-sync-scheduler.js'

@@ -1,11 +1,11 @@
-import type { NetworkName } from '../network-config'
-import { NETWORK_CONFIG } from '../network-config'
+import type { NetworkName } from '../network-config.js'
+import { NETWORK_CONFIG } from '../network-config.js'
 
 import {
   PoiNodeAllUrlsFailedError,
   PoiNodeNetworkError,
   PoiNodeRpcError
-} from './node-client-errors'
+} from './node-client-errors.js'
 import type {
   FetchLike,
   FetchRequest,
@@ -17,9 +17,9 @@ import type {
   JsonRpcSuccess,
   POIsPerListResponse,
   PoiNodeClientOptions
-} from './node-client-types'
-import { POIJSONRPCMethod } from './node-client-types'
-import type { TXIDVersion } from './types'
+} from './node-client-types.js'
+import { POIJSONRPCMethod } from './node-client-types.js'
+import type { TXIDVersion } from './types.js'
 
 const POI_NODE_CLIENT_DEFAULT_TIMEOUT_MS = 15_000
 const GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS = 1000

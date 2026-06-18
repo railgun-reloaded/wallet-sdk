@@ -11,9 +11,9 @@ import {
   insertNullifiersBatch
 } from '@railgun-reloaded/storage'
 
-import { denormalizeBlockData, rehydrateActions } from '../src/sync'
+import { denormalizeBlockData, rehydrateActions } from '../src/sync/index.js'
 
-import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } from './test-vector'
+import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } from './test-vector.js'
 
 /**
  * Build a fresh in-memory chain DB for round-trip tests.

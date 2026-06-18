@@ -6,12 +6,12 @@ import {
   getWallet
 } from '@railgun-reloaded/storage'
 
-import type { NetworkConfig as NetworkConfigEntry } from '../../network-config'
-import { NETWORK_CONFIG } from '../../network-config'
-import type { PoiNetworkConfig } from '../../poi/bucket-classifier'
-import { classifyNote } from '../../poi/bucket-classifier'
-import { WalletBalanceBucket } from '../../poi/types'
-import { WalletNotFoundError } from '../wallet/errors'
+import type { NetworkConfig as NetworkConfigEntry } from '../../network-config.js'
+import { NETWORK_CONFIG } from '../../network-config.js'
+import type { PoiNetworkConfig } from '../../poi/bucket-classifier.js'
+import { classifyNote } from '../../poi/bucket-classifier.js'
+import { WalletBalanceBucket } from '../../poi/types.js'
+import { WalletNotFoundError } from '../wallet/errors.js'
 
 /**
  * Aggregated unspent balance for a single ERC-20 token.

@@ -1,3 +1,3 @@
-export * from './errors'
-export * from './keys'
-export * from './wallet-service'
+export * from './errors.js'
+export * from './keys.js'
+export * from './wallet-service.js'

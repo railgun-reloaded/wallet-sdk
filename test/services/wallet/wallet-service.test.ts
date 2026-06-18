@@ -11,9 +11,9 @@ import {
   InvalidMnemonicError,
   WalletAlreadyExistsError,
   WalletNotFoundError
-} from '../../../src/services/wallet/errors'
-import { WalletService } from '../../../src/services/wallet/wallet-service'
-import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors'
+} from '../../../src/services/wallet/errors.js'
+import { WalletService } from '../../../src/services/wallet/wallet-service.js'
+import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors.js'
 
 /**
  * Build a fresh in-memory WalletService and a random 32-byte encryption key.

@@ -1,10 +1,10 @@
-import type { NetworkName } from '../network-config'
+import type { NetworkName } from '../network-config.js'
 
 import type {
   BlindedCommitmentData,
   POIsPerList,
   TXIDVersion
-} from './types'
+} from './types.js'
 
 enum POIJSONRPCMethod {
   POIsPerList = 'ppoi_pois_per_list'

@@ -1,9 +1,9 @@
 import { CHAIN_ID_ANY, ChainType, stringify } from '@railgun-reloaded/0zk-addresses'
 import { RailgunWallet } from '@railgun-reloaded/wallet-node'
 
-import { initializeCrypto } from '../../init/crypto'
+import { initializeCrypto } from '../../init/crypto.js'
 
-import { generateWalletId } from './wallet-id'
+import { generateWalletId } from './wallet-id.js'
 
 /**
  * The full set of RAILGUN key material derivable from a mnemonic, plus the

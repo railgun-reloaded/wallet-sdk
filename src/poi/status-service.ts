@@ -5,22 +5,22 @@ import {
   updateNotePoiStatusBatch
 } from '@railgun-reloaded/storage'
 
-import type { NetworkName } from '../network-config'
-import type { SyncProgress } from '../sync/wallet-decryptor'
-import { SyncPhase } from '../sync/wallet-decryptor'
+import type { NetworkName } from '../network-config.js'
+import type { SyncProgress } from '../sync/wallet-decryptor.js'
+import { SyncPhase } from '../sync/wallet-decryptor.js'
 
-import { getBlindedCommitmentForShieldOrTransact } from './blinded-commitment'
-import { getRequiredListKeys } from './network-config'
-import type { PoiNodeClient } from './node-client'
-import { GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS } from './node-client'
+import { getBlindedCommitmentForShieldOrTransact } from './blinded-commitment.js'
+import { getRequiredListKeys } from './network-config.js'
 import {
   PoiNodeAllUrlsFailedError,
   PoiNodeNetworkError
-} from './node-client-errors'
-import type { GetPOIsPerListParams } from './node-client-types'
-import { PoiStatusRefreshError } from './status-errors'
-import type { RequiredListKey } from './types'
-import { BlindedCommitmentType, POIStatus, TXIDVersion } from './types'
+} from './node-client-errors.js'
+import type { GetPOIsPerListParams } from './node-client-types.js'
+import type { PoiNodeClient } from './node-client.js'
+import { GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS } from './node-client.js'
+import { PoiStatusRefreshError } from './status-errors.js'
+import type { RequiredListKey } from './types.js'
+import { BlindedCommitmentType, POIStatus, TXIDVersion } from './types.js'
 
 type RefreshSummary = {
   checked: number

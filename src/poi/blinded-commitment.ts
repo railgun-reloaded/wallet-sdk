@@ -1,7 +1,7 @@
 import { bytesToBigInt } from '@railgun-reloaded/bytes'
 import { poseidonFunc } from '@railgun-reloaded/cryptography'
 
-import { BlindedCommitmentType } from './types'
+import { BlindedCommitmentType } from './types.js'
 
 const BYTES_32_LENGTH = 32
 const ADDRESS_LENGTH = 20

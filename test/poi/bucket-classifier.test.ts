@@ -3,8 +3,8 @@ import { test } from 'node:test'
 
 import type { DBNote } from '@railgun-reloaded/storage'
 
-import { POIStatus, WalletBalanceBucket, classifyNote } from '../../src/poi'
-import type { PoiNetworkConfig } from '../../src/poi/bucket-classifier'
+import type { PoiNetworkConfig } from '../../src/poi/bucket-classifier.js'
+import { POIStatus, WalletBalanceBucket, classifyNote } from '../../src/poi/index.js'
 
 const LIST_A = 'list-a'
 const LIST_B = 'list-b'

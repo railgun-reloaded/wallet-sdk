@@ -2,7 +2,7 @@ import type {
   EventFilter,
   EventHandler,
   RailgunEventMap
-} from './types'
+} from './types.js'
 
 type Subscriber<E extends keyof RailgunEventMap> = {
   handler: EventHandler<E>

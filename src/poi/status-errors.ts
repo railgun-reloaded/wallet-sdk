@@ -1,4 +1,4 @@
-import type { NetworkName } from '../network-config'
+import type { NetworkName } from '../network-config.js'
 
 type PoiStatusRefreshErrorCode =
   | 'BlindedCommitmentDerivationFailed'

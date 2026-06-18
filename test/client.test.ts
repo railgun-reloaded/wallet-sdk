@@ -12,15 +12,15 @@ import {
   insertNotesBatch
 } from '@railgun-reloaded/storage'
 
-import { RailgunClient, SyncPhase } from '../src/client'
-import { NetworkName } from '../src/network-config'
+import { RailgunClient, SyncPhase } from '../src/client.js'
+import { NetworkName } from '../src/network-config.js'
 import {
   CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
   POIStatus
-} from '../src/poi'
-import { WalletNotFoundError } from '../src/services/wallet/errors'
+} from '../src/poi/index.js'
+import { WalletNotFoundError } from '../src/services/wallet/errors.js'
 
-import { MNEMONIC, VECTORS } from './fixtures/wallet-vectors'
+import { MNEMONIC, VECTORS } from './fixtures/wallet-vectors.js'
 
 /**
  * Build a fresh in-memory WalletDB for a RailgunClient test.

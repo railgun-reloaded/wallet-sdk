@@ -2,7 +2,7 @@ import { bigIntToBytes, bytesToBigInt } from '@railgun-reloaded/bytes'
 import { keccak256 } from '@railgun-reloaded/cryptography'
 import { SparseMerkleTree } from '@railgun-reloaded/merkle-tree'
 
-import { poseidonHash } from './hash'
+import { poseidonHash } from './hash.js'
 
 const SNARK_PRIME = 21888242871839275222246405745257275088548364400416034343698204186575808495617n
 

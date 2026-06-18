@@ -3,8 +3,8 @@ import { test } from 'node:test'
 
 import { bytesToHex } from '@railgun-reloaded/bytes'
 
-import { deriveWalletKeys } from '../../../src/services/wallet/keys'
-import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors'
+import { deriveWalletKeys } from '../../../src/services/wallet/keys.js'
+import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors.js'
 
 test('deriveWalletKeys matches vectors for index 0', async () => {
   const keys = await deriveWalletKeys(MNEMONIC, 0)

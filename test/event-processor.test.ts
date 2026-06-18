@@ -3,9 +3,9 @@ import { test } from 'node:test'
 
 import type { DBNewCommitment, DBNewNullifier } from '@railgun-reloaded/storage'
 
-import { CommitmentType, denormalizeBlockData } from '../src/sync'
+import { CommitmentType, denormalizeBlockData } from '../src/sync/index.js'
 
-import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } from './test-vector'
+import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } from './test-vector.js'
 
 test('Should properly denormalize shield action', () => {
   const { nullifiers, unshields, commitments } = denormalizeBlockData(TEST_VECTOR_SHIELD)

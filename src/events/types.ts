@@ -1,4 +1,4 @@
-import type { TokenBalance } from '../services/balance/balance-service'
+import type { TokenBalance } from '../services/balance/balance-service.js'
 
 /**
  * Phase tag for sync lifecycle events. `sync` is the outer envelope when

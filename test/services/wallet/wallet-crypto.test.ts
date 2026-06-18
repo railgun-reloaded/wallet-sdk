@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 
-import { InvalidEncryptionKeyError } from '../../../src/services/wallet/errors'
+import { InvalidEncryptionKeyError } from '../../../src/services/wallet/errors.js'
 import {
   decryptWalletBlob,
   encryptWalletBlob
-} from '../../../src/services/wallet/wallet-crypto'
-import { MNEMONIC } from '../../fixtures/wallet-vectors'
+} from '../../../src/services/wallet/wallet-crypto.js'
+import { MNEMONIC } from '../../fixtures/wallet-vectors.js'
 
 test('encrypt / decrypt round-trip returns the same blob', () => {
   const key = new Uint8Array(randomBytes(32))
