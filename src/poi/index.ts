@@ -7,12 +7,20 @@ export {
 } from './types.js'
 export type {
   BlindedCommitmentData,
+  NoteSpendState,
   POIList,
   POIsPerList,
+  PoiClassification,
   RequiredListKey
 } from './types.js'
 
-export { classifyNote } from './bucket-classifier.js'
+export {
+  classifyNote,
+  classifyNoteSpendState,
+  classifyPoi,
+  isSpendableProtocol,
+  toWalletBalanceBucket
+} from './bucket-classifier.js'
 
 export {
   BlindedCommitmentInputError,

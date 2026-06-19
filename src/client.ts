@@ -355,7 +355,8 @@ class RailgunClient {
 
   /**
    * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
-   * Balance reads require a configured PPOI network.
+   * Bucket filtering uses the flat `WalletBalanceBucket` adapter over the
+   * note's two-tier spend state.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
    * @param mode - Balance mode: default spendable, all unspent, or one bucket.
@@ -370,7 +371,7 @@ class RailgunClient {
   }
 
   /**
-   * Read unspent ERC-20 balances grouped by POI balance bucket.
+   * Read unspent ERC-20 balances grouped by legacy flat balance bucket.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param chainId - Chain id to scope the lookup to.
    * @returns Token balances keyed by `WalletBalanceBucket`.
@@ -383,7 +384,7 @@ class RailgunClient {
   }
 
   /**
-   * Read decrypted notes for a wallet on a given chain.
+   * Read decrypted notes with protocol and optional POI spend state.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param chainId - Chain id to scope the lookup to.
    * @param options - Optional note filtering.

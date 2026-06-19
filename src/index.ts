@@ -55,7 +55,11 @@ export {
   POIJSONRPCMethod,
   POI_NODE_CLIENT_DEFAULT_TIMEOUT_MS,
   classifyNote,
+  classifyNoteSpendState,
+  classifyPoi,
   getRequiredListKeys,
+  isSpendableProtocol,
+  toWalletBalanceBucket,
   isPOIRequired
 } from './poi/index.js'
 export type {
@@ -69,9 +73,11 @@ export type {
   JsonRpcRequest,
   JsonRpcSuccess,
   NetworkPoiConfig,
+  NoteSpendState,
   POIList,
   POIsPerList,
   POIsPerListResponse,
+  PoiClassification,
   PoiNodeClientOptions,
   PoiStatusClient,
   PoiStatusRefreshErrorCode,

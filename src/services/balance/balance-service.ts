@@ -8,8 +8,11 @@ import {
 
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config.js'
 import { NETWORK_CONFIG } from '../../network-config.js'
-import type { PoiNetworkConfig } from '../../poi/bucket-classifier.js'
-import { classifyNote } from '../../poi/bucket-classifier.js'
+import {
+  classifyNoteSpendState,
+  toWalletBalanceBucket
+} from '../../poi/bucket-classifier.js'
+import type { NoteSpendState } from '../../poi/types.js'
 import { WalletBalanceBucket } from '../../poi/types.js'
 import { WalletNotFoundError } from '../wallet/errors.js'
 
@@ -28,7 +31,8 @@ type BalanceMode = 'spendable' | 'all' | WalletBalanceBucket
  * hex; the leaf index is widened to bigint for uniformity with `blockNumber`
  * and `amount`. `tokenType` is the integer token-class enum
  * (0 = ERC20, 1 = ERC721); `tokenSubID` is the 32-byte
- * sub-identifier (zero hex for ERC20).
+ * sub-identifier (zero hex for ERC20). `spendState` separates protocol
+ * spendability from optional POI-service state.
  */
 type DecryptedNote = {
   commitment: string
@@ -42,6 +46,7 @@ type DecryptedNote = {
   leafIndex: bigint
   spent: boolean
   spentTxid: string | null
+  spendState: NoteSpendState
   decryptedAt: Date
 }
 
@@ -50,9 +55,13 @@ type DecryptedNote = {
  * become 0x-prefixed lowercase hex; `treePosition` is widened to bigint and
  * exposed as `leafIndex`.
  * @param row - Row from `getAllNotes` / `getUnspentNotes`.
+ * @param network - Optional resolved network config for the note chain.
  * @returns Public-facing DecryptedNote.
  */
-function mapNoteRow (row: DBNote): DecryptedNote {
+function mapNoteRow (
+  row: DBNote,
+  network: NetworkConfigEntry = getNetworkConfigByChainId(row.chainId)
+): DecryptedNote {
   const {
     commitment,
     nullifier,
@@ -67,6 +76,9 @@ function mapNoteRow (row: DBNote): DecryptedNote {
     spentTxid,
     decryptedAt
   } = row
+  const publicSpentTxid = spentTxid === null
+    ? null
+    : bytesToHex(spentTxid, { prefix: true })
   return {
     commitment: bytesToHex(commitment, { prefix: true }),
     nullifier: bytesToHex(nullifier, { prefix: true }),
@@ -78,9 +90,8 @@ function mapNoteRow (row: DBNote): DecryptedNote {
     treeNumber,
     leafIndex: BigInt(treePosition),
     spent,
-    spentTxid: spentTxid === null
-      ? null
-      : bytesToHex(spentTxid, { prefix: true }),
+    spentTxid: publicSpentTxid,
+    spendState: mapNoteSpendState(row, network),
     decryptedAt
   }
 }
@@ -131,6 +142,19 @@ function getNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
     throw new Error(`Missing network config for chain ${chainId}`)
   }
   return network
+}
+
+/**
+ * Build the protocol and optional POI tiers for a stored note.
+ * @param note - Stored wallet note.
+ * @param network - Network config for the note chain.
+ * @returns Two-tier note spend state.
+ */
+function mapNoteSpendState (
+  note: DBNote,
+  network: NetworkConfigEntry
+): NoteSpendState {
+  return classifyNoteSpendState(note, network)
 }
 
 /**
@@ -252,19 +276,10 @@ class BalanceService {
       ? WalletBalanceBucket.Spendable
       : mode
 
-    if (network.poi === undefined) {
-      if (targetBucket !== WalletBalanceBucket.Spendable) {
-        return []
-      }
-      for (const note of notes) {
-        addNoteBalance(balances, note)
-      }
-      return mapBalanceAccumulator(balances)
-    }
-
-    const poiNetwork = network as PoiNetworkConfig
     for (const note of notes) {
-      const bucket = classifyNote(note, poiNetwork)
+      const bucket = toWalletBalanceBucket(
+        classifyNoteSpendState(note, network)
+      )
       if (bucket === targetBucket) {
         addNoteBalance(balances, note)
       }
@@ -291,21 +306,12 @@ class BalanceService {
       return createEmptyBucketBalances()
     }
 
-    if (network.poi === undefined) {
-      const balances = new Map<string, bigint>()
-      for (const note of notes) {
-        addNoteBalance(balances, note)
-      }
-      const byBucket = createEmptyBucketBalances()
-      byBucket[WalletBalanceBucket.Spendable] =
-        mapBalanceAccumulator(balances)
-      return byBucket
-    }
-
     const accumulators = createBucketAccumulators()
-    const poiNetwork = network as PoiNetworkConfig
     for (const note of notes) {
-      addNoteBalance(accumulators[classifyNote(note, poiNetwork)], note)
+      const bucket = toWalletBalanceBucket(
+        classifyNoteSpendState(note, network)
+      )
+      addNoteBalance(accumulators[bucket], note)
     }
 
     return mapBucketAccumulators(accumulators)
@@ -328,9 +334,9 @@ class BalanceService {
     const rows = options.unspent === true
       ? await getUnspentNotes(this.#db, walletId, chainId)
       : await getAllNotes(this.#db, walletId, chainId)
-    return rows.map(mapNoteRow)
+    return rows.map((row) => mapNoteRow(row))
   }
 }
 
-export { BalanceService, mapNoteRow }
+export { BalanceService, mapNoteRow, mapNoteSpendState }
 export type { BalanceMode, DecryptedNote, TokenBalance }
