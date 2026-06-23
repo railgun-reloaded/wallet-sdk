@@ -1,7 +1,7 @@
 import { bytesToBigInt, bytesToHex } from '@railgun-reloaded/bytes'
 import type { DBNote, NoteIdentity, NotePoiStatusUpdate, WalletDB } from '@railgun-reloaded/storage'
 import {
-  getAllNotes,
+  getNotesNeedingPoiRefresh,
   updateNotePoiStatusBatch
 } from '@railgun-reloaded/storage'
 
@@ -16,11 +16,9 @@ import {
   PoiNodeNetworkError
 } from './node-client-errors.js'
 import type { GetPOIsPerListParams } from './node-client-types.js'
-import type { PoiNodeClient } from './node-client.js'
-import { GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS } from './node-client.js'
 import { PoiStatusRefreshError } from './status-errors.js'
 import type { RequiredListKey } from './types.js'
-import { BlindedCommitmentType, POIStatus, TXIDVersion } from './types.js'
+import { BlindedCommitmentType, TXIDVersion } from './types.js'
 
 type RefreshSummary = {
   checked: number
@@ -93,8 +91,11 @@ class PoiStatusService {
     chainId: number,
     options: RefreshOptions = {}
   ): Promise<RefreshSummary> {
-    const candidates = (await getAllNotes(this.#walletDb, walletId, chainId))
-      .filter(note => shouldRefreshPoiStatus(note, this.#listKeys))
+    const candidates = await getNotesNeedingPoiRefresh(
+      this.#walletDb,
+      walletId,
+      chainId
+    )
     const summary: RefreshSummary = {
       checked: candidates.length,
       updated: 0,
@@ -224,27 +225,6 @@ class PoiStatusService {
 
     emitPoiProgress(onProgress, summary)
   }
-}
-
-/**
- * Decide whether a stored note needs a PPOI refresh.
- * @param note - Stored note row.
- * @param listKeys - Required list keys for the network.
- * @returns True when the note is missing a valid required status.
- */
-function shouldRefreshPoiStatus (
-  note: DBNote,
-  listKeys: RequiredListKey[]
-): boolean {
-  if (note.poisPerList == null) {
-    return true
-  }
-  if (listKeys.length === 0) {
-    return false
-  }
-
-  const poisPerList = note.poisPerList as Record<string, string | undefined>
-  return listKeys.some(key => poisPerList[key] !== POIStatus.Valid)
 }
 
 /**
