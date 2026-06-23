@@ -4,7 +4,15 @@ import path from 'path'
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
 import type { ChainDB } from '@railgun-reloaded/storage/node'
-import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertScanBatch, updateSyncState } from '@railgun-reloaded/storage/node'
+import {
+  closeChainDB,
+  createChainDB,
+  getAllMerkleTrees,
+  getSyncState,
+  insertScanBatch,
+  recoverChainBootstrap,
+  updateSyncState
+} from '@railgun-reloaded/storage/node'
 
 import { NoteCommitmentTree } from './merkle/index.js'
 import type { NetworkConfig, NetworkName } from './network-config.js'
@@ -169,6 +177,7 @@ class RailgunEngine {
 
     if (!this.#db) {
       const dirName = path.join(this.#dataDir, 'chains', `${this.#networkConfig.chainID}`)
+      await recoverChainBootstrap(path.join(dirName, 'chain.db'))
       if (!existsSync(dirName)) {
         mkdirSync(dirName, { recursive: true })
       }

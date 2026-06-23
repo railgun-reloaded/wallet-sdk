@@ -35,6 +35,28 @@ export type { NetworkConfig } from './network-config.js'
 export { NETWORK_CONFIG, NetworkName } from './network-config.js'
 
 export {
+  COMMITMENT_TREE_CAPACITY,
+  ExactSnapshotCheckpointValidator,
+  RpcSnapshotCheckpointReader,
+  SnapshotCheckpointMismatchError,
+  SnapshotCheckpointUnavailableError,
+  bootstrapSnapshotAtomically,
+  createRpcSnapshotCheckpointValidator,
+  getSnapshotBootstrapPaths,
+  getWalletChainDBPath,
+  recoverInterruptedSnapshotBootstrap
+} from './snapshot-bootstrap/index.js'
+export type {
+  AtomicSnapshotBootstrapParams,
+  AtomicSnapshotBootstrapResult,
+  RpcSnapshotCheckpointReaderConfig,
+  SnapshotCheckpointReader,
+  SnapshotCheckpointValidationInput,
+  SnapshotCheckpointValidator,
+  SnapshotTreeState
+} from './snapshot-bootstrap/index.js'
+
+export {
   BlindedCommitmentType,
   CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
   POIListType,
