@@ -2,8 +2,9 @@ import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
-import type { ChainDB, DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
-import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertScanBatch, updateSyncState } from '@railgun-reloaded/storage'
+import type { DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
+import type { ChainDB } from '@railgun-reloaded/storage/node'
+import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertScanBatch, updateSyncState } from '@railgun-reloaded/storage/node'
 
 import { NoteCommitmentTree } from './merkle/index.js'
 import type { NetworkConfig, NetworkName } from './network-config.js'

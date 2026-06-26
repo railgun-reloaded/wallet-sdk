@@ -2,14 +2,15 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { bytesToHex } from '@railgun-reloaded/bytes'
-import type { DBNewNote, WalletDB } from '@railgun-reloaded/storage'
+import type { DBNewNote } from '@railgun-reloaded/storage'
+import type { WalletDB } from '@railgun-reloaded/storage/node'
 import {
   createWallet,
   createWalletDB,
   getAllNotes,
   getNotesNeedingPoiRefresh,
   insertNotesBatch
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 
 import { NetworkName } from '../../src/network-config.js'
 import type {

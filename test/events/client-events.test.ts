@@ -5,18 +5,20 @@ import { test } from 'node:test'
 import type { EVMBlock } from '@railgun-reloaded/scanner'
 import { SourceAggregator } from '@railgun-reloaded/scanner'
 import type {
-  ChainDB,
   DBNewNote,
-  DBNewNullifier,
-  WalletDB
+  DBNewNullifier
 } from '@railgun-reloaded/storage'
+import type {
+  ChainDB,
+  WalletDB
+} from '@railgun-reloaded/storage/node'
 import {
   createChainDB,
   createWalletDB,
   insertNotesBatch,
   insertNullifiersBatch,
   updateSyncState
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 
 import { RailgunClient } from '../../src/client.js'
 import { NetworkName } from '../../src/network-config.js'

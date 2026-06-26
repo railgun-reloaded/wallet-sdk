@@ -1,12 +1,13 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import type { DBNewNote, WalletDB } from '@railgun-reloaded/storage'
+import type { DBNewNote } from '@railgun-reloaded/storage'
+import type { WalletDB } from '@railgun-reloaded/storage/node'
 import {
   createWallet,
   createWalletDB,
   insertNotesBatch
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 
 import { POIStatus, WalletBalanceBucket } from '../../src/poi/index.js'
 import type { TokenBalance } from '../../src/services/balance/balance-service.js'

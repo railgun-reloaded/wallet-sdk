@@ -5,12 +5,14 @@ import {
 } from '@railgun-reloaded/balance-scanner'
 import { bytesToHex } from '@railgun-reloaded/bytes'
 import type {
-  ChainDB,
   DBCommitment,
-  DBNullifier,
+  DBNullifier
+} from '@railgun-reloaded/storage'
+import type {
+  ChainDB,
   NoteIdentity,
   WalletDB
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 import {
   findRailgunTransactionForLeaf,
   getCommitmentsByBlockRange,
@@ -20,7 +22,7 @@ import {
   getUnspentNotes,
   markNotesSpentBatch,
   updateScanState
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 import type { Chain } from '@railgun-reloaded/wallet-node'
 import { ChainType } from '@railgun-reloaded/wallet-node'
 

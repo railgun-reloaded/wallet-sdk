@@ -3,8 +3,9 @@ import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 
 import { bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
-import type { DBNote, WalletDB } from '@railgun-reloaded/storage'
-import { createWallet, createWalletDB, insertNote } from '@railgun-reloaded/storage'
+import type { DBNote } from '@railgun-reloaded/storage'
+import type { WalletDB } from '@railgun-reloaded/storage/node'
+import { createWallet, createWalletDB, insertNote } from '@railgun-reloaded/storage/node'
 
 import { BalanceService, mapNoteRow } from '../../../src/services/balance/balance-service.js'
 

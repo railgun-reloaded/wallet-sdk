@@ -3,14 +3,14 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
-import type { ChainDB, WalletDB } from '@railgun-reloaded/storage'
+import type { ChainDB, WalletDB } from '@railgun-reloaded/storage/node'
 import {
   closeChainDB,
   closeWalletDB,
   createChainDB,
   createWalletDB,
   getSyncState
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 
 import { RailgunEngine } from './engine.js'
 import type {

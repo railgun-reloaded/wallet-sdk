@@ -3,8 +3,8 @@ import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 
 import { bytesToHex } from '@railgun-reloaded/bytes'
-import type { WalletDB } from '@railgun-reloaded/storage'
-import { createWalletDB } from '@railgun-reloaded/storage'
+import type { WalletDB } from '@railgun-reloaded/storage/node'
+import { createWalletDB } from '@railgun-reloaded/storage/node'
 
 import {
   InvalidEncryptionKeyError,

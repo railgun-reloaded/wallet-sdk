@@ -9,7 +9,7 @@ import {
   getNullifiersByBlockRange,
   insertCommitmentBatch,
   insertNullifiersBatch
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 
 import { denormalizeBlockData, rehydrateActions } from '../src/sync/index.js'
 

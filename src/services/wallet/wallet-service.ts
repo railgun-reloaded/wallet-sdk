@@ -1,10 +1,10 @@
-import type { WalletDB } from '@railgun-reloaded/storage'
+import type { WalletDB } from '@railgun-reloaded/storage/node'
 import {
   createWallet as dbCreateWallet,
   deleteWallet as dbDeleteWallet,
   getWallet as dbGetWallet,
   listWallets as dbListWallets
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 import { Mnemonic } from '@railgun-reloaded/wallet-node'
 
 import {

@@ -1,9 +1,10 @@
 import { bytesToBigInt, bytesToHex } from '@railgun-reloaded/bytes'
-import type { DBNote, NoteIdentity, NotePoiStatusUpdate, WalletDB } from '@railgun-reloaded/storage'
+import type { DBNote } from '@railgun-reloaded/storage'
+import type { NoteIdentity, NotePoiStatusUpdate, WalletDB } from '@railgun-reloaded/storage/node'
 import {
   getNotesNeedingPoiRefresh,
   updateNotePoiStatusBatch
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 
 import type { NetworkName } from '../network-config.js'
 import type { SyncProgress } from '../sync/wallet-decryptor.js'

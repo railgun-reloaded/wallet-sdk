@@ -4,13 +4,14 @@ import { test } from 'node:test'
 
 import type { EVMBlock } from '@railgun-reloaded/scanner'
 import { SourceAggregator } from '@railgun-reloaded/scanner'
-import type { DBNewNote, WalletDB } from '@railgun-reloaded/storage'
+import type { DBNewNote } from '@railgun-reloaded/storage'
+import type { WalletDB } from '@railgun-reloaded/storage/node'
 import {
   createChainDB,
   createWalletDB,
   getSyncState,
   insertNotesBatch
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 
 import { RailgunClient, SyncPhase } from '../src/client.js'
 import { NetworkName } from '../src/network-config.js'

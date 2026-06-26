@@ -1,10 +1,11 @@
 import { bytesToHex } from '@railgun-reloaded/bytes'
-import type { DBNote, WalletDB } from '@railgun-reloaded/storage'
+import type { DBNote } from '@railgun-reloaded/storage'
+import type { WalletDB } from '@railgun-reloaded/storage/node'
 import {
   getAllNotes,
   getUnspentNotes,
   getWallet
-} from '@railgun-reloaded/storage'
+} from '@railgun-reloaded/storage/node'
 
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config.js'
 import { NETWORK_CONFIG } from '../../network-config.js'
