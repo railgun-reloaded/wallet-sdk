@@ -118,7 +118,7 @@ function recordingClient (
      * @param params - PPOI request parameters.
      * @returns Handler response.
      */
-    async getPOIsPerList (params) {
+    async getPOIsPerList (params: GetPOIsPerListParams) {
       calls.push(params)
       return handler(params, calls.length - 1)
     }

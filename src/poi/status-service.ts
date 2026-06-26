@@ -17,6 +17,8 @@ import {
   PoiNodeNetworkError
 } from './node-client-errors.js'
 import type { GetPOIsPerListParams } from './node-client-types.js'
+import type { PoiNodeClient } from './node-client.js'
+import { GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS } from './node-client.js'
 import { PoiStatusRefreshError } from './status-errors.js'
 import type { RequiredListKey } from './types.js'
 import { BlindedCommitmentType, TXIDVersion } from './types.js'
