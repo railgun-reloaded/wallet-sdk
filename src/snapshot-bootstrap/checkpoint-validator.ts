@@ -1,5 +1,6 @@
 import { bytesToHex } from '@railgun-reloaded/bytes'
-import { Contract, JsonRpcProvider } from 'ethers'
+import type { Address, PublicClient } from 'viem'
+import { createPublicClient, http, parseAbi } from 'viem'
 
 import type {
   SnapshotCheckpointValidationInput,
@@ -7,12 +8,12 @@ import type {
 } from './types.js'
 import { COMMITMENT_TREE_CAPACITY } from './types.js'
 
-const CHECKPOINT_ABI = [
+const CHECKPOINT_ABI = parseAbi([
   'function merkleRoot() view returns (bytes32)',
   'function nextLeafIndex() view returns (uint256)',
   'function rootHistory(uint256, bytes32) view returns (bool)',
   'function treeNumber() view returns (uint256)'
-]
+])
 
 type SnapshotCheckpointReader = {
   chainID: () => Promise<bigint>
@@ -64,10 +65,10 @@ class SnapshotCheckpointUnavailableError extends Error {
  * Read exact-height RAILGUN commitment state through historical eth_call.
  */
 class RpcSnapshotCheckpointReader implements SnapshotCheckpointReader {
-  /** JSON-RPC provider used for network identity and historical calls. */
-  readonly #provider: JsonRpcProvider
-  /** RAILGUN proxy contract bound to the checkpoint ABI. */
-  readonly #contract: Contract
+  /** Public client used for network identity and historical calls. */
+  readonly #client: PublicClient
+  /** RAILGUN proxy contract address. */
+  readonly #address: Address
 
   /**
    * Construct an exact-height RPC checkpoint reader.
@@ -80,12 +81,8 @@ class RpcSnapshotCheckpointReader implements SnapshotCheckpointReader {
     if (config.proxyContractAddress.trim().length === 0) {
       throw new Error('Snapshot checkpoint contract address is empty')
     }
-    this.#provider = new JsonRpcProvider(config.rpcURL)
-    this.#contract = new Contract(
-      config.proxyContractAddress,
-      CHECKPOINT_ABI,
-      this.#provider
-    )
+    this.#client = createPublicClient({ transport: http(config.rpcURL) })
+    this.#address = config.proxyContractAddress as Address
   }
 
   /**
@@ -93,7 +90,7 @@ class RpcSnapshotCheckpointReader implements SnapshotCheckpointReader {
    * @returns RPC chain ID.
    */
   async chainID (): Promise<bigint> {
-    return (await this.#provider.getNetwork()).chainId
+    return BigInt(await this.#client.getChainId())
   }
 
   /**
@@ -102,9 +99,12 @@ class RpcSnapshotCheckpointReader implements SnapshotCheckpointReader {
    * @returns Active tree number.
    */
   async treeNumber (blockHeight: bigint): Promise<bigint> {
-    return BigInt(await this.#contract['treeNumber']!({
-      blockTag: toBlockTag(blockHeight)
-    }))
+    return this.#client.readContract({
+      address: this.#address,
+      abi: CHECKPOINT_ABI,
+      functionName: 'treeNumber',
+      blockNumber: blockHeight
+    })
   }
 
   /**
@@ -113,9 +113,12 @@ class RpcSnapshotCheckpointReader implements SnapshotCheckpointReader {
    * @returns Next leaf index.
    */
   async nextLeafIndex (blockHeight: bigint): Promise<bigint> {
-    return BigInt(await this.#contract['nextLeafIndex']!({
-      blockTag: toBlockTag(blockHeight)
-    }))
+    return this.#client.readContract({
+      address: this.#address,
+      abi: CHECKPOINT_ABI,
+      functionName: 'nextLeafIndex',
+      blockNumber: blockHeight
+    })
   }
 
   /**
@@ -124,8 +127,11 @@ class RpcSnapshotCheckpointReader implements SnapshotCheckpointReader {
    * @returns Hex-encoded root.
    */
   async merkleRoot (blockHeight: bigint): Promise<string> {
-    return String(await this.#contract['merkleRoot']!({
-      blockTag: toBlockTag(blockHeight)
+    return (await this.#client.readContract({
+      address: this.#address,
+      abi: CHECKPOINT_ABI,
+      functionName: 'merkleRoot',
+      blockNumber: blockHeight
     })).toLowerCase()
   }
 
@@ -141,25 +147,14 @@ class RpcSnapshotCheckpointReader implements SnapshotCheckpointReader {
     root: string,
     blockHeight: bigint
   ): Promise<boolean> {
-    return Boolean(await this.#contract['rootHistory']!(
-      treeNumber,
-      root,
-      { blockTag: toBlockTag(blockHeight) }
-    ))
+    return this.#client.readContract({
+      address: this.#address,
+      abi: CHECKPOINT_ABI,
+      functionName: 'rootHistory',
+      args: [BigInt(treeNumber), root as `0x${string}`],
+      blockNumber: blockHeight
+    })
   }
-}
-
-/**
- * Convert a bigint block height into ethers' safe numeric block tag.
- * @param blockHeight - Exact historical block.
- * @returns Numeric block tag.
- */
-function toBlockTag (blockHeight: bigint): number {
-  const blockTag = Number(blockHeight)
-  if (!Number.isSafeInteger(blockTag) || blockTag < 0) {
-    throw new RangeError(`Invalid snapshot checkpoint block height ${blockHeight}`)
-  }
-  return blockTag
 }
 
 /**

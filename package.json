@@ -42,6 +42,6 @@
     "@railgun-reloaded/scanner": "git+https://github.com/railgun-reloaded/scanner.git#dev",
     "@railgun-reloaded/storage": "git+https://github.com/railgun-reloaded/storage.git#dev",
     "@railgun-reloaded/wallet-node": "git+https://github.com/railgun-reloaded/wallet-node.git#dev",
-    "ethers": "^6.16.0"
+    "viem": "^2.31.4"
   }
 }
