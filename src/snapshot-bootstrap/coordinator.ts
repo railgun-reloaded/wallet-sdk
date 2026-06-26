@@ -1,3 +1,8 @@
+// TODO(browser-support): this module imports node:fs/node:path at the top
+// level and is re-exported from the package entry (src/index.ts), so any
+// browser `import` of @railgun-reloaded/wallet-sdk fails at module-load time,
+// not at call time. When the browser entry split lands (storage /node /browser
+// pattern), move the FS-backed bootstrap behind a Node-only subpath.
 import fs from 'node:fs'
 import path from 'node:path'
 
@@ -58,7 +63,7 @@ function collectSnapshotTreeState (engine: RailgunEngine): SnapshotTreeState[] {
     .sort(([left], [right]) => left - right)
     .map(([treeNumber, tree]) => ({
       treeNumber,
-      leafCount: tree.merkleTree.serialize().length,
+      leafCount: tree.merkleTree.length,
       root: Uint8Array.from(tree.root())
     }))
 
