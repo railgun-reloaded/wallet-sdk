@@ -103,6 +103,58 @@ stopBalanceUpdates()
 stopSyncCompletion()
 ```
 
+## Snapshot bootstrap
+
+A fresh wallet can bootstrap its canonical historical prefix (deployment block →
+`endHeight`) from an immutable snapshot instead of replaying it through Subsquid.
+You assemble the `SourceAggregator` (and bring snapshot's `decodeArtifact`); the
+SDK owns the protocol — staging snapshot blocks as untrusted state, validating
+their exact on-chain checkpoint, promoting `chain.db` atomically, and recovering
+interrupted attempts. Subsquid then continues from `endHeight + 1`.
+
+```typescript
+import {
+  bootstrapSnapshotAtomically,
+  createRpcSnapshotCheckpointValidator,
+  NETWORK_CONFIG, NetworkName, RailgunEngine
+} from '@railgun-reloaded/wallet-sdk'
+import { SnapshotProvider, SourceAggregator, SubsquidProvider } from '@railgun-reloaded/scanner'
+import { decodeArtifact } from '@railgun-reloaded/snapshot'
+
+const config = NETWORK_CONFIG[NetworkName.EthereumSepolia]
+
+// Stage + validate the exact checkpoint + promote atomically.
+// chainID and deployment start height come from NETWORK_CONFIG.
+const result = await bootstrapSnapshotAtomically({
+  network: NetworkName.EthereumSepolia,
+  cid,
+  endHeight, // from the snapshot manifest
+  dataSource: new SourceAggregator([
+    new SnapshotProvider({ ipfsHash: cid, gateways, decodeArtifact }),
+    new SubsquidProvider(subsquidURL)
+  ]),
+  checkpointValidator: createRpcSnapshotCheckpointValidator({
+    rpcURL: config.rpcURL,
+    proxyContractAddress: config.proxyContractAddress
+  })
+})
+// result.status === 'promoted' | 'skipped'
+
+// Continue from the persisted cursor (endHeight + 1).
+const engine = new RailgunEngine()
+engine.setDataSource(new SourceAggregator([new SubsquidProvider(subsquidURL)]))
+await engine.setNetwork(NetworkName.EthereumSepolia)
+await engine.scan()
+```
+
+A chain DB already holding trusted sync state (`lastBlockHeight > 0`) is left
+untouched (`status: 'skipped'`). The trusted cursor is never advanced before
+validation and atomic promotion succeed, so any fetch, integrity, validation, or
+promotion failure leaves no trusted state and falls back to a full Subsquid scan.
+Interrupted attempts are cleaned up on the next run — no manual `chain.db`
+deletion. Pass your own `SnapshotCheckpointValidator` to validate against a
+different authority.
+
 ## Errors
 
 - `InvalidMnemonicError` — BIP39 validation failed.

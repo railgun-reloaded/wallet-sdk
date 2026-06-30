@@ -17,6 +17,7 @@ import {
 import { NoteCommitmentTree } from './merkle/index.js'
 import type { NetworkConfig, NetworkName } from './network-config.js'
 import { NETWORK_CONFIG } from './network-config.js'
+import { getWalletChainDBPath } from './snapshot-bootstrap/paths.js'
 import { denormalizeBlockData } from './sync/index.js'
 /**
  * RailgunEngine
@@ -176,13 +177,14 @@ class RailgunEngine {
     this.#log(`EngineInit:: Initializing for Network ${this.#currentNetwork}`)
 
     if (!this.#db) {
-      const dirName = path.join(this.#dataDir, 'chains', `${this.#networkConfig.chainID}`)
-      await recoverChainBootstrap(path.join(dirName, 'chain.db'))
+      const dbPath = getWalletChainDBPath(this.#dataDir, this.#networkConfig.chainID)
+      const dirName = path.dirname(dbPath)
+      await recoverChainBootstrap(dbPath)
       if (!existsSync(dirName)) {
         mkdirSync(dirName, { recursive: true })
       }
       this.#db = await createChainDB({
-        path: path.join(dirName, 'chain.db'),
+        path: dbPath,
         runMigrations: true
       })
     }

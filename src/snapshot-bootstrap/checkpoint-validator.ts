@@ -33,6 +33,16 @@ type RpcSnapshotCheckpointReaderConfig = {
 }
 
 /**
+ * Encode a commitment root as a prefixed hex string. `bytesToHex` already
+ * emits lowercase, so its output needs no further normalization.
+ * @param root - 32-byte commitment root.
+ * @returns Prefixed lowercase hex root.
+ */
+function toRootHex (root: Uint8Array): string {
+  return bytesToHex(root, { prefix: true })
+}
+
+/**
  * Snapshot state differs from the authoritative exact-height checkpoint.
  */
 class SnapshotCheckpointMismatchError extends Error {
@@ -249,8 +259,7 @@ class ExactSnapshotCheckpointValidator implements SnapshotCheckpointValidator {
       )
     }
 
-    const latestRoot = bytesToHex(latestTree.root, { prefix: true }).toLowerCase()
-    if (latestRoot !== remoteMerkleRoot.toLowerCase()) {
+    if (toRootHex(latestTree.root) !== remoteMerkleRoot) {
       throw new SnapshotCheckpointMismatchError(
         `Snapshot tree ${latestTreeNumber} root does not match checkpoint root`
       )
@@ -266,7 +275,7 @@ class ExactSnapshotCheckpointValidator implements SnapshotCheckpointValidator {
           `${latestTreeNumber}`
         )
       }
-      const root = bytesToHex(tree.root, { prefix: true }).toLowerCase()
+      const root = toRootHex(tree.root)
       if (!await this.#reader.hasRoot(tree.treeNumber, root, input.blockHeight)) {
         throw new SnapshotCheckpointMismatchError(
           `Snapshot tree ${tree.treeNumber} root is not valid at block ` +

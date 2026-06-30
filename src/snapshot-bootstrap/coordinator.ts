@@ -4,7 +4,6 @@
 // not at call time. When the browser entry split lands (storage /node /browser
 // pattern), move the FS-backed bootstrap behind a Node-only subpath.
 import fs from 'node:fs'
-import path from 'node:path'
 
 import {
   closeChainDB,
@@ -22,6 +21,7 @@ import { RailgunEngine } from '../engine.js'
 import { NoteCommitmentTree } from '../merkle/index.js'
 import { NETWORK_CONFIG } from '../network-config.js'
 
+import { getWalletChainDBPath } from './paths.js'
 import type {
   AtomicSnapshotBootstrapParams,
   AtomicSnapshotBootstrapResult,
@@ -29,16 +29,6 @@ import type {
 } from './types.js'
 
 const DEFAULT_DATA_DIR = './.railgun'
-
-/**
- * Resolve the trusted chain database path for a network.
- * @param dataDir - Wallet-sdk data directory.
- * @param chainID - Network chain ID.
- * @returns Absolute chain.db path.
- */
-function getWalletChainDBPath (dataDir: string, chainID: number): string {
-  return path.resolve(dataDir, 'chains', `${chainID}`, 'chain.db')
-}
 
 /**
  * Remove or finalize files left by an interrupted bootstrap attempt.
@@ -93,13 +83,11 @@ async function bootstrapSnapshotAtomically (
   const networkConfig = NETWORK_CONFIG[params.network]
   const targetPath = getWalletChainDBPath(dataDir, networkConfig.chainID)
 
-  await recoverChainBootstrap(targetPath)
-
   if (fs.existsSync(targetPath)) {
-    const targetDB = await createChainDB({ path: targetPath, runMigrations: true })
+    const targetDB = await createChainDB({ path: targetPath, runMigrations: false })
     try {
       const trustedState = await getSyncState(targetDB, networkConfig.chainID)
-      if (trustedState) {
+      if (trustedState && trustedState.lastBlockHeight > 0n) {
         params.dataSource.destroy()
         return {
           status: 'skipped',
@@ -129,9 +117,10 @@ async function bootstrapSnapshotAtomically (
     discardChainBootstrap(targetPath)
     throw error
   }
-  const engine = new RailgunEngine({ chainDB: stagingDB })
-  let stagingClosed = false
 
+  // The staging DB must be closed before the file is promoted.
+  let trees: SnapshotTreeState[]
+  const engine = new RailgunEngine({ chainDB: stagingDB })
   try {
     engine.setDataSource(params.dataSource)
     await engine.setNetwork(params.network)
@@ -143,7 +132,7 @@ async function bootstrapSnapshotAtomically (
       )
     }
 
-    const trees = collectSnapshotTreeState(engine)
+    trees = collectSnapshotTreeState(engine)
     await params.checkpointValidator.validate({
       chainID: networkConfig.chainID,
       blockHeight: params.endHeight,
@@ -155,31 +144,27 @@ async function bootstrapSnapshotAtomically (
       blockHeight: params.endHeight,
       trees
     })
-
-    await engine.destroy()
-    await closeChainDB(stagingDB)
-    stagingClosed = true
-
-    try {
-      promoteChainBootstrap(targetPath)
-    } catch (error) {
-      if (await recoverChainBootstrap(targetPath) !== 'promoted') {
-        throw error
-      }
-    }
-
-    return {
-      status: 'promoted',
-      blockHeight: params.endHeight,
-      trees
-    }
   } catch (error) {
-    await engine.destroy()
-    if (!stagingClosed) {
-      await closeChainDB(stagingDB)
-    }
     discardChainBootstrap(targetPath)
     throw error
+  } finally {
+    await engine.destroy()
+    await closeChainDB(stagingDB)
+  }
+
+  try {
+    promoteChainBootstrap(targetPath)
+  } catch (error) {
+    if (await recoverChainBootstrap(targetPath) !== 'promoted') {
+      discardChainBootstrap(targetPath)
+      throw error
+    }
+  }
+
+  return {
+    status: 'promoted',
+    blockHeight: params.endHeight,
+    trees
   }
 }
 

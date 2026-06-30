@@ -34,46 +34,76 @@ const END_HEIGHT = START_HEIGHT + 1n
 const CID = 'bafyreivalidatedsnapshot'
 
 /**
- * Finite source that yields empty event blocks across the snapshot range.
+ * Create an empty block.
+ * @param number - Block height.
+ * @returns Empty block.
  */
-class EmptyBlockSource {
-  /** Snapshot sources are finite. */
+function emptyBlock (number: bigint): EVMBlock {
+  return {
+    number,
+    hash: new Uint8Array(32),
+    timestamp: 0n,
+    transactions: []
+  }
+}
+
+/**
+ * Empty finite block source for bootstrap tests.
+ */
+class RangeBlockSource {
+  /** Source is finite. */
   isLiveProvider = false
-  /** Whether the aggregator released this source. */
+  /** Last requested start height. */
+  observedStart: bigint | undefined
+  /** Whether destroy ran. */
   destroyed = false
+  /** First yieldable height. */
+  readonly #from: bigint
+  /** Last yieldable height. */
+  readonly #to: bigint
 
   /**
-   * Return the configured snapshot end.
-   * @returns Snapshot end height.
+   * Create a ranged source.
+   * @param from - First yieldable height.
+   * @param to - Last yieldable height.
    */
-  async head () {
-    return END_HEIGHT
+  constructor (from: bigint, to: bigint) {
+    this.#from = from
+    this.#to = to
   }
 
   /**
-   * Yield empty blocks in the requested snapshot range.
+   * Return the source head.
+   * @returns Source head.
+   */
+  async head () {
+    return this.#to
+  }
+
+  /**
+   * Yield requested empty blocks.
    * @param options - Requested range.
    * @param options.startHeight - Inclusive start.
    * @param options.endHeight - Optional inclusive end.
-   * @yields Empty EVM blocks.
+   * @yields Empty blocks.
    */
   async * from (options: {
     startHeight: bigint
     endHeight?: bigint | undefined
   }): AsyncGenerator<EVMBlock> {
-    for (const number of [START_HEIGHT, END_HEIGHT]) {
-      if (number < options.startHeight) continue
-      if (options.endHeight !== undefined && number > options.endHeight) continue
-      yield {
-        number,
-        hash: new Uint8Array(32),
-        timestamp: 0n,
-        transactions: []
-      }
+    this.observedStart = options.startHeight
+    const last = options.endHeight !== undefined && options.endHeight < this.#to
+      ? options.endHeight
+      : this.#to
+    for (let number = options.startHeight; number <= last; number += 1n) {
+      if (number < this.#from) continue
+      yield emptyBlock(number)
     }
   }
 
-  /** Record source destruction. */
+  /**
+   * Record destruction.
+   */
   destroy () {
     this.destroyed = true
   }
@@ -95,7 +125,7 @@ function checkpointValidator (
  * @returns Source and aggregator.
  */
 function snapshotSource () {
-  const source = new EmptyBlockSource()
+  const source = new RangeBlockSource(START_HEIGHT, END_HEIGHT)
   return {
     source,
     aggregator: new SourceAggregator<EVMBlock>([source])
@@ -252,4 +282,71 @@ test('normal engine scan discards an interrupted bootstrap before opening chain.
     undefined
   )
   await closeChainDB(trustedDB)
+})
+
+test('a zero-height sync cursor is not trusted and bootstrap proceeds', async (t) => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'wallet-sdk-snapshot-bootstrap-'))
+  t.after(() => rmSync(dataDir, { recursive: true, force: true }))
+  const targetPath = getWalletChainDBPath(dataDir, NETWORK_CONFIG_ENTRY.chainID)
+  mkdirSync(dirname(targetPath), { recursive: true })
+  const seededDB = await createChainDB({ path: targetPath, runMigrations: true })
+  await updateSyncState(seededDB, NETWORK_CONFIG_ENTRY.chainID, 0n)
+  await closeChainDB(seededDB)
+
+  const { aggregator } = snapshotSource()
+  let validated = false
+  const result = await bootstrapSnapshotAtomically({
+    network: NETWORK,
+    cid: CID,
+    endHeight: END_HEIGHT,
+    dataSource: aggregator,
+    dataDir,
+    checkpointValidator: checkpointValidator(async () => {
+      validated = true
+    })
+  })
+
+  assert.equal(result.status, 'promoted')
+  assert.equal(validated, true)
+
+  const chainDB = await createChainDB({ path: targetPath })
+  assert.equal(
+    (await getSyncState(chainDB, NETWORK_CONFIG_ENTRY.chainID))?.lastBlockHeight,
+    END_HEIGHT
+  )
+  await closeChainDB(chainDB)
+})
+
+test('Subsquid continues from endHeight + 1 after a promoted bootstrap', async (t) => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'wallet-sdk-snapshot-bootstrap-'))
+  t.after(() => rmSync(dataDir, { recursive: true, force: true }))
+
+  const { aggregator } = snapshotSource()
+  const bootstrap = await bootstrapSnapshotAtomically({
+    network: NETWORK,
+    cid: CID,
+    endHeight: END_HEIGHT,
+    dataSource: aggregator,
+    dataDir,
+    checkpointValidator: checkpointValidator(async () => {})
+  })
+  assert.equal(bootstrap.status, 'promoted')
+
+  const tail = END_HEIGHT + 5n
+  const continuation = new RangeBlockSource(END_HEIGHT + 1n, tail)
+  const engine = new RailgunEngine({ dataDir })
+  t.after(() => engine.destroy())
+  engine.setDataSource(new SourceAggregator<EVMBlock>([continuation]))
+  await engine.setNetwork(NETWORK)
+  await engine.scan({ endBlock: tail })
+
+  assert.equal(continuation.observedStart, END_HEIGHT + 1n)
+
+  const targetPath = getWalletChainDBPath(dataDir, NETWORK_CONFIG_ENTRY.chainID)
+  const chainDB = await createChainDB({ path: targetPath })
+  assert.equal(
+    (await getSyncState(chainDB, NETWORK_CONFIG_ENTRY.chainID))?.lastBlockHeight,
+    tail
+  )
+  await closeChainDB(chainDB)
 })
