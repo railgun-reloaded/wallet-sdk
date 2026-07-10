@@ -2,8 +2,6 @@ import { existsSync, mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 
-import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
-import type { WalletStorage } from '@railgun-reloaded/storage'
 import type { ChainDB, WalletDB } from '@railgun-reloaded/storage/node'
 import {
   closeChainDB,
@@ -14,12 +12,19 @@ import {
   createWalletStorage
 } from '@railgun-reloaded/storage/node'
 
-import {
-  clonePoiNodeUrls,
-  findNetworkByChainId,
-  hasUsablePoiNodeUrls,
-  makeScanOnBatch
-} from './client-helpers.js'
+import type {
+  BalanceMode,
+  DecryptParams,
+  DecryptSummary,
+  DecryptedNote,
+  ScanParams,
+  SyncParams,
+  SyncProgress,
+  SyncSummary,
+  TokenBalance
+} from './client-core.js'
+import { RailgunClientCore } from './client-core.js'
+import { makeScanOnBatch } from './client-helpers.js'
 import { RailgunEngine } from './engine.js'
 import type {
   EventFilter,
@@ -28,88 +33,15 @@ import type {
   SyncProgressEvent
 } from './events/index.js'
 import { EventBus } from './events/index.js'
-import { initializeCrypto } from './init/crypto.js'
 import type { NetworkName } from './network-config.js'
 import { NETWORK_CONFIG } from './network-config.js'
 import type { RefreshSummary, WalletBalanceBucket } from './poi/index.js'
-import {
-  PoiNodeClient,
-  PoiNodeUrlsRequiredError,
-  PoiStatusService
-} from './poi/index.js'
-import type {
-  BalanceMode,
-  DecryptedNote,
-  TokenBalance
-} from './services/balance/balance-service.js'
-import { BalanceService } from './services/balance/balance-service.js'
 import type {
   CreateWalletParams,
   WalletContext,
   WalletInfo
 } from './services/wallet/wallet-service.js'
-import { WalletService } from './services/wallet/wallet-service.js'
-import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor.js'
-import { SyncPhase, runWalletDecryption } from './sync/wallet-decryptor.js'
-
-/**
- * Inputs for `RailgunClient.scan()`.
- */
-type ScanParams = {
-  network: NetworkName
-  dataSource: SourceAggregator<EVMBlock>
-  endBlock?: bigint
-  /** Fired per batch with `phase: 'scan'`. Synchronous; throwing aborts the run. */
-  onProgress?: (progress: SyncProgress) => void
-}
-
-/**
- * Inputs for `RailgunClient.decrypt()`.
- */
-type DecryptParams = {
-  /** Chain ID matching the data already in chain.db (e.g. 11155111 for Sepolia). */
-  chainId: number
-  /** Override the resumable cursor; defaults to `scanState.lastScannedBlock + 1`. */
-  fromBlock?: bigint
-  /** Stop point; defaults to chain.db's `syncState.lastBlockHeight`. */
-  toBlock?: bigint
-  /** Block-range chunk size for chain.db queries. Defaults to 10_000. */
-  batchSize?: bigint
-  /** Fired per batch with `phase: 'decrypt'`. Synchronous; throwing aborts the run. */
-  onProgress?: (progress: SyncProgress) => void
-}
-
-/**
- * Inputs for `RailgunClient.sync()`. Combines `ScanParams` with the wallet
- * decryption knobs from `DecryptParams` minus `chainId` (derived from
- * `network`).
- */
-type SyncParams = {
-  network: NetworkName
-  dataSource: SourceAggregator<EVMBlock>
-  /** Inclusive ceiling on chain ingestion. */
-  endBlock?: bigint
-  /** Override the wallet decryption cursor; defaults to scanState + 1. */
-  fromBlock?: bigint
-  /** Stop point for decryption; defaults to chain.db's tip. */
-  toBlock?: bigint
-  /** Decryption block-range chunk size. Defaults to 10_000. */
-  batchSize?: bigint
-  /** Refresh PPOI status after decryption on PPOI networks. Defaults to true. */
-  refreshPoi?: boolean
-  /** Fired per batch from all sync phases. `phase` distinguishes the source. */
-  onProgress?: (progress: SyncProgress) => void
-}
-
-/**
- * Combined result of a `sync()` call: the engine scan outcome plus the
- * wallet decryption summary.
- */
-type SyncSummary = {
-  scan: { lastBlock: bigint | undefined }
-  decrypt: DecryptSummary
-  poi?: RefreshSummary
-}
+import { SyncPhase } from './sync/wallet-decryptor.js'
 
 /**
  * Options for constructing a RailgunClient.
@@ -144,12 +76,7 @@ type RailgunClientOptions = {
 }
 
 const DEFAULT_DATA_DIR = './.railgun'
-const EMPTY_REFRESH_SUMMARY: RefreshSummary = {
-  checked: 0,
-  updated: 0,
-  skipped: 0,
-  failed: 0
-}
+const DECRYPT_MISSING_CHAIN_DB_ERROR = 'Decrypt failed: chain DB not initialized — call scan() first'
 
 const requireFromHere = createRequire(import.meta.url)
 
@@ -170,8 +97,8 @@ function resolveWalletMigrationsFolder (): string {
 /**
  * Top-level entry point for @railgun-reloaded/wallet-sdk.
  *
- * Composes WalletService (persistent, encrypted wallet lifecycle) with
- * RailgunEngine (chain sync). Thin orchestrator — no business logic.
+ * Composes shared wallet/sync behavior with Node-specific database ownership
+ * and event emission.
  */
 class RailgunClient {
   /** In-process event bus owned by this client. Cleared on close(). */
@@ -180,17 +107,11 @@ class RailgunClient {
   /** True once close() has torn down this client's event surface. */
   #closed = false
 
-  /** Underlying wallet-service instance. */
-  readonly #walletService: WalletService
-
-  /** Read API over live wallet notes. */
-  readonly #balanceService: BalanceService
+  /** Runtime-neutral client behavior bound to the Node engine. */
+  readonly #core: RailgunClientCore<RailgunEngine>
 
   /** The wallet DB in use (either injected or auto-created). */
   readonly #walletDB: WalletDB
-
-  /** WalletStorage contract bound to `#walletDB`. */
-  readonly #walletStorage: WalletStorage
 
   /** Base directory used for owned chain DBs. */
   readonly #dataDir: string
@@ -200,9 +121,6 @@ class RailgunClient {
 
   /** RailgunEngine instance exposed via the `engine` getter. */
   readonly #engine: RailgunEngine
-
-  /** PPOI node URLs passed at construction, validated lazily per network. */
-  readonly #poiNodeUrls: Partial<Record<NetworkName, string[]>>
 
   /**
    * Wire up services around an already-opened wallet DB. Private because
@@ -219,15 +137,16 @@ class RailgunClient {
   ) {
     this.#dataDir = options.dataDir ?? DEFAULT_DATA_DIR
     this.#walletDB = walletDB
-    this.#walletStorage = createWalletStorage(walletDB)
     this.#ownsWalletDB = ownsWalletDB
-
-    this.#walletService = new WalletService(this.#walletStorage)
-    this.#balanceService = new BalanceService(this.#walletStorage)
-    this.#poiNodeUrls = clonePoiNodeUrls(options.poiNodeUrls)
     this.#engine = new RailgunEngine(
       options.chainDB ? { chainDB: options.chainDB } : { dataDir: this.#dataDir }
     )
+    this.#core = new RailgunClientCore({
+      engine: this.#engine,
+      walletStorage: createWalletStorage(walletDB),
+      ...(options.poiNodeUrls !== undefined && { poiNodeUrls: options.poiNodeUrls }),
+      missingChainStorageMessage: DECRYPT_MISSING_CHAIN_DB_ERROR
+    })
   }
 
   /**
@@ -256,13 +175,10 @@ class RailgunClient {
 
   /**
    * Eagerly initialize the cryptography libraries this client depends on.
-   * Wallet operations otherwise initialize lazily via `deriveWalletKeys` on
-   * first use; call this at startup to pay the cost up front. Idempotent
-   * across calls and across `RailgunClient` instances in the same process.
    * @returns A promise that resolves once the cryptography libraries are ready.
    */
   initialize (): Promise<void> {
-    return initializeCrypto()
+    return this.#core.initialize()
   }
 
   /**
@@ -271,7 +187,7 @@ class RailgunClient {
    * @returns Decrypt-free WalletInfo.
    */
   createWallet (params: CreateWalletParams): Promise<WalletInfo> {
-    return this.#walletService.createWallet(params)
+    return this.#core.createWallet(params)
   }
 
   /**
@@ -281,7 +197,7 @@ class RailgunClient {
    * @returns Full WalletContext (minus spending key).
    */
   loadWallet (walletId: string, encryptionKey: Uint8Array): Promise<WalletContext> {
-    return this.#walletService.loadWallet(walletId, encryptionKey)
+    return this.#core.loadWallet(walletId, encryptionKey)
   }
 
   /**
@@ -289,7 +205,7 @@ class RailgunClient {
    * @returns Array of WalletInfo sorted by createdAt ASC.
    */
   listWallets (): Promise<WalletInfo[]> {
-    return this.#walletService.listWallets()
+    return this.#core.listWallets()
   }
 
   /**
@@ -298,15 +214,13 @@ class RailgunClient {
    * @returns Resolves when the delete completes.
    */
   deleteWallet (walletId: string): Promise<void> {
-    return this.#walletService.deleteWallet(walletId)
+    return this.#core.deleteWallet(walletId)
   }
 
   /**
    * Read ERC-20 balances for a wallet on a given chain from live unspent notes.
-   * Bucket filtering uses the flat `WalletBalanceBucket` adapter over the
-   * note's two-tier spend state.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
-   * @param chainId - Chain id to scope the lookup to (e.g. 11155111 for Sepolia).
+   * @param chainId - Chain id to scope the lookup to.
    * @param mode - Balance mode: default spendable, all unspent, or one bucket.
    * @returns Token balances grouped by token.
    */
@@ -315,7 +229,7 @@ class RailgunClient {
     chainId: number,
     mode?: BalanceMode
   ): Promise<TokenBalance[]> {
-    return this.#balanceService.getBalances(walletId, chainId, mode)
+    return this.#core.getBalances(walletId, chainId, mode)
   }
 
   /**
@@ -328,7 +242,7 @@ class RailgunClient {
     walletId: string,
     chainId: number
   ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
-    return this.#balanceService.getBalancesByBucket(walletId, chainId)
+    return this.#core.getBalancesByBucket(walletId, chainId)
   }
 
   /**
@@ -344,7 +258,7 @@ class RailgunClient {
     chainId: number,
     options?: { unspent?: boolean }
   ): Promise<DecryptedNote[]> {
-    return this.#balanceService.getNotes(walletId, chainId, options)
+    return this.#core.getNotes(walletId, chainId, options)
   }
 
   /**
@@ -391,29 +305,17 @@ class RailgunClient {
    * @param chainId - Chain id to scope the refresh to.
    * @returns Refresh counters for notes checked, updated, skipped, and failed.
    */
-  async refreshPoiStatus (
+  refreshPoiStatus (
     walletId: string,
     chainId: number
   ): Promise<RefreshSummary> {
-    const network = findNetworkByChainId(chainId)
-    if (network === undefined || NETWORK_CONFIG[network].poi === undefined) {
-      return { ...EMPTY_REFRESH_SUMMARY }
-    }
-    return this.#refreshPoiStatusForNetwork(walletId, chainId, network)
+    return this.#core.refreshPoiStatus(walletId, chainId)
   }
 
   /**
    * Drain the supplied data source into chain.db for `network`. Returns when
-   * the source reaches its current tip (or `endBlock`, when set). Live
-   * sources never reach a natural tip — bound them with `endBlock`.
-   *
-   * Calling this method twice with different networks reconfigures the engine
-   * each time. The wallet DB is untouched; use `decrypt()` to populate
-   * per-wallet state from the synced chain DB.
+   * the source reaches its current tip (or `endBlock`, when set).
    * @param params - Sync target plus optional bounds.
-   * @param params.network - Network name (e.g. `NetworkName.EthereumSepolia`).
-   * @param params.dataSource - Aggregator that yields EVM blocks.
-   * @param params.endBlock - Inclusive ceiling on blocks to ingest.
    * @returns Last block number written to chain.db, or `undefined` when the
    *   source had nothing to yield.
    */
@@ -473,11 +375,7 @@ class RailgunClient {
 
   /**
    * Decrypt the wallet's notes from chain.db into wallet.db. Pure consumer
-   * of chain state — call `scan()` first to populate chain.db. Idempotent:
-   * the persisted scan cursor (`scanState.lastScannedBlock`) makes repeated
-   * calls a no-op once the wallet is up to date.
-   *
-   * Throws when `scan()` has not yet opened a chain DB for the given chain.
+   * of chain state — call `scan()` first to populate chain.db.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param encryptionKey - Same 32-byte key used at wallet creation time.
    * @param params - Decryption target plus optional bounds.
@@ -488,11 +386,10 @@ class RailgunClient {
     encryptionKey: Uint8Array,
     params: DecryptParams
   ): Promise<DecryptSummary> {
-    const chainStorage = this.#engine.storage
-    if (!chainStorage) {
-      throw new Error('Decrypt failed: chain DB not initialized — call scan() first')
+    if (!this.#engine.storage) {
+      throw new Error(DECRYPT_MISSING_CHAIN_DB_ERROR)
     }
-    const walletContext = await this.#walletService.loadWallet(walletId, encryptionKey)
+    const walletContext = await this.#core.loadWallet(walletId, encryptionKey)
     const chainId = params.chainId
     const startedAt = Date.now()
 
@@ -506,10 +403,7 @@ class RailgunClient {
     })
 
     try {
-      const summary = await runWalletDecryption({
-        chainStorage,
-        walletStorage: this.#walletStorage,
-        walletContext,
+      const summary = await this.#core.decryptWalletContext(walletContext, {
         chainId,
         ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
         ...(params.toBlock !== undefined && { toBlock: params.toBlock }),
@@ -528,7 +422,7 @@ class RailgunClient {
         this.#emit('balance:update', {
           walletId,
           chainId,
-          balances: await this.#balanceService.getBalances(walletId, chainId, 'all'),
+          balances: await this.#core.getBalances(walletId, chainId, 'all'),
           notesAdded: summary.notesAdded,
           notesSpent: summary.notesSpent,
           timestamp: new Date()
@@ -562,8 +456,6 @@ class RailgunClient {
   /**
    * Convenience composer: drain chain state into chain.db (`scan`) then
    * decrypt the wallet's notes from chain.db into wallet.db (`decrypt`).
-   * Equivalent to calling `scan()` and `decrypt()` back-to-back; consumers
-   * who want scan-only or decrypt-only should call those primitives instead.
    * @param walletId - Wallet ID to decrypt for.
    * @param encryptionKey - 32-byte key used at wallet creation time.
    * @param params - Network + data source + optional bounds.
@@ -604,7 +496,7 @@ class RailgunClient {
 
       const poi = NETWORK_CONFIG[params.network].poi !== undefined &&
         params.refreshPoi !== false
-        ? await this.#refreshPoiStatusForNetwork(
+        ? await this.#core.refreshPoiStatusForNetwork(
           walletId,
           chainId,
           params.network,
@@ -637,44 +529,6 @@ class RailgunClient {
         timestamp: new Date()
       })
       throw err
-    }
-  }
-
-  /**
-   * Refresh PPOI status for a PPOI-enabled network after sync.
-   * @param walletId - Wallet whose notes should be refreshed.
-   * @param chainId - Chain ID to scope note updates.
-   * @param network - Network whose PPOI config applies.
-   * @param onProgress - Optional sync progress callback.
-   * @returns PPOI refresh summary.
-   */
-  #refreshPoiStatusForNetwork (
-    walletId: string,
-    chainId: number,
-    network: NetworkName,
-    onProgress?: (progress: SyncProgress) => void
-  ): Promise<RefreshSummary> {
-    this.#assertPoiNodeUrls(network)
-    const service = new PoiStatusService({
-      walletStorage: this.#walletStorage,
-      network,
-      poiNodeClient: new PoiNodeClient({ poiNodeUrls: this.#poiNodeUrls })
-    })
-    return service.refresh(walletId, chainId, {
-      ...(onProgress !== undefined && { onProgress })
-    })
-  }
-
-  /**
-   * Ensure configured PPOI networks have usable node URLs.
-   * @param network - Network to validate.
-   */
-  #assertPoiNodeUrls (network: NetworkName): void {
-    if (
-      NETWORK_CONFIG[network].poi !== undefined &&
-      !hasUsablePoiNodeUrls(this.#poiNodeUrls[network])
-    ) {
-      throw new PoiNodeUrlsRequiredError(network)
     }
   }
 

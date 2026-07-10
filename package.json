@@ -23,7 +23,6 @@
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "tsc --build",
-    "check:browser": "esbuild src/browser/index.js --bundle --platform=browser --format=esm --outfile=/dev/null",
     "prepare": "tsc --build",
     "clean": "tsc --build --clean && find src test -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete && rm -f tsconfig.tsbuildinfo tsconfig.test.tsbuildinfo",
     "rebuild": "npm run clean && npm run build",
@@ -46,7 +45,6 @@
     "@railgun-reloaded/eslint-config": "^1.1.0",
     "@railgun-reloaded/tsconfig": "^1.2.0",
     "better-sqlite3": "^11.10.0",
-    "esbuild": "^0.28.1",
     "eslint": "^9.24.0",
     "ethers": "^6.16.0",
     "typescript": "^5.8.3"
