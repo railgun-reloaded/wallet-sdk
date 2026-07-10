@@ -1,13 +1,8 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import type { DBNewNote } from '@railgun-reloaded/storage'
-import type { WalletDB } from '@railgun-reloaded/storage/node'
-import {
-  createWallet,
-  createWalletDB,
-  insertNotesBatch
-} from '@railgun-reloaded/storage/node'
+import type { DBNewNote, WalletStorage } from '@railgun-reloaded/storage'
+import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
 
 import { POIStatus, WalletBalanceBucket } from '../../src/poi/index.js'
 import type { TokenBalance } from '../../src/services/balance/balance-service.js'
@@ -25,23 +20,23 @@ const OUTPUT_TYPE_TRANSFER = 0
 const OUTPUT_TYPE_CHANGE = 2
 
 /**
- * Create an in-memory wallet database for bucket tests.
- * @returns Wallet database.
+ * Create an in-memory wallet storage for bucket tests.
+ * @returns Wallet storage.
  */
-function memWalletDB (): Promise<WalletDB> {
-  return createWalletDB({
+async function memWalletDB (): Promise<WalletStorage> {
+  return createWalletStorage(await createWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
-  })
+  }))
 }
 
 /**
  * Seed the bucket test wallet.
  * @param db - Wallet database.
  */
-async function seedWallet (db: WalletDB): Promise<void> {
-  await createWallet(db, {
+async function seedWallet (db: WalletStorage): Promise<void> {
+  await db.createWallet({
     id: WALLET_ID,
     encryptedKeys: new Uint8Array([1, 2, 3]),
     name: 'bucket fixture wallet'
@@ -92,8 +87,8 @@ function noteFixture (
  * @param db - Wallet database.
  * @param notes - Note rows to insert.
  */
-async function seedNotes (db: WalletDB, notes: DBNewNote[]): Promise<void> {
-  await insertNotesBatch(db, notes)
+async function seedNotes (db: WalletStorage, notes: DBNewNote[]): Promise<void> {
+  await db.insertNotesBatch(notes)
 }
 
 /**

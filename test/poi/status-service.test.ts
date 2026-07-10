@@ -2,15 +2,8 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import { bytesToHex } from '@railgun-reloaded/bytes'
-import type { DBNewNote } from '@railgun-reloaded/storage'
-import type { WalletDB } from '@railgun-reloaded/storage/node'
-import {
-  createWallet,
-  createWalletDB,
-  getAllNotes,
-  getNotesNeedingPoiRefresh,
-  insertNotesBatch
-} from '@railgun-reloaded/storage/node'
+import type { DBNewNote, WalletStorage } from '@railgun-reloaded/storage'
+import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
 
 import { NetworkName } from '../../src/network-config.js'
 import type {
@@ -52,16 +45,16 @@ function fixtureBytes (value: number, namespace = 0): Uint8Array {
 }
 
 /**
- * Create an in-memory wallet database with the fixture wallet.
- * @returns Fresh wallet database.
+ * Create an in-memory wallet storage with the fixture wallet.
+ * @returns Fresh wallet storage.
  */
-async function memWalletDB (): Promise<WalletDB> {
-  const db = await createWalletDB({
+async function memWalletDB (): Promise<WalletStorage> {
+  const db = createWalletStorage(await createWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
-  })
-  await createWallet(db, {
+  }))
+  await db.createWallet({
     id: WALLET_ID,
     encryptedKeys: fixtureBytes(1),
     name: 'status fixture wallet'
@@ -141,13 +134,13 @@ function validResponse (
 
 /**
  * Insert large fixture sets below SQLite's bound-variable limit.
- * @param db - Wallet database to seed.
+ * @param db - Wallet storage to seed.
  * @param notes - Notes to insert.
  */
-async function seedNotes (db: WalletDB, notes: DBNewNote[]): Promise<void> {
+async function seedNotes (db: WalletStorage, notes: DBNewNote[]): Promise<void> {
   const batchSize = 500
   for (let index = 0; index < notes.length; index += batchSize) {
-    await insertNotesBatch(db, notes.slice(index, index + batchSize))
+    await db.insertNotesBatch(notes.slice(index, index + batchSize))
   }
 }
 
@@ -155,7 +148,7 @@ test('PoiStatusService returns an exact empty summary without an RPC call', asyn
   const db = await memWalletDB()
   const client = recordingClient(validResponse)
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia
   })
@@ -179,7 +172,7 @@ test('PoiStatusService batches 1, 1000, 1001, and 2500 candidates exactly', asyn
       ))
       const client = recordingClient(validResponse)
       const service = new PoiStatusService({
-        walletDb: db,
+        walletStorage: db,
         poiNodeClient: client,
         network: NetworkName.EthereumSepolia
       })
@@ -207,16 +200,16 @@ test('PoiStatusService batches 1, 1000, 1001, and 2500 candidates exactly', asyn
 
 test('PoiStatusService refreshes only the targeted SQL candidate rows', async () => {
   const db = await memWalletDB()
-  await insertNotesBatch(db, [
+  await db.insertNotesBatch([
     noteFixture(1),
     noteFixture(2, { poisPerList: { [LIST_KEY]: POIStatus.Missing } }),
     noteFixture(3, { poisPerList: { [LIST_KEY]: POIStatus.Valid } })
   ])
-  const allNotes = await getAllNotes(db, WALLET_ID, CHAIN_ID)
-  const sqlCandidates = await getNotesNeedingPoiRefresh(db, WALLET_ID, CHAIN_ID)
+  const allNotes = await db.getAllNotes(WALLET_ID, CHAIN_ID)
+  const sqlCandidates = await db.getNotesNeedingPoiRefresh(WALLET_ID, CHAIN_ID)
   const client = recordingClient(validResponse)
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia
   })
@@ -240,7 +233,7 @@ test('PoiStatusService refreshes only the targeted SQL candidate rows', async ()
 
 test('derivation failures are typed, counted, and leave pending status', async () => {
   const db = await memWalletDB()
-  await insertNotesBatch(db, [
+  await db.insertNotesBatch([
     noteFixture(1),
     noteFixture(2, {
       blindedCommitment: null,
@@ -250,7 +243,7 @@ test('derivation failures are typed, counted, and leave pending status', async (
   const client = recordingClient(validResponse)
   const progress: SyncProgress[] = []
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia
   })
@@ -274,7 +267,7 @@ test('derivation failures are typed, counted, and leave pending status', async (
   const error = progress.find(event => event.error !== undefined)?.error
   assert.ok(error instanceof PoiStatusRefreshError)
   assert.equal(error.code, 'BlindedCommitmentDerivationFailed')
-  const failedNote = (await getAllNotes(db, WALLET_ID, CHAIN_ID))
+  const failedNote = (await db.getAllNotes(WALLET_ID, CHAIN_ID))
     .find(note => bytesToHex(note.commitment) === bytesToHex(fixtureBytes(2, 1)))
   assert.equal(failedNote?.poisPerList, null)
   assert.equal(failedNote?.blindedCommitment, null)
@@ -282,7 +275,7 @@ test('derivation failures are typed, counted, and leave pending status', async (
 
 test('one failed network batch leaves a later successful batch persisted', async () => {
   const db = await memWalletDB()
-  await insertNotesBatch(db, Array.from({ length: 1001 }, (_, index) => noteFixture(
+  await db.insertNotesBatch(Array.from({ length: 1001 }, (_, index) => noteFixture(
     index + 1
   )))
   const client = recordingClient((params, callIndex) => {
@@ -297,7 +290,7 @@ test('one failed network batch leaves a later successful batch persisted', async
     return validResponse(params)
   })
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia
   })
@@ -311,7 +304,7 @@ test('one failed network batch leaves a later successful batch persisted', async
     failed: 1000
   })
   assert.equal(client.calls.length, 2)
-  const notes = await getAllNotes(db, WALLET_ID, CHAIN_ID)
+  const notes = await db.getAllNotes(WALLET_ID, CHAIN_ID)
   assert.equal(notes[0]!.poisPerList, null)
   assert.deepStrictEqual(notes.at(-1)!.poisPerList, {
     [LIST_KEY]: POIStatus.Valid
@@ -320,7 +313,7 @@ test('one failed network batch leaves a later successful batch persisted', async
 
 test('node failure does not pre-persist a newly derived blinded commitment', async () => {
   const db = await memWalletDB()
-  await insertNotesBatch(db, [noteFixture(1, {
+  await db.insertNotesBatch([noteFixture(1, {
     blindedCommitment: null,
     npk: fixtureBytes(50, 4)
   })])
@@ -333,7 +326,7 @@ test('node failure does not pre-persist a newly derived blinded commitment', asy
     })
   })
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia
   })
@@ -346,14 +339,14 @@ test('node failure does not pre-persist a newly derived blinded commitment', asy
     skipped: 0,
     failed: 1
   })
-  const note = (await getAllNotes(db, WALLET_ID, CHAIN_ID))[0]!
+  const note = (await db.getAllNotes(WALLET_ID, CHAIN_ID))[0]!
   assert.equal(note.blindedCommitment, null)
   assert.equal(note.poisPerList, null)
 })
 
 test('one bad commitment is isolated while unrelated rows succeed', async () => {
   const db = await memWalletDB()
-  await insertNotesBatch(db, [noteFixture(1), noteFixture(2), noteFixture(3)])
+  await db.insertNotesBatch([noteFixture(1), noteFixture(2), noteFixture(3)])
   const badCommitment = `0x${bytesToHex(fixtureBytes(2, 3))}`
   const client = recordingClient((params) => {
     if (params.blindedCommitmentDatas.some(
@@ -370,7 +363,7 @@ test('one bad commitment is isolated while unrelated rows succeed', async () => 
     return validResponse(params)
   })
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia
   })
@@ -383,7 +376,7 @@ test('one bad commitment is isolated while unrelated rows succeed', async () => 
     skipped: 0,
     failed: 1
   })
-  const notes = await getAllNotes(db, WALLET_ID, CHAIN_ID)
+  const notes = await db.getAllNotes(WALLET_ID, CHAIN_ID)
   assert.equal(notes.filter(note => note.poisPerList !== null).length, 2)
   assert.equal(
     notes.find(note => bytesToHex(note.commitment) === bytesToHex(fixtureBytes(2, 1)))
@@ -394,7 +387,7 @@ test('one bad commitment is isolated while unrelated rows succeed', async () => 
 
 test('omitted node results are typed failures and leave pending status', async () => {
   const db = await memWalletDB()
-  await insertNotesBatch(db, [
+  await db.insertNotesBatch([
     noteFixture(1),
     noteFixture(2)
   ])
@@ -405,7 +398,7 @@ test('omitted node results are typed failures and leave pending status', async (
   }))
   const progress: SyncProgress[] = []
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia
   })
@@ -431,17 +424,17 @@ test('omitted node results are typed failures and leave pending status', async (
     event.error.code === 'MissingStatusResponse'
   ))?.error
   assert.ok(error instanceof PoiStatusRefreshError)
-  const notes = await getAllNotes(db, WALLET_ID, CHAIN_ID)
+  const notes = await db.getAllNotes(WALLET_ID, CHAIN_ID)
   assert.equal(notes[1]!.poisPerList, null)
   assert.equal(summary.checked, summary.updated + summary.skipped + summary.failed)
 })
 
 test('empty required-list configuration counts candidates as skipped', async () => {
   const db = await memWalletDB()
-  await insertNotesBatch(db, [noteFixture(1), noteFixture(2)])
+  await db.insertNotesBatch([noteFixture(1), noteFixture(2)])
   const client = recordingClient(validResponse)
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia,
     listKeys: []
@@ -458,7 +451,7 @@ test('empty required-list configuration counts candidates as skipped', async () 
 
 test('status requests preserve commitment type metadata', async () => {
   const db = await memWalletDB()
-  await insertNotesBatch(db, [
+  await db.insertNotesBatch([
     noteFixture(1, {
       commitmentType: 0,
       blindedCommitment: null,
@@ -472,7 +465,7 @@ test('status requests preserve commitment type metadata', async () => {
   ])
   const client = recordingClient(validResponse)
   const service = new PoiStatusService({
-    walletDb: db,
+    walletStorage: db,
     poiNodeClient: client,
     network: NetworkName.EthereumSepolia
   })
@@ -484,7 +477,7 @@ test('status requests preserve commitment type metadata', async () => {
     [BlindedCommitmentType.Shield, BlindedCommitmentType.Transact]
   )
   assert.equal(
-    (await getAllNotes(db, WALLET_ID, CHAIN_ID))
+    (await db.getAllNotes(WALLET_ID, CHAIN_ID))
       .every(note => note.blindedCommitment !== null),
     true
   )

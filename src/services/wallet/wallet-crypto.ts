@@ -25,14 +25,14 @@ const TAG_LENGTH = 16
  * @returns Packed ciphertext ready for storage.
  * @throws InvalidEncryptionKeyError when `encryptionKey.length !== 32`.
  */
-function encryptWalletBlob (blob: WalletBlob, encryptionKey: Uint8Array): Buffer {
+function encryptWalletBlob (blob: WalletBlob, encryptionKey: Uint8Array): Uint8Array {
   assertKeyLength(encryptionKey)
 
   const plaintext = new TextEncoder().encode(JSON.stringify(blob))
   const { iv, tag, data } = AES.encryptGCM([plaintext], encryptionKey)
   const ciphertext = combine(data)
 
-  const out = Buffer.alloc(IV_LENGTH + TAG_LENGTH + ciphertext.length)
+  const out = new Uint8Array(IV_LENGTH + TAG_LENGTH + ciphertext.length)
   out.set(iv, 0)
   out.set(tag, IV_LENGTH)
   out.set(ciphertext, IV_LENGTH + TAG_LENGTH)

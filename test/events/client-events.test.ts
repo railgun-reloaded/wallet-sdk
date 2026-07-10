@@ -14,10 +14,9 @@ import type {
 } from '@railgun-reloaded/storage/node'
 import {
   createChainDB,
+  createChainStorage,
   createWalletDB,
-  insertNotesBatch,
-  insertNullifiersBatch,
-  updateSyncState
+  createWalletStorage
 } from '@railgun-reloaded/storage/node'
 
 import { RailgunClient } from '../../src/client.js'
@@ -189,7 +188,7 @@ async function seedNotes (
   walletId: string,
   notes: DBNewNote[]
 ): Promise<void> {
-  await insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
+  await createWalletStorage(walletDB).insertNotesBatch(notes.map(note => ({ ...note, walletId })))
 }
 
 /**
@@ -209,8 +208,9 @@ async function seedChainNullifier (
     blockNumber,
     treeNumber: 0
   }
-  await insertNullifiersBatch(chainDB, [row])
-  await updateSyncState(chainDB, SEPOLIA_CHAIN_ID, blockNumber)
+  const chainStorage = createChainStorage(chainDB)
+  await chainStorage.insertNullifiersBatch([row])
+  await chainStorage.updateSyncState(SEPOLIA_CHAIN_ID, blockNumber)
 }
 
 /**

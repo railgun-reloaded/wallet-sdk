@@ -2,14 +2,14 @@ import { existsSync, mkdirSync } from 'fs'
 import path from 'path'
 
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
-import type { DBNewCommitment, DBNewNullifier, DBNewRailgunTransaction, DBNewUnshield } from '@railgun-reloaded/storage'
+import type { ChainStorage } from '@railgun-reloaded/storage'
 import type { ChainDB } from '@railgun-reloaded/storage/node'
-import { closeChainDB, createChainDB, getAllMerkleTrees, getSyncState, insertScanBatch, updateSyncState } from '@railgun-reloaded/storage/node'
+import { closeChainDB, createChainDB, createChainStorage } from '@railgun-reloaded/storage/node'
 
-import { NoteCommitmentTree } from './merkle/index.js'
+import type { NoteCommitmentTree } from './merkle/index.js'
 import type { NetworkConfig, NetworkName } from './network-config.js'
 import { NETWORK_CONFIG } from './network-config.js'
-import { denormalizeBlockData } from './sync/index.js'
+import { drainChainToTip, loadMerkleTrees } from './sync/chain-sync.js'
 /**
  * RailgunEngine
  *
@@ -51,6 +51,12 @@ class RailgunEngine {
   #db: ChainDB | undefined
 
   /**
+   * ChainStorage contract bound to the current chain DB. Set alongside `#db`
+   * and cleared whenever the DB is cleared.
+   */
+  #storage: ChainStorage | undefined
+
+  /**
    * Note Commitment Merkle Tree
    */
   #noteCommitmentTree = new Map<number, NoteCommitmentTree>()
@@ -82,6 +88,7 @@ class RailgunEngine {
     this.#dataDir = options.dataDir ?? './.railgun'
     if (options.chainDB) {
       this.#db = options.chainDB
+      this.#storage = createChainStorage(options.chainDB)
       this.#ownsChainDB = false
     }
   }
@@ -122,6 +129,7 @@ class RailgunEngine {
       await closeChainDB(this.#db)
     }
     this.#db = undefined
+    this.#storage = undefined
     this.#noteCommitmentTree.clear()
     this.#currentNetwork = networkName
   }
@@ -176,196 +184,48 @@ class RailgunEngine {
         path: path.join(dirName, 'chain.db'),
         runMigrations: true
       })
+      this.#storage = createChainStorage(this.#db)
     }
 
-    await this.#loadMerkleTree()
+    await loadMerkleTrees(this.#storage!, this.#noteCommitmentTree)
 
-    const lastSyncedBlock = (await getSyncState(this.#db, this.#networkConfig.chainID))?.lastBlockHeight
+    const lastSyncedBlock = (await this.#storage!.getSyncState(this.#networkConfig.chainID))?.lastBlockHeight
     const startHeight = lastSyncedBlock ? lastSyncedBlock + 1n : this.#networkConfig.deploymentBlock
 
     const onBatch = options.onBatch
     const wrappedOnBatch = onBatch
       ? (lastBlock: bigint) => onBatch(startHeight, lastBlock)
       : undefined
-    return this.#drainToTip(
-      startHeight,
-      options.endBlock,
-      wrappedOnBatch,
-      options.persistRailgunTransactions !== false
-    )
-  }
-
-  /**
-   * Load all persisted merkle trees from chain.db into the in-memory map.
-   * Trees are returned ordered by treeNumber, so map insertion order matches
-   * on-disk order.
-   */
-  async #loadMerkleTree (): Promise<void> {
-    for (const tree of await getAllMerkleTrees(this.#db!)) {
-      this.#noteCommitmentTree.set(tree.treeNumber, new NoteCommitmentTree({
-        buffer: tree.leaves,
-        length: tree.leafCount
-      }))
-    }
-  }
-
-  /**
-   * Insert Batched data to the table
-   * @param nullifierBatch - Batched Nullifiers to insert
-   * @param commitmentBatch - Batched Commitments to insert
-   * @param unshieldBatch - Batched Unshields to insert
-   * @param railgunTransactionBatch - Batched Railgun TXID transactions to insert
-   * @param blockNumber - Block number of last batched entry
-   */
-  async #insertBatch (
-    nullifierBatch: DBNewNullifier[],
-    commitmentBatch: DBNewCommitment[],
-    unshieldBatch: DBNewUnshield[],
-    railgunTransactionBatch: DBNewRailgunTransaction[],
-    blockNumber: bigint
-  ): Promise<void> {
-    // Update commitmentTree
-    const treeSortedCommitments = new Map<number, { treePosition: number, hash: Uint8Array }[]>()
-    commitmentBatch.forEach((c) => {
-      const { treeNumber, treePosition, hash } = c
-      if (!treeSortedCommitments.has(treeNumber)) {
-        treeSortedCommitments.set(treeNumber, [{ treePosition, hash: hash as Uint8Array }])
-      } else {
-        treeSortedCommitments.get(treeNumber)!.push({ treePosition, hash: hash as Uint8Array })
-      }
-    })
-
-    for (const [key, val] of treeSortedCommitments) {
-      if (!this.#noteCommitmentTree.has(key)) {
-        this.#noteCommitmentTree.set(key, new NoteCommitmentTree())
-      }
-      const commitments = val.sort((a, b) => a.treePosition - b.treePosition)
-      if (commitments.length > 0) {
-        this.#noteCommitmentTree.get(key)!.append(commitments.map(c => c.hash))
-      }
-    }
-
-    const merkleTreeRows = [...treeSortedCommitments.keys()].map((key) => {
-      const tree = this.#noteCommitmentTree.get(key)!
-      const { length, buf } = tree.merkleTree.serialize()
-      return {
-        treeNumber: key,
-        leafCount: length,
-        leaves: buf
-      }
-    })
-
-    await insertScanBatch(this.#db!, {
+    return drainChainToTip({
+      storage: this.#storage!,
+      dataSource: this.#dataSource,
+      trees: this.#noteCommitmentTree,
       chainID: this.#networkConfig.chainID,
-      blockNumber,
-      nullifiers: nullifierBatch,
-      commitments: commitmentBatch,
-      unshields: unshieldBatch,
-      railgunTransactions: railgunTransactionBatch,
-      merkleTrees: merkleTreeRows
-    })
-  }
-
-  /**
-   * Drive the data source iterator from `startHeight` until it terminates,
-   * batching writes to chain.db. Stops early when a block at `endBlock` (or
-   * past it) has been ingested. Returns the last block number written, or
-   * `undefined` when the iterator yielded nothing.
-   * @param startHeight - Block to begin syncing from (inclusive).
-   * @param endBlock - Optional ceiling; the loop exits after writing a block
-   *   at or above this height.
-   * @param onBatch - Optional callback fired after each batch insert with
-   *   the highest block number in that batch.
-   * @param persistRailgunTransactions - Whether to persist PPOI TXID rows.
-   * @returns Last block number persisted, or `undefined`.
-   */
-  async #drainToTip (
-    startHeight: bigint,
-    endBlock?: bigint,
-    onBatch?: (lastBlock: bigint) => void,
-    persistRailgunTransactions: boolean = true
-  ): Promise<bigint | undefined> {
-    this.#log(`Syncing event from height ${startHeight}`)
-    const eventIterator = this.#dataSource.from({
       startHeight,
-      endHeight: endBlock,
-      liveSync: false,
+      endBlock: options.endBlock,
+      onBatch: wrappedOnBatch,
+      persistRailgunTransactions: options.persistRailgunTransactions !== false,
+      log: this.#log
     })
-
-    const batchInsertSize = 100
-    let nullifierBatch: DBNewNullifier[] = []
-    let commitmentBatch: DBNewCommitment[] = []
-    let unshieldBatch: DBNewUnshield[] = []
-    let railgunTransactionBatch: DBNewRailgunTransaction[] = []
-
-    let blocksInBatch = 0
-    let lastBlockNumber: bigint | undefined
-    for await (const block of eventIterator) {
-      const { nullifiers, commitments, unshields, railgunTransactions } = denormalizeBlockData(block)
-      nullifierBatch.push(...nullifiers)
-      commitmentBatch.push(...commitments)
-      unshieldBatch.push(...unshields)
-      if (persistRailgunTransactions) {
-        railgunTransactionBatch.push(...railgunTransactions)
-      }
-      blocksInBatch += 1
-      lastBlockNumber = block.number
-
-      if (blocksInBatch >= batchInsertSize) {
-        await this.#insertBatch(
-          nullifierBatch,
-          commitmentBatch,
-          unshieldBatch,
-          railgunTransactionBatch,
-          block.number
-        )
-        onBatch?.(block.number)
-        blocksInBatch = 0
-        commitmentBatch = []
-        nullifierBatch = []
-        unshieldBatch = []
-        railgunTransactionBatch = []
-      }
-
-      if (endBlock !== undefined && block.number >= endBlock) {
-        break
-      }
-    }
-
-    if (blocksInBatch > 0 && lastBlockNumber !== undefined) {
-      await this.#insertBatch(
-        nullifierBatch,
-        commitmentBatch,
-        unshieldBatch,
-        railgunTransactionBatch,
-        lastBlockNumber
-      )
-      onBatch?.(lastBlockNumber)
-    }
-
-    // Iterators only yield event-bearing blocks, so `lastBlockNumber` lags the
-    // actual walked range when the tail (or interior gaps) emit no RAILGUN
-    // events. The aggregator tracks the actual high-water mark across its
-    // sources — read it back so the cursor reflects coverage, not just the
-    // last event. Otherwise re-syncs replay the empty tail and the wallet
-    // decryptor reads a stale `toBlock`.
-    const coveredThrough = this.#dataSource.lastIteratedHeight ?? lastBlockNumber
-    if (coveredThrough !== undefined) {
-      const persisted = (await getSyncState(this.#db!, this.#networkConfig.chainID))?.lastBlockHeight
-      if (persisted === undefined || coveredThrough > persisted) {
-        await updateSyncState(this.#db!, this.#networkConfig.chainID, coveredThrough)
-      }
-    }
-
-    return coveredThrough
   }
 
   /**
    * Get Chain DB Instance
+   * @deprecated Use `storage` instead — all chain reads and writes go through
+   * the `ChainStorage` contract. This raw handle remains only as a Node-side
+   * escape hatch and will be removed once no consumer needs it.
    * @returns ChainDB Instance
    */
   get db () {
     return this.#db
+  }
+
+  /**
+   * Get the ChainStorage contract bound to the current chain DB.
+   * @returns ChainStorage instance, or `undefined` before a DB is opened.
+   */
+  get storage (): ChainStorage | undefined {
+    return this.#storage
   }
 
   /**

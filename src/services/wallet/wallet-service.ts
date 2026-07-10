@@ -1,10 +1,4 @@
-import type { WalletDB } from '@railgun-reloaded/storage/node'
-import {
-  createWallet as dbCreateWallet,
-  deleteWallet as dbDeleteWallet,
-  getWallet as dbGetWallet,
-  listWallets as dbListWallets
-} from '@railgun-reloaded/storage/node'
+import type { WalletStorage } from '@railgun-reloaded/storage'
 import { Mnemonic } from '@railgun-reloaded/wallet-node'
 
 import {
@@ -58,15 +52,15 @@ type WalletContext = {
  * those belong to RailgunEngine.
  */
 class WalletService {
-  /** Reference to the injected wallet database. */
-  readonly #db: WalletDB
+  /** Reference to the injected wallet storage contract. */
+  readonly #storage: WalletStorage
 
   /**
    * Construct a WalletService bound to a specific wallet database.
-   * @param db - Pre-configured WalletDB (from `createWalletDB`).
+   * @param storage - Pre-configured wallet storage contract.
    */
-  constructor (db: WalletDB) {
-    this.#db = db
+  constructor (storage: WalletStorage) {
+    this.#storage = storage
   }
 
   /**
@@ -99,7 +93,7 @@ class WalletService {
     const createdAt = new Date()
 
     try {
-      await dbCreateWallet(this.#db, {
+      await this.#storage.createWallet({
         id: walletId,
         encryptedKeys,
         name: name ?? null,
@@ -125,7 +119,7 @@ class WalletService {
    *   decrypted blob is malformed.
    */
   async loadWallet (walletId: string, encryptionKey: Uint8Array): Promise<WalletContext> {
-    const row = await dbGetWallet(this.#db, walletId)
+    const row = await this.#storage.getWallet(walletId)
     if (!row) {
       throw new WalletNotFoundError(walletId)
     }
@@ -158,7 +152,7 @@ class WalletService {
    * @returns Array of WalletInfo records.
    */
   async listWallets (): Promise<WalletInfo[]> {
-    const rows = await dbListWallets(this.#db)
+    const rows = await this.#storage.listWallets()
     const sorted = [...rows].sort(
       (a, b) => a.createdAt.getTime() - b.createdAt.getTime()
     )
@@ -174,7 +168,7 @@ class WalletService {
    * @param walletId - Wallet ID to remove.
    */
   async deleteWallet (walletId: string): Promise<void> {
-    await dbDeleteWallet(this.#db, walletId)
+    await this.#storage.deleteWallet(walletId)
   }
 }
 

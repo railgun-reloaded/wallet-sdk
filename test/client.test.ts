@@ -8,9 +8,9 @@ import type { DBNewNote } from '@railgun-reloaded/storage'
 import type { WalletDB } from '@railgun-reloaded/storage/node'
 import {
   createChainDB,
+  createChainStorage,
   createWalletDB,
-  getSyncState,
-  insertNotesBatch
+  createWalletStorage
 } from '@railgun-reloaded/storage/node'
 
 import { RailgunClient, SyncPhase } from '../src/client.js'
@@ -78,7 +78,7 @@ async function seedNotes (
   walletId: string,
   notes: DBNewNote[]
 ): Promise<void> {
-  await insertNotesBatch(walletDB, notes.map(note => ({ ...note, walletId })))
+  await createWalletStorage(walletDB).insertNotesBatch(notes.map(note => ({ ...note, walletId })))
 }
 
 test('RailgunClient delegates createWallet / listWallets / deleteWallet', async () => {
@@ -351,7 +351,7 @@ test('RailgunClient.scan drains a fake source into chain.db', async () => {
   })
 
   assert.equal(last, 5784867n, 'returns the last block written')
-  const cursor = (await getSyncState(chainDB, 11155111))?.lastBlockHeight
+  const cursor = (await createChainStorage(chainDB).getSyncState(11155111))?.lastBlockHeight
   assert.equal(cursor, 5784867n, 'sync cursor advanced to tip')
 
   await client.close()
@@ -418,7 +418,7 @@ test('RailgunClient.sync composes scan() then decrypt()', async () => {
   assert.equal(summary.decrypt.chainId, 11155111, 'decrypt chainId derived from network')
   assert.equal(summary.decrypt.notesAdded, 0, 'no commitments → no notes added')
   assert.equal(summary.decrypt.notesSpent, 0, 'no nullifiers → no notes spent')
-  assert.equal((await getSyncState(chainDB, 11155111))?.lastBlockHeight, 5784867n,
+  assert.equal((await createChainStorage(chainDB).getSyncState(11155111))?.lastBlockHeight, 5784867n,
     'chain cursor advanced through scan()')
 
   await client.close()

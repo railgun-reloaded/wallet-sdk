@@ -5,10 +5,25 @@
   "type": "module",
   "main": "src/index.js",
   "types": "src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.d.ts",
+      "default": "./src/index.js"
+    },
+    "./browser": {
+      "types": "./src/browser/index.d.ts",
+      "default": "./src/browser/index.js"
+    }
+  },
+  "files": [
+    "src/**/*.js",
+    "src/**/*.d.ts"
+  ],
   "scripts": {
     "lint": "eslint",
     "fix": "eslint --fix",
     "build": "tsc --build",
+    "check:browser": "esbuild src/browser/index.js --bundle --platform=browser --format=esm --outfile=/dev/null",
     "prepare": "tsc --build",
     "clean": "tsc --build --clean && find src test -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete && rm -f tsconfig.tsbuildinfo tsconfig.test.tsbuildinfo",
     "rebuild": "npm run clean && npm run build",
@@ -30,6 +45,8 @@
   "devDependencies": {
     "@railgun-reloaded/eslint-config": "^1.1.0",
     "@railgun-reloaded/tsconfig": "^1.2.0",
+    "better-sqlite3": "^11.10.0",
+    "esbuild": "^0.28.1",
     "eslint": "^9.24.0",
     "ethers": "^6.16.0",
     "typescript": "^5.8.3"
@@ -43,5 +60,13 @@
     "@railgun-reloaded/scanner": "git+https://github.com/railgun-reloaded/scanner.git#dev",
     "@railgun-reloaded/storage": "git+https://github.com/railgun-reloaded/storage.git#dev",
     "@railgun-reloaded/wallet-node": "git+https://github.com/railgun-reloaded/wallet-node.git#dev"
+  },
+  "peerDependencies": {
+    "better-sqlite3": "^11.8.1"
+  },
+  "peerDependenciesMeta": {
+    "better-sqlite3": {
+      "optional": true
+    }
   }
 }

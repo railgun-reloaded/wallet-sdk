@@ -1,3 +1,4 @@
+import { bytesToHex } from '@railgun-reloaded/bytes'
 import type {
   EncryptedCommitment,
   GeneratedCommitment,
@@ -105,7 +106,7 @@ function rehydrateActions (rows: {
     }
 
     if (row.commitmentType === CommitmentType.Transact) {
-      const key = `${Buffer.from(row.transactionHash).toString('hex')}:${row.treeNumber}`
+      const key = `${bytesToHex(row.transactionHash)}:${row.treeNumber}`
       let group = transactGroups.get(key)
       if (!group) {
         group = {
@@ -121,7 +122,7 @@ function rehydrateActions (rows: {
 
   const nullifiersByGroup = new Map<string, Uint8Array[]>()
   for (const row of rows.nullifiers) {
-    const key = `${Buffer.from(row.transactionHash).toString('hex')}:${row.treeNumber}`
+    const key = `${bytesToHex(row.transactionHash)}:${row.treeNumber}`
     const list = nullifiersByGroup.get(key)
     if (list) {
       list.push(row.nullifier)

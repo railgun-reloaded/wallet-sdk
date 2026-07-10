@@ -3,28 +3,22 @@ import { test } from 'node:test'
 
 import type { EncryptedCommitment, GeneratedCommitment, Shield, ShieldCommitment, Transact, TransactCommitment } from '@railgun-reloaded/scanner'
 import { ActionType } from '@railgun-reloaded/scanner'
-import {
-  createChainDB,
-  getCommitmentsByBlockRange,
-  getNullifiersByBlockRange,
-  insertCommitmentBatch,
-  insertNullifiersBatch
-} from '@railgun-reloaded/storage/node'
+import { createChainDB, createChainStorage } from '@railgun-reloaded/storage/node'
 
 import { denormalizeBlockData, rehydrateActions } from '../src/sync/index.js'
 
 import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } from './test-vector.js'
 
 /**
- * Build a fresh in-memory chain DB for round-trip tests.
- * @returns ChainDB with migrations applied.
+ * Build a fresh in-memory chain storage for round-trip tests.
+ * @returns ChainStorage with migrations applied.
  */
-function memChainDB () {
-  return createChainDB({
+async function memChainDB () {
+  return createChainStorage(await createChainDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/chain'
-  })
+  }))
 }
 
 /**
@@ -45,10 +39,10 @@ test('rehydrateActions reconstructs a Shield from chain.db', async () => {
   const db = await memChainDB()
   const block = TEST_VECTOR_SHIELD
   const denormalized = denormalizeBlockData(block)
-  await insertCommitmentBatch(db, denormalized.commitments)
+  await db.insertCommitmentBatch(denormalized.commitments)
 
-  const commitments = await getCommitmentsByBlockRange(db, block.number, block.number)
-  const nullifiers = await getNullifiersByBlockRange(db, block.number, block.number)
+  const commitments = await db.getCommitmentsByBlockRange(block.number, block.number)
+  const nullifiers = await db.getNullifiersByBlockRange(block.number, block.number)
   const { shields, transacts } = rehydrateActions({ commitments, nullifiers })
 
   assert.equal(shields.length, 1, 'one shield reconstructed')
@@ -107,9 +101,9 @@ test('rehydrateActions discriminates GeneratedCommitment by encryptedRandom', as
     }],
   }
   const { commitments } = denormalizeBlockData(block)
-  await insertCommitmentBatch(db, commitments)
+  await db.insertCommitmentBatch(commitments)
 
-  const rows = await getCommitmentsByBlockRange(db, 100n, 100n)
+  const rows = await db.getCommitmentsByBlockRange(100n, 100n)
   const { shields } = rehydrateActions({ commitments: rows, nullifiers: [] })
 
   assert.equal(shields.length, 1)
@@ -121,11 +115,11 @@ test('rehydrateActions reconstructs a Transact and attaches its nullifiers', asy
   const db = await memChainDB()
   const block = TEST_VECTOR_TRANSACT
   const { commitments, nullifiers } = denormalizeBlockData(block)
-  await insertCommitmentBatch(db, commitments)
-  await insertNullifiersBatch(db, nullifiers)
+  await db.insertCommitmentBatch(commitments)
+  await db.insertNullifiersBatch(nullifiers)
 
-  const commitmentRows = await getCommitmentsByBlockRange(db, block.number, block.number)
-  const nullifierRows = await getNullifiersByBlockRange(db, block.number, block.number)
+  const commitmentRows = await db.getCommitmentsByBlockRange(block.number, block.number)
+  const nullifierRows = await db.getNullifiersByBlockRange(block.number, block.number)
   const { shields, transacts } = rehydrateActions({
     commitments: commitmentRows,
     nullifiers: nullifierRows
@@ -188,11 +182,11 @@ test('rehydrateActions discriminates legacy EncryptedCommitment by ephemeralKeys
     }],
   }
   const { commitments, nullifiers } = denormalizeBlockData(block)
-  await insertCommitmentBatch(db, commitments)
-  await insertNullifiersBatch(db, nullifiers)
+  await db.insertCommitmentBatch(commitments)
+  await db.insertNullifiersBatch(nullifiers)
 
-  const rows = await getCommitmentsByBlockRange(db, 200n, 200n)
-  const nrows = await getNullifiersByBlockRange(db, 200n, 200n)
+  const rows = await db.getCommitmentsByBlockRange(200n, 200n)
+  const nrows = await db.getNullifiersByBlockRange(200n, 200n)
   const { transacts } = rehydrateActions({ commitments: rows, nullifiers: nrows })
 
   assert.equal(transacts.length, 1)
@@ -204,11 +198,11 @@ test('rehydrateActions handles a mixed block (shield + nullifier-only transact +
   const db = await memChainDB()
   const block = TEST_VECTOR_ALL_ACTIONS
   const { commitments, nullifiers } = denormalizeBlockData(block)
-  await insertCommitmentBatch(db, commitments)
-  await insertNullifiersBatch(db, nullifiers)
+  await db.insertCommitmentBatch(commitments)
+  await db.insertNullifiersBatch(nullifiers)
 
-  const commitmentRows = await getCommitmentsByBlockRange(db, block.number, block.number)
-  const nullifierRows = await getNullifiersByBlockRange(db, block.number, block.number)
+  const commitmentRows = await db.getCommitmentsByBlockRange(block.number, block.number)
+  const nullifierRows = await db.getNullifiersByBlockRange(block.number, block.number)
   const { shields, transacts } = rehydrateActions({
     commitments: commitmentRows,
     nullifiers: nullifierRows

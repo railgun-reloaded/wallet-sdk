@@ -5,24 +5,12 @@ import {
 } from '@railgun-reloaded/balance-scanner'
 import { bytesToHex } from '@railgun-reloaded/bytes'
 import type {
+  ChainStorage,
   DBCommitment,
-  DBNullifier
-} from '@railgun-reloaded/storage'
-import type {
-  ChainDB,
+  DBNullifier,
   NoteIdentity,
-  WalletDB
-} from '@railgun-reloaded/storage/node'
-import {
-  findRailgunTransactionForLeaf,
-  getCommitmentsByBlockRange,
-  getNullifiersByBlockRange,
-  getScanState,
-  getSyncState,
-  getUnspentNotes,
-  markNotesSpentBatch,
-  updateScanState
-} from '@railgun-reloaded/storage/node'
+  WalletStorage
+} from '@railgun-reloaded/storage'
 import type { Chain } from '@railgun-reloaded/wallet-node'
 import { ChainType } from '@railgun-reloaded/wallet-node'
 
@@ -71,8 +59,8 @@ type SyncProgress = {
  * Inputs for `runWalletDecryption`.
  */
 type WalletDecryptionParams = {
-  chainDb: ChainDB
-  walletDb: WalletDB
+  chainStorage: ChainStorage
+  walletStorage: WalletStorage
   walletContext: WalletContext
   chainId: number
   /** Defaults to `scanState.lastScannedBlock + 1` (or `0n` for a fresh wallet). */
@@ -165,21 +153,21 @@ function indexCommitmentsByLeaf (rows: DBCommitment[]): Map<string, DBCommitment
  * undefined and downstream POI refresh treats the note as un-refreshable.
  * @param notes - Decrypted notes returned by `decryptActions`.
  * @param chainId - Chain id the sync is running for.
- * @param chainDb - Chain database, queried for the railgun-tx join.
+ * @param chainStorage - Chain storage contract, queried for the railgun-tx join.
  * @param commitmentsByLeaf - Per-batch index of chain commitments keyed by leaf.
  * @returns The same notes with PPOI metadata fields populated where possible.
  */
 async function enrichDecryptedNotes (
   notes: DecryptedNote[],
   chainId: number,
-  chainDb: ChainDB,
+  chainStorage: ChainStorage,
   commitmentsByLeaf: Map<string, DBCommitment>
 ): Promise<DecryptedNote[]> {
   const enrichedNotes: DecryptedNote[] = []
   for (const note of notes) {
     const leafIndex = Number(note.leafIndex)
     const commitmentRow = commitmentsByLeaf.get(`${note.treeId}:${leafIndex}`)
-    const railgunTx = await findRailgunTransactionForLeaf(chainDb, note.treeId, leafIndex)
+    const railgunTx = await chainStorage.findRailgunTransactionForLeaf(note.treeId, leafIndex)
     const enriched: DecryptedNote = { ...note, chainId }
     if (commitmentRow !== undefined) {
       enriched.creationTxid = commitmentRow.transactionHash
@@ -207,14 +195,14 @@ async function enrichDecryptedNotes (
 async function runWalletDecryption (
   params: WalletDecryptionParams
 ): Promise<DecryptSummary> {
-  const { chainDb, walletDb, walletContext, chainId } = params
+  const { chainStorage, walletStorage, walletContext, chainId } = params
   const { walletId } = walletContext
 
-  const persistedCursor = (await getScanState(walletDb, walletId, chainId))?.lastScannedBlock
+  const persistedCursor = (await walletStorage.getScanState(walletId, chainId))?.lastScannedBlock
   const resolvedFrom = params.fromBlock ??
     (persistedCursor !== undefined ? persistedCursor + 1n : 0n)
 
-  const chainTip = (await getSyncState(chainDb, chainId))?.lastBlockHeight
+  const chainTip = (await chainStorage.getSyncState(chainId))?.lastBlockHeight
   const resolvedTo = params.toBlock ?? chainTip
 
   if (resolvedTo === undefined || resolvedFrom > resolvedTo) {
@@ -240,8 +228,8 @@ async function runWalletDecryption (
       ? resolvedTo
       : batchFrom + batchSize - 1n
 
-    const commitmentRows = await getCommitmentsByBlockRange(chainDb, batchFrom, batchTo)
-    const nullifierRows = await getNullifiersByBlockRange(chainDb, batchFrom, batchTo)
+    const commitmentRows = await chainStorage.getCommitmentsByBlockRange(batchFrom, batchTo)
+    const nullifierRows = await chainStorage.getNullifiersByBlockRange(batchFrom, batchTo)
 
     if (commitmentRows.length > 0) {
       const blockGroups = groupCommitmentsByBlock(commitmentRows)
@@ -273,16 +261,16 @@ async function runWalletDecryption (
           const enriched = await enrichDecryptedNotes(
             receivedNotes,
             chainId,
-            chainDb,
+            chainStorage,
             commitmentsByLeaf
           )
-          notesAdded += await storeDecryptedNotes(walletDb, enriched)
+          notesAdded += await storeDecryptedNotes(walletStorage, enriched)
         }
       }
     }
 
     if (nullifierRows.length > 0) {
-      const ownedNotes = await getUnspentNotes(walletDb, walletId, chainId)
+      const ownedNotes = await walletStorage.getUnspentNotes(walletId, chainId)
       if (ownedNotes.length > 0) {
         const ownedByNullifier = new Map<string, NoteIdentity>()
         for (const note of ownedNotes) {
@@ -307,12 +295,12 @@ async function runWalletDecryption (
         }
 
         for (const { txHash, identities } of spendsByTxid.values()) {
-          notesSpent += await markNotesSpentBatch(walletDb, identities, txHash)
+          notesSpent += await walletStorage.markNotesSpentBatch(identities, txHash)
         }
       }
     }
 
-    await updateScanState(walletDb, walletId, chainId, batchTo)
+    await walletStorage.updateScanState(walletId, chainId, batchTo)
 
     params.onProgress?.({
       phase: SyncPhase.Decrypt,

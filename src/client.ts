@@ -3,15 +3,23 @@ import { createRequire } from 'node:module'
 import path from 'node:path'
 
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
+import type { WalletStorage } from '@railgun-reloaded/storage'
 import type { ChainDB, WalletDB } from '@railgun-reloaded/storage/node'
 import {
   closeChainDB,
   closeWalletDB,
   createChainDB,
+  createChainStorage,
   createWalletDB,
-  getSyncState
+  createWalletStorage
 } from '@railgun-reloaded/storage/node'
 
+import {
+  clonePoiNodeUrls,
+  findNetworkByChainId,
+  hasUsablePoiNodeUrls,
+  makeScanOnBatch
+} from './client-helpers.js'
 import { RailgunEngine } from './engine.js'
 import type {
   EventFilter,
@@ -21,7 +29,8 @@ import type {
 } from './events/index.js'
 import { EventBus } from './events/index.js'
 import { initializeCrypto } from './init/crypto.js'
-import { NETWORK_CONFIG, NetworkName } from './network-config.js'
+import type { NetworkName } from './network-config.js'
+import { NETWORK_CONFIG } from './network-config.js'
 import type { RefreshSummary, WalletBalanceBucket } from './poi/index.js'
 import {
   PoiNodeClient,
@@ -159,71 +168,6 @@ function resolveWalletMigrationsFolder (): string {
 }
 
 /**
- * Build the engine `onBatch` callback that translates a per-batch
- * `(startHeight, lastBlock)` notification into a scan-phase `SyncProgress`
- * event. `startHeight` is the engine's resolved scan start (persisted
- * `syncState.lastBlockHeight + 1` or the network's deployment block), so
- * `blocksScanned` reflects the true window — not just blocks since the
- * first notification.
- * @param onProgress - Progress callback supplied to `scan()`.
- * @param endBlock - Optional inclusive ceiling set by the caller.
- * @returns Function compatible with `RailgunEngine.scan({ onBatch })`.
- */
-function makeScanOnBatch (
-  onProgress: NonNullable<ScanParams['onProgress']>,
-  endBlock?: bigint
-): (startHeight: bigint, lastBlock: bigint) => void {
-  return (startHeight: bigint, lastBlock: bigint) => {
-    onProgress({
-      phase: SyncPhase.Scan,
-      fromBlock: startHeight,
-      toBlock: endBlock ?? lastBlock,
-      currentBlock: lastBlock,
-      blocksScanned: lastBlock - startHeight + 1n,
-      notesAdded: 0,
-      notesSpent: 0
-    })
-  }
-}
-
-/**
- * Clone PPOI node URL options so caller-owned arrays are not mutated.
- * @param poiNodeUrls - Optional PPOI node URLs by network.
- * @returns Cloned PPOI node URL map.
- */
-function clonePoiNodeUrls (
-  poiNodeUrls: RailgunClientOptions['poiNodeUrls'] = {}
-): Partial<Record<NetworkName, string[]>> {
-  const cloned: Partial<Record<NetworkName, string[]>> = {}
-  for (const network of Object.values(NetworkName) as NetworkName[]) {
-    const urls = poiNodeUrls[network]
-    if (urls !== undefined) {
-      cloned[network] = [...urls]
-    }
-  }
-  return cloned
-}
-
-/**
- * Check whether a network has at least one non-empty PPOI node URL.
- * @param urls - Candidate node URLs.
- * @returns True when at least one URL remains after trimming.
- */
-function hasUsablePoiNodeUrls (urls: string[] | undefined): boolean {
-  return urls?.some(url => url.trim().length > 0) ?? false
-}
-
-/**
- * Resolve a wallet-sdk network name from a chain ID.
- * @param chainId - EVM chain ID.
- * @returns Matching network name when configured.
- */
-function findNetworkByChainId (chainId: number): NetworkName | undefined {
-  return (Object.values(NetworkName) as NetworkName[])
-    .find(network => NETWORK_CONFIG[network].chainID === chainId)
-}
-
-/**
  * Top-level entry point for @railgun-reloaded/wallet-sdk.
  *
  * Composes WalletService (persistent, encrypted wallet lifecycle) with
@@ -244,6 +188,9 @@ class RailgunClient {
 
   /** The wallet DB in use (either injected or auto-created). */
   readonly #walletDB: WalletDB
+
+  /** WalletStorage contract bound to `#walletDB`. */
+  readonly #walletStorage: WalletStorage
 
   /** Base directory used for owned chain DBs. */
   readonly #dataDir: string
@@ -272,10 +219,11 @@ class RailgunClient {
   ) {
     this.#dataDir = options.dataDir ?? DEFAULT_DATA_DIR
     this.#walletDB = walletDB
+    this.#walletStorage = createWalletStorage(walletDB)
     this.#ownsWalletDB = ownsWalletDB
 
-    this.#walletService = new WalletService(this.#walletDB)
-    this.#balanceService = new BalanceService(this.#walletDB)
+    this.#walletService = new WalletService(this.#walletStorage)
+    this.#balanceService = new BalanceService(this.#walletStorage)
     this.#poiNodeUrls = clonePoiNodeUrls(options.poiNodeUrls)
     this.#engine = new RailgunEngine(
       options.chainDB ? { chainDB: options.chainDB } : { dataDir: this.#dataDir }
@@ -540,8 +488,8 @@ class RailgunClient {
     encryptionKey: Uint8Array,
     params: DecryptParams
   ): Promise<DecryptSummary> {
-    const chainDb = this.#engine.db
-    if (!chainDb) {
+    const chainStorage = this.#engine.storage
+    if (!chainStorage) {
       throw new Error('Decrypt failed: chain DB not initialized — call scan() first')
     }
     const walletContext = await this.#walletService.loadWallet(walletId, encryptionKey)
@@ -559,8 +507,8 @@ class RailgunClient {
 
     try {
       const summary = await runWalletDecryption({
-        chainDb,
-        walletDb: this.#walletDB,
+        chainStorage,
+        walletStorage: this.#walletStorage,
         walletContext,
         chainId,
         ...(params.fromBlock !== undefined && { fromBlock: params.fromBlock }),
@@ -708,7 +656,7 @@ class RailgunClient {
   ): Promise<RefreshSummary> {
     this.#assertPoiNodeUrls(network)
     const service = new PoiStatusService({
-      walletDb: this.#walletDB,
+      walletStorage: this.#walletStorage,
       network,
       poiNodeClient: new PoiNodeClient({ poiNodeUrls: this.#poiNodeUrls })
     })
@@ -751,8 +699,8 @@ class RailgunClient {
    * @returns Previous persisted last scanned block, if any.
    */
   async #getPreviousChainLastBlock (chainId: number): Promise<bigint | undefined> {
-    if (this.#engine.db) {
-      return (await getSyncState(this.#engine.db, chainId))?.lastBlockHeight
+    if (this.#engine.storage) {
+      return (await this.#engine.storage.getSyncState(chainId))?.lastBlockHeight
     }
 
     const chainDbPath = path.join(this.#dataDir, 'chains', `${chainId}`, 'chain.db')
@@ -762,7 +710,7 @@ class RailgunClient {
 
     const chainDB = await createChainDB({ path: chainDbPath })
     try {
-      return (await getSyncState(chainDB, chainId))?.lastBlockHeight
+      return (await createChainStorage(chainDB).getSyncState(chainId))?.lastBlockHeight
     } finally {
       await closeChainDB(chainDB)
     }

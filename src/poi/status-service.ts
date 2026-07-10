@@ -1,10 +1,10 @@
 import { bytesToBigInt, bytesToHex } from '@railgun-reloaded/bytes'
-import type { DBNote } from '@railgun-reloaded/storage'
-import type { NoteIdentity, NotePoiStatusUpdate, WalletDB } from '@railgun-reloaded/storage/node'
-import {
-  getNotesNeedingPoiRefresh,
-  updateNotePoiStatusBatch
-} from '@railgun-reloaded/storage/node'
+import type {
+  DBNote,
+  NoteIdentity,
+  NotePoiStatusUpdate,
+  WalletStorage
+} from '@railgun-reloaded/storage'
 
 import type { NetworkName } from '../network-config.js'
 import type { SyncProgress } from '../sync/wallet-decryptor.js'
@@ -33,7 +33,7 @@ type RefreshSummary = {
 type PoiStatusClient = Pick<PoiNodeClient, 'getPOIsPerList'>
 
 type PoiStatusServiceOptions = {
-  walletDb: WalletDB
+  walletStorage: WalletStorage
   poiNodeClient: PoiStatusClient
   network: NetworkName
   listKeys?: RequiredListKey[]
@@ -59,8 +59,8 @@ const ZERO_BLOCK = 0n
  * Refreshes stored note PPOI statuses from a PPOI node.
  */
 class PoiStatusService {
-  /** Wallet database containing decrypted notes. */
-  readonly #walletDb: WalletDB
+  /** Wallet storage containing decrypted notes. */
+  readonly #walletStorage: WalletStorage
   /** PPOI node client used for status lookups. */
   readonly #poiNodeClient: PoiStatusClient
   /** Network whose PPOI config is being refreshed. */
@@ -72,10 +72,10 @@ class PoiStatusService {
 
   /**
    * Build a PPOI status refresh service.
-   * @param options - Wallet DB, node client, network, and optional list config.
+   * @param options - Wallet storage, node client, network, and optional list config.
    */
   constructor (options: PoiStatusServiceOptions) {
-    this.#walletDb = options.walletDb
+    this.#walletStorage = options.walletStorage
     this.#poiNodeClient = options.poiNodeClient
     this.#network = options.network
     this.#listKeys = options.listKeys ?? getRequiredListKeys(options.network)
@@ -94,8 +94,7 @@ class PoiStatusService {
     chainId: number,
     options: RefreshOptions = {}
   ): Promise<RefreshSummary> {
-    const candidates = await getNotesNeedingPoiRefresh(
-      this.#walletDb,
+    const candidates = await this.#walletStorage.getNotesNeedingPoiRefresh(
       walletId,
       chainId
     )
@@ -193,7 +192,7 @@ class PoiStatusService {
 
     if (updates.length > 0) {
       try {
-        const persisted = await updateNotePoiStatusBatch(this.#walletDb, updates)
+        const persisted = await this.#walletStorage.updateNotePoiStatusBatch(updates)
         summary.updated += persisted
         if (persisted < updates.length) {
           summary.failed += updates.length - persisted

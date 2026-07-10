@@ -3,8 +3,8 @@ import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 
 import { bytesToHex } from '@railgun-reloaded/bytes'
-import type { WalletDB } from '@railgun-reloaded/storage/node'
-import { createWalletDB } from '@railgun-reloaded/storage/node'
+import type { WalletStorage } from '@railgun-reloaded/storage'
+import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
 
 import {
   InvalidEncryptionKeyError,
@@ -19,12 +19,12 @@ import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors.js'
  * Build a fresh in-memory WalletService and a random 32-byte encryption key.
  * @returns New fixture state per test.
  */
-async function fixture (): Promise<{ service: WalletService, db: WalletDB, key: Uint8Array }> {
-  const db = await createWalletDB({
+async function fixture (): Promise<{ service: WalletService, db: WalletStorage, key: Uint8Array }> {
+  const db = createWalletStorage(await createWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
-  })
+  }))
   const service = new WalletService(db)
   const key = new Uint8Array(randomBytes(32))
   return { service, db, key }

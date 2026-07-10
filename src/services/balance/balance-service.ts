@@ -1,11 +1,5 @@
 import { bytesToHex } from '@railgun-reloaded/bytes'
-import type { DBNote } from '@railgun-reloaded/storage'
-import type { WalletDB } from '@railgun-reloaded/storage/node'
-import {
-  getAllNotes,
-  getUnspentNotes,
-  getWallet
-} from '@railgun-reloaded/storage/node'
+import type { DBNote, WalletStorage } from '@railgun-reloaded/storage'
 
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config.js'
 import { NETWORK_CONFIG } from '../../network-config.js'
@@ -217,20 +211,20 @@ function mapBucketAccumulators (
 }
 
 /**
- * Read API over a wallet DB: balances and notes for a single wallet. Pure
+ * Read API over wallet storage: balances and notes for a single wallet. Pure
  * pass-through over storage helpers — does not own the DB and never closes
  * it. Throws `WalletNotFoundError` when the wallet ID is unknown.
  */
 class BalanceService {
-  /** Reference to the injected wallet database. */
-  readonly #db: WalletDB
+  /** Reference to the injected wallet storage contract. */
+  readonly #storage: WalletStorage
 
   /**
-   * Construct a BalanceService bound to a specific wallet DB.
-   * @param db - Pre-configured WalletDB (from `createWalletDB`).
+   * Construct a BalanceService bound to a specific wallet storage contract.
+   * @param storage - Pre-configured wallet storage contract.
    */
-  constructor (db: WalletDB) {
-    this.#db = db
+  constructor (storage: WalletStorage) {
+    this.#storage = storage
   }
 
   /**
@@ -238,7 +232,7 @@ class BalanceService {
    * @param walletId - Wallet ID to check.
    */
   async #assertWalletExists (walletId: string): Promise<void> {
-    if (!(await getWallet(this.#db, walletId))) {
+    if (!(await this.#storage.getWallet(walletId))) {
       throw new WalletNotFoundError(walletId)
     }
   }
@@ -259,7 +253,7 @@ class BalanceService {
   ): Promise<TokenBalance[]> {
     await this.#assertWalletExists(walletId)
     const network = getNetworkConfigByChainId(chainId)
-    const notes = await getUnspentNotes(this.#db, walletId, chainId)
+    const notes = await this.#storage.getUnspentNotes(walletId, chainId)
     if (notes.length === 0) {
       return []
     }
@@ -302,7 +296,7 @@ class BalanceService {
     await this.#assertWalletExists(walletId)
     const network = getNetworkConfigByChainId(chainId)
 
-    const notes = await getUnspentNotes(this.#db, walletId, chainId)
+    const notes = await this.#storage.getUnspentNotes(walletId, chainId)
     if (notes.length === 0) {
       return createEmptyBucketBalances()
     }
@@ -333,8 +327,8 @@ class BalanceService {
   ): Promise<DecryptedNote[]> {
     await this.#assertWalletExists(walletId)
     const rows = options.unspent === true
-      ? await getUnspentNotes(this.#db, walletId, chainId)
-      : await getAllNotes(this.#db, walletId, chainId)
+      ? await this.#storage.getUnspentNotes(walletId, chainId)
+      : await this.#storage.getAllNotes(walletId, chainId)
     return rows.map((row) => mapNoteRow(row))
   }
 }
