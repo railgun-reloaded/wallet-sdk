@@ -4,11 +4,17 @@ import path from 'path'
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { ChainStorage } from '@railgun-reloaded/storage'
 import type { ChainDB } from '@railgun-reloaded/storage/node'
-import { closeChainDB, createChainDB, createChainStorage } from '@railgun-reloaded/storage/node'
+import {
+  closeChainDB,
+  createChainDB,
+  createChainStorage,
+  recoverChainBootstrap
+} from '@railgun-reloaded/storage/node'
 
 import type { NoteCommitmentTree } from './merkle/index.js'
 import type { NetworkConfig, NetworkName } from './network-config.js'
 import { NETWORK_CONFIG } from './network-config.js'
+import { getWalletChainDBPath } from './snapshot-bootstrap/paths.js'
 import { drainChainToTip, loadMerkleTrees } from './sync/chain-sync.js'
 /**
  * RailgunEngine
@@ -176,12 +182,14 @@ class RailgunEngine {
     this.#log(`EngineInit:: Initializing for Network ${this.#currentNetwork}`)
 
     if (!this.#db) {
-      const dirName = path.join(this.#dataDir, 'chains', `${this.#networkConfig.chainID}`)
+      const dbPath = getWalletChainDBPath(this.#dataDir, this.#networkConfig.chainID)
+      const dirName = path.dirname(dbPath)
+      await recoverChainBootstrap(dbPath)
       if (!existsSync(dirName)) {
         mkdirSync(dirName, { recursive: true })
       }
       this.#db = await createChainDB({
-        path: path.join(dirName, 'chain.db'),
+        path: dbPath,
         runMigrations: true
       })
       this.#storage = createChainStorage(this.#db)
