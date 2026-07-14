@@ -5,13 +5,13 @@ import { bytesToHex } from '@railgun-reloaded/bytes'
 
 import type {
   SnapshotCheckpointReader
-} from '../src/snapshot-bootstrap/checkpoint-validator.js'
+} from '../src/node/index.js'
 import {
+  COMMITMENT_TREE_CAPACITY,
   ExactSnapshotCheckpointValidator,
   SnapshotCheckpointMismatchError,
   SnapshotCheckpointUnavailableError
-} from '../src/snapshot-bootstrap/checkpoint-validator.js'
-import { COMMITMENT_TREE_CAPACITY } from '../src/snapshot-bootstrap/types.js'
+} from '../src/node/index.js'
 
 const CHAIN_ID = 11155111
 const BLOCK_HEIGHT = 6_000_000n

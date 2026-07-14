@@ -1,26 +1,18 @@
-// TODO(browser-support): this module imports node:fs/node:path at the top
-// level and is re-exported from the package entry (src/index.ts), so any
-// browser `import` of @railgun-reloaded/wallet-sdk fails at module-load time,
-// not at call time. When the browser entry split lands (storage /node /browser
-// pattern), move the FS-backed bootstrap behind a Node-only subpath.
 import fs from 'node:fs'
 
 import {
   closeChainDB,
   createChainDB,
   createChainStorage,
-  discardChainBootstrap,
   getChainBootstrapPaths,
-  prepareChainBootstrap,
-  promoteChainBootstrap,
-  recordSnapshotCheckpoint,
-  recoverChainBootstrap
+  recordSnapshotCheckpoint
 } from '@railgun-reloaded/storage/node'
 
 import { RailgunEngine } from '../engine.js'
 import { NoteCommitmentTree } from '../merkle/index.js'
 import { NETWORK_CONFIG } from '../network-config.js'
 
+import { createNodeSnapshotBootstrapCapability } from './node-capability.js'
 import { getWalletChainDBPath } from './paths.js'
 import type {
   AtomicSnapshotBootstrapParams,
@@ -40,7 +32,9 @@ function recoverInterruptedSnapshotBootstrap (
   dataDir: string,
   chainID: number
 ) {
-  return recoverChainBootstrap(getWalletChainDBPath(dataDir, chainID))
+  return createNodeSnapshotBootstrapCapability(
+    getWalletChainDBPath(dataDir, chainID)
+  ).recover()
 }
 
 /**
@@ -82,6 +76,7 @@ async function bootstrapSnapshotAtomically (
   const dataDir = params.dataDir ?? DEFAULT_DATA_DIR
   const networkConfig = NETWORK_CONFIG[params.network]
   const targetPath = getWalletChainDBPath(dataDir, networkConfig.chainID)
+  const bootstrapCapability = createNodeSnapshotBootstrapCapability(targetPath)
 
   if (fs.existsSync(targetPath)) {
     const targetDB = await createChainDB({ path: targetPath, runMigrations: false })
@@ -100,7 +95,7 @@ async function bootstrapSnapshotAtomically (
     }
   }
 
-  const paths = await prepareChainBootstrap(targetPath, {
+  const paths = await bootstrapCapability.prepare({
     chainID: networkConfig.chainID,
     cid: params.cid,
     blockHeight: params.endHeight
@@ -114,7 +109,7 @@ async function bootstrapSnapshotAtomically (
     })
   } catch (error) {
     params.dataSource.destroy()
-    discardChainBootstrap(targetPath)
+    bootstrapCapability.discard()
     throw error
   }
 
@@ -145,7 +140,7 @@ async function bootstrapSnapshotAtomically (
       trees
     })
   } catch (error) {
-    discardChainBootstrap(targetPath)
+    bootstrapCapability.discard()
     throw error
   } finally {
     await engine.destroy()
@@ -153,10 +148,10 @@ async function bootstrapSnapshotAtomically (
   }
 
   try {
-    promoteChainBootstrap(targetPath)
+    bootstrapCapability.promote()
   } catch (error) {
-    if (await recoverChainBootstrap(targetPath) !== 'promoted') {
-      discardChainBootstrap(targetPath)
+    if (await bootstrapCapability.recover() !== 'promoted') {
+      bootstrapCapability.discard()
       throw error
     }
   }

@@ -16,7 +16,7 @@ npm add @railgun-reloaded/wallet-sdk
 ```typescript
 import { randomBytes } from 'node:crypto'
 
-import { RailgunClient } from '@railgun-reloaded/wallet-sdk'
+import { RailgunClient } from '@railgun-reloaded/wallet-sdk/node'
 import { Mnemonic } from '@railgun-reloaded/wallet-node'
 
 const client = await RailgunClient.create()
@@ -117,7 +117,7 @@ import {
   bootstrapSnapshotAtomically,
   createRpcSnapshotCheckpointValidator,
   NETWORK_CONFIG, NetworkName, RailgunEngine
-} from '@railgun-reloaded/wallet-sdk'
+} from '@railgun-reloaded/wallet-sdk/node'
 import { SnapshotProvider, SourceAggregator, SubsquidProvider } from '@railgun-reloaded/scanner'
 import { decodeArtifact } from '@railgun-reloaded/snapshot'
 

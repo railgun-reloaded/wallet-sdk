@@ -4,8 +4,8 @@
  * Exposes a portable `RailgunClient`/`RailgunEngine` that never import Node
  * built-ins: chain and wallet storage contracts are injected by the caller
  * (for example from `@railgun-reloaded/storage/browser`) and remain
- * caller-owned. The Node entry (package root) keeps its filesystem-backed
- * behavior; this subpath is for bundled environments.
+ * caller-owned. The Node entry (`@railgun-reloaded/wallet-sdk/node`) keeps
+ * its filesystem-backed behavior.
  *
  * TODO: the events API (`EventBus`, event filters, `client.on()`) is
  * Node-only today and deliberately absent here. Port it to this entry before

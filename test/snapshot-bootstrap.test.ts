@@ -14,17 +14,18 @@ import {
   prepareChainBootstrap
 } from '@railgun-reloaded/storage/node'
 
-import { RailgunEngine } from '../src/engine.js'
-import { NETWORK_CONFIG, NetworkName } from '../src/network-config.js'
-import {
-  bootstrapSnapshotAtomically,
-  getSnapshotBootstrapPaths,
-  getWalletChainDBPath
-} from '../src/snapshot-bootstrap/coordinator.js'
 import type {
   SnapshotCheckpointValidationInput,
   SnapshotCheckpointValidator
-} from '../src/snapshot-bootstrap/types.js'
+} from '../src/node/index.js'
+import {
+  NETWORK_CONFIG,
+  NetworkName,
+  RailgunEngine,
+  bootstrapSnapshotAtomically,
+  getSnapshotBootstrapPaths,
+  getWalletChainDBPath
+} from '../src/node/index.js'
 
 const NETWORK = NetworkName.EthereumSepolia
 const NETWORK_CONFIG_ENTRY = NETWORK_CONFIG[NETWORK]

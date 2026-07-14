@@ -7,13 +7,13 @@ import type { ChainDB } from '@railgun-reloaded/storage/node'
 import {
   closeChainDB,
   createChainDB,
-  createChainStorage,
-  recoverChainBootstrap
+  createChainStorage
 } from '@railgun-reloaded/storage/node'
 
 import type { NoteCommitmentTree } from './merkle/index.js'
 import type { NetworkConfig, NetworkName } from './network-config.js'
 import { NETWORK_CONFIG } from './network-config.js'
+import { createNodeSnapshotBootstrapCapability } from './snapshot-bootstrap/node-capability.js'
 import { getWalletChainDBPath } from './snapshot-bootstrap/paths.js'
 import { drainChainToTip, loadMerkleTrees } from './sync/chain-sync.js'
 /**
@@ -184,7 +184,7 @@ class RailgunEngine {
     if (!this.#db) {
       const dbPath = getWalletChainDBPath(this.#dataDir, this.#networkConfig.chainID)
       const dirName = path.dirname(dbPath)
-      await recoverChainBootstrap(dbPath)
+      await createNodeSnapshotBootstrapCapability(dbPath).recover()
       if (!existsSync(dirName)) {
         mkdirSync(dirName, { recursive: true })
       }

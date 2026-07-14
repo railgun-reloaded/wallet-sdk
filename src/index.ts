@@ -1,113 +1,40 @@
-export { RailgunClient } from './client.js'
+/**
+ * Runtime-neutral entry for @railgun-reloaded/wallet-sdk.
+ *
+ * Exposes a portable `RailgunClient`/`RailgunEngine` that never import Node
+ * built-ins: chain and wallet storage contracts are injected by the caller
+ * (for example from `@railgun-reloaded/storage/browser`) and remain
+ * caller-owned. The Node entry (`@railgun-reloaded/wallet-sdk/node`) keeps
+ * its filesystem-backed behavior.
+ *
+ * TODO: the events API (`EventBus`, event filters, `client.on()`) is
+ * Node-only today and deliberately absent here. Port it to this entry before
+ * wallets build UIs on event subscriptions.
+ */
+
+export { RailgunClient } from './browser/client.js'
 export type {
-  BalanceMode,
-  DecryptedNote,
   DecryptParams,
   RailgunClientOptions,
   ScanParams,
   SyncParams,
-  SyncProgress,
-  SyncSummary,
-  TokenBalance
-} from './client.js'
-
-export type { DecryptSummary } from './sync/wallet-decryptor.js'
-export { SyncPhase } from './sync/wallet-decryptor.js'
+  SyncSummary
+} from './browser/client.js'
+export { RailgunEngine } from './browser/engine.js'
 
 export type {
-  BalanceUpdateEvent,
-  BusErrorEvent,
-  EventFilter,
-  EventHandler,
-  RailgunEventMap,
-  SyncCompleteEvent,
-  SyncErrorEvent,
-  SyncPhaseTag,
-  SyncProgressEvent,
-  SyncStartEvent
-} from './events/index.js'
+  BalanceMode,
+  DecryptedNote,
+  TokenBalance
+} from './services/balance/balance-service.js'
 
-export { RailgunEngine } from './engine.js'
+export type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor.js'
+export { SyncPhase } from './sync/wallet-decryptor.js'
 
 export { initializeCrypto } from './init/crypto.js'
 
 export type { NetworkConfig } from './network-config.js'
 export { NETWORK_CONFIG, NetworkName } from './network-config.js'
-
-export {
-  COMMITMENT_TREE_CAPACITY,
-  ExactSnapshotCheckpointValidator,
-  RpcSnapshotCheckpointReader,
-  SnapshotCheckpointMismatchError,
-  SnapshotCheckpointUnavailableError,
-  bootstrapSnapshotAtomically,
-  createRpcSnapshotCheckpointValidator,
-  getSnapshotBootstrapPaths,
-  getWalletChainDBPath,
-  recoverInterruptedSnapshotBootstrap
-} from './snapshot-bootstrap/index.js'
-export type {
-  AtomicSnapshotBootstrapParams,
-  AtomicSnapshotBootstrapResult,
-  RpcSnapshotCheckpointReaderConfig,
-  SnapshotCheckpointReader,
-  SnapshotCheckpointValidationInput,
-  SnapshotCheckpointValidator,
-  SnapshotTreeState
-} from './snapshot-bootstrap/index.js'
-
-export {
-  BlindedCommitmentType,
-  CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
-  POIListType,
-  POIStatus,
-  PoiNodeClient,
-  PoiNodeAllUrlsFailedError,
-  PoiNodeNetworkError,
-  PoiNodeRpcError,
-  PoiNodeUrlsRequiredError,
-  PoiStatusRefreshError,
-  PoiStatusService,
-  SEPOLIA_POI_CONFIG,
-  SEPOLIA_REQUIRED_LIST_KEYS,
-  SEPOLIA_REQUIRED_POI_LISTS,
-  TXIDVersion,
-  WalletBalanceBucket,
-  GET_POI_EXISTENCE_MAX_BLINDED_COMMITMENTS,
-  POIJSONRPCMethod,
-  POI_NODE_CLIENT_DEFAULT_TIMEOUT_MS,
-  classifyNote,
-  classifyNoteSpendState,
-  classifyPoi,
-  getRequiredListKeys,
-  isSpendableProtocol,
-  toWalletBalanceBucket,
-  isPOIRequired
-} from './poi/index.js'
-export type {
-  BlindedCommitmentData,
-  FetchLike,
-  FetchRequest,
-  FetchResponse,
-  GetPOIsPerListParams,
-  GetPOIsPerListWireParams,
-  JsonRpcErrorPayload,
-  JsonRpcRequest,
-  JsonRpcSuccess,
-  NetworkPoiConfig,
-  NoteSpendState,
-  POIList,
-  POIsPerList,
-  POIsPerListResponse,
-  PoiClassification,
-  PoiNodeClientOptions,
-  PoiStatusClient,
-  PoiStatusRefreshErrorCode,
-  PoiStatusServiceOptions,
-  RefreshOptions,
-  RefreshSummary,
-  RequiredListKey
-} from './poi/index.js'
 
 export { deriveWalletKeys } from './services/wallet/keys.js'
 export type { WalletKeys } from './services/wallet/keys.js'
@@ -119,27 +46,15 @@ export type {
 } from './services/wallet/wallet-service.js'
 
 export {
-  BalanceSyncScheduler,
-  BalanceSyncSchedulerStoppedError
-} from './services/balance/balance-sync-scheduler.js'
-export type {
-  BalanceSyncBackoffOptions,
-  BalanceSyncDataSourceFactory,
-  BalanceSyncHeadProvider,
-  BalanceSyncRefreshOptions,
-  BalanceSyncRefreshReason,
-  BalanceSyncSchedulerClient,
-  BalanceSyncSchedulerConfig,
-  BalanceSyncSchedulerErrorContext,
-  BalanceSyncSchedulerState,
-  BalanceSyncSchedulerStatus,
-  BalanceSyncSchedulerWallet,
-  BalanceSyncSchedulerWalletState
-} from './services/balance/balance-sync-scheduler.js'
-
-export {
   InvalidEncryptionKeyError,
   InvalidMnemonicError,
   WalletAlreadyExistsError,
   WalletNotFoundError
 } from './services/wallet/errors.js'
+
+export type { RefreshSummary } from './poi/index.js'
+export {
+  POIStatus,
+  PoiNodeUrlsRequiredError,
+  WalletBalanceBucket
+} from './poi/index.js'
