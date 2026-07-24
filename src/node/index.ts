@@ -41,6 +41,13 @@ export { initializeCrypto } from '../init/crypto.js'
 export type { NetworkConfig } from '../network-config.js'
 export { NETWORK_CONFIG, NetworkName } from '../network-config.js'
 
+export type { UnsignedTx } from '../contracts/index.js'
+export {
+  UnsupportedChainError,
+  UnsupportedTokenTypeError,
+  buildShieldTransaction
+} from '../contracts/index.js'
+
 export {
   COMMITMENT_TREE_CAPACITY,
   ExactSnapshotCheckpointValidator,
