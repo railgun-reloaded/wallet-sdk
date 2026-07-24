@@ -1,7 +1,11 @@
-import { bytesToBigInt, bytesToHex } from '@railgun-reloaded/bytes'
 import type { ShieldRequest } from '@railgun-reloaded/wallet-node'
 import { TokenType } from '@railgun-reloaded/wallet-node'
-import { encodeFunctionData, getAddress } from 'viem'
+import {
+  bytesToBigInt,
+  bytesToHex,
+  encodeFunctionData,
+  getAddress
+} from 'viem'
 
 import type { NetworkConfig } from '../network-config.js'
 import { NETWORK_CONFIG } from '../network-config.js'
@@ -23,14 +27,6 @@ type UnsignedTx = {
 const CONFIG_BY_CHAIN_ID: ReadonlyMap<number, NetworkConfig> = new Map(
   Object.values(NETWORK_CONFIG).map((config) => [config.chainID, config])
 )
-
-/**
- * Converts bytes to a 0x-prefixed hex string.
- * @param bytes - Bytes to convert.
- * @returns The 0x-prefixed hex string.
- */
-const toHex = (bytes: Uint8Array): `0x${string}` =>
-  bytesToHex(bytes, { prefix: true }) as `0x${string}`
 
 /**
  * Resolves the RAILGUN contract address for a chain.
@@ -66,17 +62,21 @@ const toAbiShieldRequest = (request: ShieldRequest) => {
 
   return {
     preimage: {
-      npk: toHex(preimage.npk),
+      npk: bytesToHex(preimage.npk),
       token: {
         tokenType,
-        tokenAddress: getAddress(toHex(preimage.token.tokenAddress)),
+        tokenAddress: getAddress(bytesToHex(preimage.token.tokenAddress)),
         tokenSubID: bytesToBigInt(preimage.token.tokenSubID)
       },
       value: preimage.value
     },
     ciphertext: {
-      encryptedBundle: [toHex(bundle0), toHex(bundle1), toHex(bundle2)] as const,
-      shieldKey: toHex(ciphertext.shieldKey)
+      encryptedBundle: [
+        bytesToHex(bundle0),
+        bytesToHex(bundle1),
+        bytesToHex(bundle2)
+      ] as const,
+      shieldKey: bytesToHex(ciphertext.shieldKey)
     }
   }
 }
