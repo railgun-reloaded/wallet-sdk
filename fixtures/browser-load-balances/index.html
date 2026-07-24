@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>RAILGUN Browser Balances Fixture</title>
+  </head>
+  <body>
+    <main class="shell">
+      <section class="panel">
+        <div class="header">
+          <div>
+            <p class="eyebrow">Sepolia</p>
+            <h1>Browser Balances</h1>
+          </div>
+          <button id="reset-storage" type="button">Reset</button>
+        </div>
+
+        <div id="status" class="status">Starting</div>
+
+        <dl class="metrics">
+          <div>
+            <dt>Range</dt>
+            <dd id="range">-</dd>
+          </div>
+          <div>
+            <dt>Chain cursor</dt>
+            <dd id="chain-cursor">-</dd>
+          </div>
+          <div>
+            <dt>Wallet cursor</dt>
+            <dd id="wallet-cursor">-</dd>
+          </div>
+          <div>
+            <dt>Notes</dt>
+            <dd id="notes">-</dd>
+          </div>
+        </dl>
+
+        <section class="section">
+          <h2>Spendable</h2>
+          <div id="spendable" class="rows"></div>
+        </section>
+
+        <section class="section">
+          <h2>PPOI Buckets</h2>
+          <div id="buckets" class="bucket-grid"></div>
+        </section>
+
+        <section class="section">
+          <h2>Run Log</h2>
+          <ol id="log" class="log"></ol>
+        </section>
+      </section>
+    </main>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>
