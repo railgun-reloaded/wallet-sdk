@@ -1,0 +1,41 @@
+name: Browser Load Balances Fixture
+
+on:
+  push:
+    paths:
+      - '.github/workflows/browser-load-balances-fixture.yml'
+      - 'config/check-browser-load-balances-fixture.mjs'
+      - 'fixtures/browser-load-balances/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - 'src/**'
+      - 'tsconfig*.json'
+      - 'wallet-sdk/**'
+      - 'storage/**'
+      - 'scanner/**'
+
+jobs:
+  browser-load-balances:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: 'lts/*'
+          cache: npm
+
+      - name: Install Chrome
+        id: setup-chrome
+        uses: browser-actions/setup-chrome@v1
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Run browser load-balances fixture
+        run: npm run fixture:browser:load-balances
+        env:
+          PLAYWRIGHT_CHROMIUM_EXECUTABLE: ${{ steps.setup-chrome.outputs.chrome-path }}

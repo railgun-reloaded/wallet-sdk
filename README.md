@@ -11,6 +11,18 @@ data, (future) aggregates balances and builds transactions.
 npm add @railgun-reloaded/wallet-sdk
 ```
 
+## Browser Integration Fixture
+
+The browser load-balances fixture is the packaging regression test for the
+portable SDK with `@railgun-reloaded/storage/browser` in a Vite app. Run it with:
+
+```sh
+npm run fixture:browser:load-balances
+```
+
+See [fixtures/browser-load-balances](fixtures/browser-load-balances/) for the
+checked Sepolia range and expected wallet state.
+
 ## Quick start
 
 ```typescript
