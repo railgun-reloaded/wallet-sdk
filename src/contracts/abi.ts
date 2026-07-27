@@ -23,7 +23,7 @@ const SHIELD_ABI = [
   {
     name: 'shield',
     type: 'function',
-    stateMutability: 'payable',
+    stateMutability: 'nonpayable',
     outputs: [],
     inputs: [
       {
