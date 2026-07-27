@@ -48,6 +48,9 @@ export {
   buildShieldTransaction
 } from '../contracts/index.js'
 
+export { InvalidShieldAmountError, shield } from '../shield/index.js'
+export type { ShieldParams, ShieldResult } from '../shield/index.js'
+
 export {
   COMMITMENT_TREE_CAPACITY,
   ExactSnapshotCheckpointValidator,

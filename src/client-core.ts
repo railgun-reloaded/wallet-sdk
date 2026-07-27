@@ -28,6 +28,8 @@ import type {
   WalletInfo
 } from './services/wallet/wallet-service.js'
 import { WalletService } from './services/wallet/wallet-service.js'
+import type { ShieldParams, ShieldResult } from './shield/shield.js'
+import { shield } from './shield/shield.js'
 import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor.js'
 import { runWalletDecryption } from './sync/wallet-decryptor.js'
 
@@ -398,6 +400,24 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
   }
 
   /**
+   * Build an unsigned transaction shielding ERC20 or ERC721 tokens to a 0zk
+   * recipient.
+   *
+   * Resolves `network` to its chain ID and delegates to the `shield()` free
+   * function. `tokenType` selects the standard and defaults to ERC20.
+   *
+   * Callers derive `shieldPrivateKey` by signing the shield key derivation
+   * message, and remain responsible for the token allowance or approval, gas
+   * estimation, signing, and sending.
+   * @param params - Token, recipient, and shield private key.
+   * @param network - Network whose RAILGUN contract receives the shield.
+   * @returns The unsigned shield transaction.
+   */
+  shield (params: ShieldParams, network: NetworkName): Promise<ShieldResult> {
+    return shield(params, NETWORK_CONFIG[network].chainID)
+  }
+
+  /**
    * Ensure configured PPOI networks have usable node URLs.
    * @param network - Network to validate.
    */
@@ -420,6 +440,8 @@ export type {
   RailgunClientCoreEngine,
   RailgunClientCoreOptions,
   ScanParams,
+  ShieldParams,
+  ShieldResult,
   SyncParams,
   SyncProgress,
   SyncSummary,

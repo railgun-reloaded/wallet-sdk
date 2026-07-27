@@ -43,6 +43,9 @@ export {
   buildShieldTransaction
 } from '../contracts/index.js'
 
+export { InvalidShieldAmountError, shield } from '../shield/index.js'
+export type { ShieldParams, ShieldResult } from '../shield/index.js'
+
 export { deriveWalletKeys } from '../services/wallet/keys.js'
 export type { WalletKeys } from '../services/wallet/keys.js'
 

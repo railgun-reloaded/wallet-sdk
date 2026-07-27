@@ -24,3 +24,6 @@ jobs:
 
       - name: Test
         run: npm run test
+
+      - name: Browser bundle check
+        run: npm run check:browser
