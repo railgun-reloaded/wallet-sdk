@@ -21,7 +21,7 @@ const NETWORK_CONFIG : Record<NetworkName, NetworkConfig> = {
   [NetworkName.Ethereum]: {
     chainID: 1,
     deploymentBlock: 14693013n,
-    proxyContractAddress: '0xfa7093cdd9ee6932b4eb2c9e1cde7ce00b1fa4b9',
+    proxyContractAddress: '0xFA7093CDD9EE6932B4eb2c9e1cde7CE00B1FA4b9',
     rpcURL: 'https://ethereum-rpc.publicnode.com'
   },
   [NetworkName.EthereumSepolia]: {
@@ -34,7 +34,7 @@ const NETWORK_CONFIG : Record<NetworkName, NetworkConfig> = {
   [NetworkName.Polygon]: {
     chainID: 137,
     deploymentBlock: 27803253n,
-    proxyContractAddress: '0x19b620929f97b7b990801496c3b361ca5def8c71',
+    proxyContractAddress: '0x19B620929f97b7b990801496c3b361CA5dEf8C71',
     rpcURL: 'https://polygon-bor-rpc.publicnode.com'
   },
   [NetworkName.Arbitrum]: {
@@ -46,7 +46,7 @@ const NETWORK_CONFIG : Record<NetworkName, NetworkConfig> = {
   [NetworkName.BNBChain]: {
     chainID: 56,
     deploymentBlock: 17431925n,
-    proxyContractAddress: '0x590162bf4b50f6576a459b75309ee21d92178a10',
+    proxyContractAddress: '0x590162bf4b50F6576a459B75309eE21D92178A10',
     rpcURL: 'https://bsc-rpc.publicnode.com'
   }
 }

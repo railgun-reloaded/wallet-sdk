@@ -140,6 +140,7 @@ const resolveToken = (params: ShieldParams) => {
  * @returns The unsigned shield transaction.
  * @throws {InvalidShieldAmountError} If an ERC20 amount is not positive.
  * @throws {IntegerOutOfRangeError} If an ERC721 sub-ID is not a uint256.
+ * @throws {Error} If an ERC20 amount does not fit the contract's uint120 field.
  * @throws {RailgunAddressError} If `recipient` is not a valid 0zk address.
  * @throws {UnsupportedChainError} If the chain has no configured contract.
  */
