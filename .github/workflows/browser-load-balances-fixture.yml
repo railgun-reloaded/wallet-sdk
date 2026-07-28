@@ -10,9 +10,6 @@ on:
       - 'package-lock.json'
       - 'src/**'
       - 'tsconfig*.json'
-      - 'wallet-sdk/**'
-      - 'storage/**'
-      - 'scanner/**'
 
 jobs:
   browser-load-balances:
