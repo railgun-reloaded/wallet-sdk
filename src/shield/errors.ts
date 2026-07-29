@@ -17,4 +17,29 @@ class InvalidShieldAmountError extends Error {
   }
 }
 
-export { InvalidShieldAmountError }
+/**
+ * Thrown when shield inputs carry a field belonging to a different token
+ * standard, such as a `tokenSubID` on an ERC20 shield. The field cannot be
+ * honoured, so it is rejected rather than silently dropped.
+ */
+class UnexpectedShieldFieldError extends Error {
+  /** Token standard the shield was requested for. */
+  readonly tokenType: 'ERC20' | 'ERC721'
+
+  /** Field that does not belong to that token standard. */
+  readonly field: 'amount' | 'tokenSubID'
+
+  /**
+   * Construct an UnexpectedShieldFieldError.
+   * @param tokenType - Token standard the shield was requested for.
+   * @param field - Field that does not belong to that token standard.
+   */
+  constructor (tokenType: 'ERC20' | 'ERC721', field: 'amount' | 'tokenSubID') {
+    super(`An ${tokenType} shield cannot carry a ${field}.`)
+    this.name = 'UnexpectedShieldFieldError'
+    this.tokenType = tokenType
+    this.field = field
+  }
+}
+
+export { InvalidShieldAmountError, UnexpectedShieldFieldError }

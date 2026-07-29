@@ -21,7 +21,11 @@ import { SHIELD_ABI } from '../../src/contracts/abi.js'
 import { UnsupportedChainError } from '../../src/contracts/index.js'
 import { NETWORK_CONFIG, NetworkName } from '../../src/network-config.js'
 import { deriveWalletKeys } from '../../src/services/wallet/keys.js'
-import { InvalidShieldAmountError } from '../../src/shield/errors.js'
+import {
+  InvalidShieldAmountError,
+  UnexpectedShieldFieldError
+} from '../../src/shield/errors.js'
+import type { ShieldParams } from '../../src/shield/shield.js'
 import { shield } from '../../src/shield/shield.js'
 import { MNEMONIC } from '../fixtures/wallet-vectors.js'
 
@@ -95,23 +99,20 @@ const shieldParams = (recipient: string) => ({
   random: FIXED_RANDOM
 })
 
-test('returns a single unsigned transaction targeting the configured contract', async () => {
+test('returns an unsigned transaction targeting the configured contract', async () => {
   const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
 
-  const { transactions } = await shield(shieldParams(railgunAddress), ETHEREUM.chainID)
+  const { transaction } = await shield(shieldParams(railgunAddress), ETHEREUM.chainID)
 
-  assert.equal(transactions.length, 1)
-
-  const tx = transactions[0]!
-  assert.equal(tx.to, getAddress(ETHEREUM.proxyContractAddress))
-  assert.deepEqual(Object.keys(tx).sort(), ['data', 'to'])
+  assert.equal(transaction.to, getAddress(ETHEREUM.proxyContractAddress))
+  assert.deepEqual(Object.keys(transaction).sort(), ['data', 'to'])
 })
 
 test('shielded note round-trips back to the recipient from the encoded calldata', async () => {
   const keys = await deriveWalletKeys(MNEMONIC)
 
-  const { transactions } = await shield(shieldParams(keys.railgunAddress), ETHEREUM.chainID)
-  const commitment = toShieldCommitment(transactions[0]!.data)
+  const { transaction } = await shield(shieldParams(keys.railgunAddress), ETHEREUM.chainID)
+  const commitment = toShieldCommitment(transaction.data)
 
   const recovered = await ShieldNote.fromShieldCommitment(
     commitment,
@@ -129,8 +130,8 @@ test('shielded note round-trips back to the recipient from the encoded calldata'
 test('the encoded request carries the full pre-fee amount and ERC20 token', async () => {
   const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
 
-  const { transactions } = await shield(shieldParams(railgunAddress), ETHEREUM.chainID)
-  const request = decodeRequest(transactions[0]!.data)
+  const { transaction } = await shield(shieldParams(railgunAddress), ETHEREUM.chainID)
+  const request = decodeRequest(transaction.data)
 
   assert.equal(request.preimage.value, AMOUNT)
   assert.equal(request.preimage.token.tokenType, TokenType.ERC20)
@@ -187,6 +188,64 @@ test('a negative amount is rejected before the note is constructed', async () =>
   )
 })
 
+test('an ERC20 amount above uint120 is rejected', async () => {
+  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
+
+  await assert.rejects(
+    () => shield(
+      { ...shieldParams(railgunAddress), amount: 2n ** 120n },
+      ETHEREUM.chainID
+    ),
+    (error: unknown) => {
+      assert.ok(error instanceof Error)
+      assert.match(error.message, /uint120/)
+      return true
+    }
+  )
+})
+
+test('a tokenSubID on an ERC20 shield is rejected before the note is constructed', async () => {
+  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
+
+  const mixed = {
+    ...shieldParams(railgunAddress),
+    tokenSubID: NFT_TOKEN_SUB_ID
+  } as unknown as ShieldParams
+
+  await assert.rejects(
+    () => shield(mixed, ETHEREUM.chainID),
+    (error: unknown) => {
+      assert.ok(error instanceof UnexpectedShieldFieldError)
+      assert.equal(error.tokenType, 'ERC20')
+      assert.equal(error.field, 'tokenSubID')
+      return true
+    }
+  )
+})
+
+test('an amount on an ERC721 shield is rejected before the note is constructed', async () => {
+  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
+
+  const mixed = {
+    tokenAddress: TOKEN_ADDRESS,
+    tokenType: 'ERC721',
+    tokenSubID: NFT_TOKEN_SUB_ID,
+    amount: AMOUNT,
+    recipient: railgunAddress,
+    shieldPrivateKey: SHIELD_PRIVATE_KEY
+  } as unknown as ShieldParams
+
+  await assert.rejects(
+    () => shield(mixed, ETHEREUM.chainID),
+    (error: unknown) => {
+      assert.ok(error instanceof UnexpectedShieldFieldError)
+      assert.equal(error.tokenType, 'ERC721')
+      assert.equal(error.field, 'amount')
+      return true
+    }
+  )
+})
+
 test('an unconfigured chain is rejected', async () => {
   const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
 
@@ -213,10 +272,10 @@ test('consecutive shields with identical inputs produce different ciphertexts', 
   const first = await shield(params, ETHEREUM.chainID)
   const second = await shield(params, ETHEREUM.chainID)
 
-  assert.notEqual(first.transactions[0]!.data, second.transactions[0]!.data)
+  assert.notEqual(first.transaction.data, second.transaction.data)
 
-  const firstRequest = decodeRequest(first.transactions[0]!.data)
-  const secondRequest = decodeRequest(second.transactions[0]!.data)
+  const firstRequest = decodeRequest(first.transaction.data)
+  const secondRequest = decodeRequest(second.transaction.data)
 
   assert.notDeepEqual(
     [...firstRequest.ciphertext.encryptedBundle],
@@ -252,14 +311,13 @@ test('client.shield resolves the network and delegates to the shield free functi
 
     const viaFreeFunction = await shield(shieldParams(keys.railgunAddress), ETHEREUM.chainID)
 
-    assert.equal(viaClient.transactions.length, 1)
     assert.equal(
-      viaClient.transactions[0]!.to,
-      viaFreeFunction.transactions[0]!.to
+      viaClient.transaction.to,
+      viaFreeFunction.transaction.to
     )
 
-    const fromClient = decodeRequest(viaClient.transactions[0]!.data)
-    const fromFreeFunction = decodeRequest(viaFreeFunction.transactions[0]!.data)
+    const fromClient = decodeRequest(viaClient.transaction.data)
+    const fromFreeFunction = decodeRequest(viaFreeFunction.transaction.data)
 
     assert.deepEqual(fromClient.preimage, fromFreeFunction.preimage)
     assert.equal(
@@ -268,7 +326,7 @@ test('client.shield resolves the network and delegates to the shield free functi
     )
 
     const recovered = await ShieldNote.fromShieldCommitment(
-      toShieldCommitment(viaClient.transactions[0]!.data),
+      toShieldCommitment(viaClient.transaction.data),
       keys.viewingPrivateKey,
       keys.masterPublicKey
     )
@@ -284,7 +342,7 @@ test('client.shield resolves the network and delegates to the shield free functi
 test('an ERC721 note round-trips back with its token identifier', async () => {
   const keys = await deriveWalletKeys(MNEMONIC)
 
-  const { transactions } = await shield({
+  const { transaction } = await shield({
     tokenAddress: TOKEN_ADDRESS,
     tokenType: 'ERC721',
     tokenSubID: NFT_TOKEN_SUB_ID,
@@ -294,7 +352,7 @@ test('an ERC721 note round-trips back with its token identifier', async () => {
   }, ETHEREUM.chainID)
 
   const recovered = await ShieldNote.fromShieldCommitment(
-    toShieldCommitment(transactions[0]!.data),
+    toShieldCommitment(transaction.data),
     keys.viewingPrivateKey,
     keys.masterPublicKey
   )
@@ -312,7 +370,7 @@ test('an ERC721 note round-trips back with its token identifier', async () => {
 test('an ERC721 shield encodes token type 1, a value of one, and the sub-ID', async () => {
   const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
 
-  const { transactions } = await shield({
+  const { transaction } = await shield({
     tokenAddress: TOKEN_ADDRESS,
     tokenType: 'ERC721',
     tokenSubID: NFT_TOKEN_SUB_ID,
@@ -321,7 +379,7 @@ test('an ERC721 shield encodes token type 1, a value of one, and the sub-ID', as
     random: FIXED_RANDOM
   }, ETHEREUM.chainID)
 
-  const request = decodeRequest(transactions[0]!.data)
+  const request = decodeRequest(transaction.data)
 
   assert.equal(request.preimage.token.tokenType, TokenType.ERC721)
   assert.equal(request.preimage.value, 1n)
@@ -332,8 +390,8 @@ test('an ERC721 shield encodes token type 1, a value of one, and the sub-ID', as
 test('an ERC20 shield keeps token type 0 and a zero sub-ID', async () => {
   const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
 
-  const { transactions } = await shield(shieldParams(railgunAddress), ETHEREUM.chainID)
-  const request = decodeRequest(transactions[0]!.data)
+  const { transaction } = await shield(shieldParams(railgunAddress), ETHEREUM.chainID)
+  const request = decodeRequest(transaction.data)
 
   assert.equal(request.preimage.token.tokenType, TokenType.ERC20)
   assert.equal(request.preimage.token.tokenSubID, 0n)
@@ -370,7 +428,7 @@ test('client.shield shields an ERC721 through the network selector', async () =>
   try {
     const keys = await deriveWalletKeys(MNEMONIC)
 
-    const { transactions } = await client.shield({
+    const { transaction } = await client.shield({
       tokenAddress: TOKEN_ADDRESS,
       tokenType: 'ERC721',
       tokenSubID: NFT_TOKEN_SUB_ID,
@@ -379,9 +437,9 @@ test('client.shield shields an ERC721 through the network selector', async () =>
       random: FIXED_RANDOM
     }, NetworkName.Ethereum)
 
-    const request = decodeRequest(transactions[0]!.data)
+    const request = decodeRequest(transaction.data)
 
-    assert.equal(transactions[0]!.to, getAddress(ETHEREUM.proxyContractAddress))
+    assert.equal(transaction.to, getAddress(ETHEREUM.proxyContractAddress))
     assert.equal(request.preimage.token.tokenType, TokenType.ERC721)
     assert.equal(request.preimage.token.tokenSubID, NFT_TOKEN_SUB_ID)
     assert.equal(request.preimage.value, 1n)

@@ -6,7 +6,7 @@
  * bundle check can verify this path in isolation.
  */
 
-export { InvalidShieldAmountError } from './errors.js'
+export { InvalidShieldAmountError, UnexpectedShieldFieldError } from './errors.js'
 export { shield } from './shield.js'
 export type {
   ShieldBaseParams,

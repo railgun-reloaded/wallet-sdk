@@ -231,11 +231,7 @@ class RailgunClient {
 
   /**
    * Build an unsigned transaction shielding ERC20 or ERC721 tokens to a 0zk
-   * recipient. `tokenType` selects the standard and defaults to ERC20.
-   *
-   * Returns unsigned calldata only: the client never signs, sends, checks the
-   * token allowance or approval, or estimates gas. Derive `shieldPrivateKey` by
-   * signing the shield key derivation message.
+   * recipient. See `RailgunClientCore.shield` for the full contract.
    * @param params - Token, recipient, and shield private key.
    * @param network - Network whose RAILGUN contract receives the shield.
    * @returns The unsigned shield transaction.

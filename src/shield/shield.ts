@@ -5,7 +5,7 @@ import { getAddress, hexToBytes, numberToBytes } from 'viem'
 import type { UnsignedTx } from '../contracts/index.js'
 import { buildShieldTransaction } from '../contracts/index.js'
 
-import { InvalidShieldAmountError } from './errors.js'
+import { InvalidShieldAmountError, UnexpectedShieldFieldError } from './errors.js'
 
 /** Byte length of the token sub-ID field. */
 const TOKEN_SUB_ID_BYTES = 32
@@ -77,27 +77,38 @@ type ShieldParams = ShieldErc20Params | ShieldErc721Params
  * Result of `shield()`.
  */
 type ShieldResult = {
-  /** Unsigned transactions to sign and send. Always exactly one. */
-  transactions: UnsignedTx[]
+  /** Unsigned transaction to sign and send. */
+  transaction: UnsignedTx
 }
 
 /**
  * Resolve the note value and token fields for the requested token standard.
  *
- * Runs before any note is constructed, so invalid amounts and out-of-range
- * token identifiers are rejected up front.
+ * Runs before any note is constructed, so mismatched fields, invalid amounts,
+ * and out-of-range token identifiers are all rejected up front. A field that
+ * belongs to the other token standard is an error rather than an ignored
+ * input.
  * @param params - Shield inputs.
  * @returns The note value plus the token type and sub-ID bytes.
+ * @throws {UnexpectedShieldFieldError} If a field belongs to the other token standard.
  * @throws {InvalidShieldAmountError} If an ERC20 amount is not positive.
  * @throws {IntegerOutOfRangeError} If an ERC721 sub-ID is not a uint256.
  */
 const resolveToken = (params: ShieldParams) => {
   if (params.tokenType === 'ERC721') {
+    if (params.amount !== undefined) {
+      throw new UnexpectedShieldFieldError('ERC721', 'amount')
+    }
+
     return {
       value: ERC721_NOTE_VALUE,
       tokenType: TokenType.ERC721,
       tokenSubID: numberToBytes(params.tokenSubID, { size: TOKEN_SUB_ID_BYTES })
     }
+  }
+
+  if (params.tokenSubID !== undefined) {
+    throw new UnexpectedShieldFieldError('ERC20', 'tokenSubID')
   }
 
   // TODO: Relay Adapt shields use a zero value to mean "shield the entire
@@ -138,10 +149,13 @@ const resolveToken = (params: ShieldParams) => {
  * @param params - Token, recipient, and shield private key.
  * @param chainId - Chain whose RAILGUN contract receives the shield.
  * @returns The unsigned shield transaction.
+ * @throws {UnexpectedShieldFieldError} If a field belongs to the other token standard.
  * @throws {InvalidShieldAmountError} If an ERC20 amount is not positive.
  * @throws {IntegerOutOfRangeError} If an ERC721 sub-ID is not a uint256.
  * @throws {Error} If an ERC20 amount does not fit the contract's uint120 field.
+ * @throws {Error} If `random` is supplied and is not 16 bytes.
  * @throws {RailgunAddressError} If `recipient` is not a valid 0zk address.
+ * @throws {InvalidAddressError} If `tokenAddress` is not a valid address.
  * @throws {UnsupportedChainError} If the chain has no configured contract.
  */
 const shield = async (
@@ -172,7 +186,7 @@ const shield = async (
     viewingPublicKey
   )
 
-  return { transactions: [buildShieldTransaction([request], chainId)] }
+  return { transaction: buildShieldTransaction([request], chainId) }
 }
 
 export { shield }
