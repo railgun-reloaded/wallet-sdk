@@ -49,7 +49,7 @@ const FORBIDDEN_BUNDLE_PATTERNS = [
 // tree-shake because drizzle's sqlite-proxy driver imports the sqlite-core
 // barrel internally. This allowlist covers only those four known call
 // sites -- any other Buffer usage anywhere in the bundle still fails the
-// check above. Tracked in SDK-308.
+// check above.
 const KNOWN_DEAD_BUFFER_CALL_SITES = [
   /BigInt\(\s*Buffer\.isBuffer\(/,
   /Buffer\.from\(\s*\w+\.toString\(\)\s*\)/,
