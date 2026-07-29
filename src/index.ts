@@ -45,6 +45,8 @@ export {
 
 export {
   InvalidShieldAmountError,
+  InvalidShieldPrivateKeyError,
+  InvalidTokenSubIDError,
   UnexpectedShieldFieldError,
   shield
 } from './shield/index.js'

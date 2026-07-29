@@ -18,11 +18,16 @@ import {
 
 import { RailgunClient } from '../../src/client.js'
 import { SHIELD_ABI } from '../../src/contracts/abi.js'
-import { UnsupportedChainError } from '../../src/contracts/index.js'
+import {
+  UnsupportedChainError,
+  UnsupportedTokenTypeError
+} from '../../src/contracts/index.js'
 import { NETWORK_CONFIG, NetworkName } from '../../src/network-config.js'
 import { deriveWalletKeys } from '../../src/services/wallet/keys.js'
 import {
   InvalidShieldAmountError,
+  InvalidShieldPrivateKeyError,
+  InvalidTokenSubIDError,
   UnexpectedShieldFieldError
 } from '../../src/shield/errors.js'
 import type { ShieldParams } from '../../src/shield/shield.js'
@@ -244,6 +249,92 @@ test('an amount on an ERC721 shield is rejected before the note is constructed',
       return true
     }
   )
+})
+
+test('an unrecognized tokenType is rejected instead of defaulting to ERC20', async () => {
+  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
+
+  for (const tokenType of ['erc721', 'ERC1155', 1, null]) {
+    const params = {
+      ...shieldParams(railgunAddress),
+      tokenType
+    } as unknown as ShieldParams
+
+    await assert.rejects(
+      () => shield(params, ETHEREUM.chainID),
+      (error: unknown) => {
+        assert.ok(error instanceof UnsupportedTokenTypeError)
+        return true
+      },
+      `tokenType ${String(tokenType)} should be rejected`
+    )
+  }
+})
+
+test('an ERC721 tokenSubID that is not a bigint is rejected', async () => {
+  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
+
+  for (const tokenSubID of ['', '  ', [], false, '42', 42, null, undefined]) {
+    const params = {
+      tokenAddress: TOKEN_ADDRESS,
+      tokenType: 'ERC721',
+      tokenSubID,
+      recipient: railgunAddress,
+      shieldPrivateKey: SHIELD_PRIVATE_KEY
+    } as unknown as ShieldParams
+
+    await assert.rejects(
+      () => shield(params, ETHEREUM.chainID),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidTokenSubIDError)
+        return true
+      },
+      `tokenSubID ${String(tokenSubID)} should be rejected`
+    )
+  }
+})
+
+test('an ERC20 amount that is not a bigint is rejected', async () => {
+  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
+
+  for (const amount of [1000, '1000', '0x10', true, undefined, NaN]) {
+    const params = {
+      ...shieldParams(railgunAddress),
+      amount
+    } as unknown as ShieldParams
+
+    await assert.rejects(
+      () => shield(params, ETHEREUM.chainID),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidShieldAmountError)
+        return true
+      },
+      `amount ${String(amount)} should be rejected`
+    )
+  }
+})
+
+test('an unusable shield private key is rejected', async () => {
+  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
+
+  const unusable = [
+    new Uint8Array(32),
+    new Uint8Array(31).fill(9),
+    new Uint8Array(33).fill(9)
+  ]
+
+  for (const shieldPrivateKey of unusable) {
+    await assert.rejects(
+      () => shield(
+        { ...shieldParams(railgunAddress), shieldPrivateKey },
+        ETHEREUM.chainID
+      ),
+      (error: unknown) => {
+        assert.ok(error instanceof InvalidShieldPrivateKeyError)
+        return true
+      }
+    )
+  }
 })
 
 test('an unconfigured chain is rejected', async () => {

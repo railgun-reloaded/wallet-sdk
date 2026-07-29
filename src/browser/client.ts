@@ -230,11 +230,12 @@ class RailgunClient {
   }
 
   /**
-   * Build an unsigned transaction shielding ERC20 or ERC721 tokens to a 0zk
-   * recipient. See `RailgunClientCore.shield` for the full contract.
+   * Build an unsigned transaction shielding tokens to a 0zk recipient. See
+   * `shield` in `src/shield/shield.ts` for the full contract.
    * @param params - Token, recipient, and shield private key.
    * @param network - Network whose RAILGUN contract receives the shield.
    * @returns The unsigned shield transaction.
+   * @throws {Error} If `network` has no entry in `NETWORK_CONFIG`.
    */
   shield (params: ShieldParams, network: NetworkName): Promise<ShieldResult> {
     return this.#core.shield(params, network)

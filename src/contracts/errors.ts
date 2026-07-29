@@ -27,13 +27,13 @@ class UnsupportedChainError extends Error {
  */
 class UnsupportedTokenTypeError extends Error {
   /** The token type value that was rejected. */
-  readonly tokenType: number
+  readonly tokenType: number | string
 
   /**
    * Construct an UnsupportedTokenTypeError.
    * @param tokenType - The unsupported token type value.
    */
-  constructor (tokenType: number) {
+  constructor (tokenType: number | string) {
     super(`Unsupported token type ${tokenType}. Only ERC20 and ERC721 are supported.`)
     this.name = 'UnsupportedTokenTypeError'
     this.tokenType = tokenType
