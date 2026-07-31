@@ -1,8 +1,6 @@
+import { SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE } from '@railgun-reloaded/wallet-node'
 import type { Hex, WalletClient } from 'viem'
 import { hexToBytes, keccak256 } from 'viem'
-
-/** Message signed with EIP-191 semantics to derive a compatible shield key. */
-const SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE = 'RAILGUN_SHIELD'
 
 /**
  * Derive a shield private key from an out-of-band EIP-191 signature.
