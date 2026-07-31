@@ -24,7 +24,7 @@ const ERC721_NOTE_VALUE = 1n
 /**
  * Inputs shared by every shield, regardless of token standard.
  */
-type ShieldBaseParams = {
+type BuildShieldBaseParams = {
   /**
    * Address of the token contract being shielded. Casing is normalized rather
    * than verified, so a mistyped EIP-55 checksum is accepted.
@@ -51,7 +51,7 @@ type ShieldBaseParams = {
 /**
  * Inputs for shielding a fungible ERC20 balance.
  */
-type ShieldErc20Params = ShieldBaseParams & {
+type BuildShieldErc20Params = BuildShieldBaseParams & {
   /** Token standard being shielded. Defaults to ERC20 when omitted. */
   tokenType?: 'ERC20' | undefined
 
@@ -65,7 +65,7 @@ type ShieldErc20Params = ShieldBaseParams & {
 /**
  * Inputs for shielding a single ERC721 token.
  */
-type ShieldErc721Params = ShieldBaseParams & {
+type BuildShieldErc721Params = BuildShieldBaseParams & {
   /** Token standard being shielded. */
   tokenType: 'ERC721'
 
@@ -80,14 +80,14 @@ type ShieldErc721Params = ShieldBaseParams & {
 }
 
 /**
- * Inputs for `shield()`, discriminated by `tokenType`.
+ * Inputs for `buildShield()`, discriminated by `tokenType`.
  */
-type ShieldParams = ShieldErc20Params | ShieldErc721Params
+type BuildShieldParams = BuildShieldErc20Params | BuildShieldErc721Params
 
 /**
- * Result of `shield()`.
+ * Result of `buildShield()`.
  */
-type ShieldResult = {
+type BuildShieldResult = {
   /** Unsigned transaction to sign and send. */
   transaction: UnsignedTx
 }
@@ -105,7 +105,7 @@ type ShieldResult = {
  * @throws {InvalidShieldAmountError} If an ERC20 amount is not positive.
  * @throws {IntegerOutOfRangeError} If an ERC721 sub-ID is not a uint256.
  */
-const resolveToken = (params: ShieldParams) => {
+const resolveToken = (params: BuildShieldParams) => {
   const { amount, tokenSubID } = params
 
   // Only an omitted tokenType defaults to ERC20. An explicit null or any other
@@ -200,10 +200,10 @@ const assertShieldPrivateKey = (shieldPrivateKey: Uint8Array): void => {
  * @throws {InvalidAddressError} If `tokenAddress` is not 20 hex-encoded bytes.
  * @throws {UnsupportedChainError} If the chain has no configured contract.
  */
-const shield = async (
-  params: ShieldParams,
+const buildShield = async (
+  params: BuildShieldParams,
   chainId: number
-): Promise<ShieldResult> => {
+): Promise<BuildShieldResult> => {
   const { random, recipient, shieldPrivateKey, tokenAddress } = params
 
   const { tokenSubID, tokenType, value } = resolveToken(params)
@@ -232,11 +232,11 @@ const shield = async (
   return { transaction: buildShieldTransaction([request], chainId) }
 }
 
-export { shield }
+export { buildShield }
 export type {
-  ShieldBaseParams,
-  ShieldErc20Params,
-  ShieldErc721Params,
-  ShieldParams,
-  ShieldResult
+  BuildShieldBaseParams,
+  BuildShieldErc20Params,
+  BuildShieldErc721Params,
+  BuildShieldParams,
+  BuildShieldResult
 }

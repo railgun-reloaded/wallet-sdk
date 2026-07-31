@@ -62,13 +62,13 @@ export {
   parseShieldReceipt,
   readShieldFee,
   shieldPrivateKeyFromSignature,
-  shield
+  buildShield
 } from '../shield/index.js'
 export type {
+  BuildShieldParams,
+  BuildShieldResult,
   ShieldCommitmentPreimage,
-  ShieldParams,
-  ShieldReceiptResult,
-  ShieldResult
+  ShieldReceiptResult
 } from '../shield/index.js'
 
 export {

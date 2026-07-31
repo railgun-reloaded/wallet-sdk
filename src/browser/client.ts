@@ -2,12 +2,12 @@ import type { ChainStorage, WalletStorage } from '@railgun-reloaded/storage'
 
 import type {
   BalanceMode,
+  BuildShieldParams,
+  BuildShieldResult,
   DecryptParams,
   DecryptSummary,
   DecryptedNote,
   ScanParams,
-  ShieldParams,
-  ShieldResult,
   SyncParams,
   SyncSummary,
   TokenBalance
@@ -231,14 +231,14 @@ class RailgunClient {
 
   /**
    * Build an unsigned transaction shielding tokens to a 0zk recipient. See
-   * `shield` in `src/shield/shield.ts` for the full contract.
+   * `buildShield` in `src/shield/shield.ts` for the full contract.
    * @param params - Token, recipient, and shield private key.
    * @param network - Network whose RAILGUN contract receives the shield.
    * @returns The unsigned shield transaction.
    * @throws {Error} If `network` has no entry in `NETWORK_CONFIG`.
    */
-  shield (params: ShieldParams, network: NetworkName): Promise<ShieldResult> {
-    return this.#core.shield(params, network)
+  buildShield (params: BuildShieldParams, network: NetworkName): Promise<BuildShieldResult> {
+    return this.#core.buildShield(params, network)
   }
 
   /**

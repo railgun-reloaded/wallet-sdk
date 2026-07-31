@@ -28,8 +28,8 @@ import type {
   WalletInfo
 } from './services/wallet/wallet-service.js'
 import { WalletService } from './services/wallet/wallet-service.js'
-import type { ShieldParams, ShieldResult } from './shield/shield.js'
-import { shield } from './shield/shield.js'
+import type { BuildShieldParams, BuildShieldResult } from './shield/shield.js'
+import { buildShield } from './shield/shield.js'
 import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor.js'
 import { runWalletDecryption } from './sync/wallet-decryptor.js'
 
@@ -401,13 +401,13 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
 
   /**
    * Build an unsigned transaction shielding tokens to a 0zk recipient. See
-   * `shield` in `src/shield/shield.ts` for the full contract.
+   * `buildShield` in `src/shield/shield.ts` for the full contract.
    * @param params - Token, recipient, and shield private key.
    * @param network - Network whose RAILGUN contract receives the shield.
    * @returns The unsigned shield transaction.
    * @throws {Error} If `network` has no entry in `NETWORK_CONFIG`.
    */
-  shield (params: ShieldParams, network: NetworkName): Promise<ShieldResult> {
+  buildShield (params: BuildShieldParams, network: NetworkName): Promise<BuildShieldResult> {
     const config = NETWORK_CONFIG[network]
     if (config === undefined) {
       throw new Error(
@@ -415,7 +415,7 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
       )
     }
 
-    return shield(params, config.chainID)
+    return buildShield(params, config.chainID)
   }
 
   /**
@@ -441,8 +441,8 @@ export type {
   RailgunClientCoreEngine,
   RailgunClientCoreOptions,
   ScanParams,
-  ShieldParams,
-  ShieldResult,
+  BuildShieldParams,
+  BuildShieldResult,
   SyncParams,
   SyncProgress,
   SyncSummary,

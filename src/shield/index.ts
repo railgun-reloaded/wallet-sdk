@@ -24,11 +24,11 @@ export type {
   ShieldCommitmentPreimage,
   ShieldReceiptResult
 } from './receipt.js'
-export { shield } from './shield.js'
+export { buildShield } from './shield.js'
 export type {
-  ShieldBaseParams,
-  ShieldErc20Params,
-  ShieldErc721Params,
-  ShieldParams,
-  ShieldResult
+  BuildShieldBaseParams,
+  BuildShieldErc20Params,
+  BuildShieldErc721Params,
+  BuildShieldParams,
+  BuildShieldResult
 } from './shield.js'
