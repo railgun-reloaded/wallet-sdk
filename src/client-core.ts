@@ -1,5 +1,18 @@
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 import type { ChainStorage, WalletStorage } from '@railgun-reloaded/storage'
+import type { Hash, TransactionReceipt, WalletClient } from 'viem'
+import {
+  WaitForTransactionReceiptTimeoutError,
+  getAddress,
+  isAddressEqual,
+  maxUint256
+} from 'viem'
+import {
+  readContract,
+  sendTransaction,
+  waitForTransactionReceipt,
+  writeContract
+} from 'viem/actions'
 
 import {
   clonePoiNodeUrls,
@@ -7,6 +20,8 @@ import {
   hasUsablePoiNodeUrls,
   makeScanOnBatch
 } from './client-helpers.js'
+import { ERC20_APPROVAL_ABI, ERC721_APPROVAL_ABI } from './contracts/abi.js'
+import type { UnsignedTx } from './contracts/index.js'
 import { initializeCrypto } from './init/crypto.js'
 import type { NetworkName } from './network-config.js'
 import { NETWORK_CONFIG } from './network-config.js'
@@ -28,8 +43,19 @@ import type {
   WalletInfo
 } from './services/wallet/wallet-service.js'
 import { WalletService } from './services/wallet/wallet-service.js'
+import { deriveShieldPrivateKey } from './shield/derivation.js'
+import {
+  ShieldApprovalRevertedError,
+  ShieldEventMissingError,
+  ShieldReceiptTimeoutError,
+  ShieldSignatureRejectedError,
+  ShieldTransactionRevertedError
+} from './shield/errors.js'
+import type { ShieldReceiptResult as ShieldResult } from './shield/receipt.js'
+import { parseShieldReceipt } from './shield/receipt.js'
 import type { BuildShieldParams, BuildShieldResult } from './shield/shield.js'
 import { buildShield } from './shield/shield.js'
+import type { ShieldParams } from './shield/types.js'
 import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor.js'
 import { runWalletDecryption } from './sync/wallet-decryptor.js'
 
@@ -400,14 +426,16 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
   }
 
   /**
-   * Build an unsigned transaction shielding tokens to a 0zk recipient. See
-   * `buildShield` in `src/shield/shield.ts` for the full contract.
-   * @param params - Token, recipient, and shield private key.
+   * Build an unsigned transaction shielding tokens to a 0zk recipient.
+   * @param params - Token, recipient, and caller-derived shield private key.
    * @param network - Network whose RAILGUN contract receives the shield.
    * @returns The unsigned shield transaction.
    * @throws {Error} If `network` has no entry in `NETWORK_CONFIG`.
    */
-  buildShield (params: BuildShieldParams, network: NetworkName): Promise<BuildShieldResult> {
+  buildShield (
+    params: BuildShieldParams,
+    network: NetworkName
+  ): Promise<BuildShieldResult> {
     const config = NETWORK_CONFIG[network]
     if (config === undefined) {
       throw new Error(
@@ -416,6 +444,225 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     }
 
     return buildShield(params, config.chainID)
+  }
+
+  /**
+   * Derive a shield key, ensure token approval, submit the shield transaction,
+   * and parse its V2.1 Shield event.
+   * @param params - Token, recipient, signer, and execution options.
+   * @param network - Network whose RAILGUN contract receives the shield.
+   * @returns Parsed receipt data for the confirmed shield.
+   * @throws {ShieldSignatureRejectedError} If key derivation signing fails.
+   * @throws {ShieldApprovalRevertedError} If approval fails or reverts.
+   * @throws {ShieldTransactionRevertedError} If shield submission fails or reverts.
+   * @throws {ShieldReceiptTimeoutError} If either receipt times out.
+   * @throws {ShieldEventMissingError} If the confirmed receipt carries no Shield event.
+   */
+  async shield (
+    params: ShieldParams,
+    network: NetworkName
+  ): Promise<ShieldResult> {
+    let key: Uint8Array
+    try {
+      key = await deriveShieldPrivateKey(params.signer)
+    } catch (cause) {
+      throw new ShieldSignatureRejectedError(cause)
+    }
+
+    const proxy = NETWORK_CONFIG[network].proxyContractAddress
+    await this.#ensureAllowance(params, proxy)
+    const { transaction } = await this.buildShield({
+      ...params,
+      shieldPrivateKey: key
+    }, network)
+    const receipt = await this.#sendAndWait(
+      transaction,
+      params.signer,
+      params.confirmations
+    )
+    const result = parseShieldReceipt(receipt, proxy)
+    if (result === undefined) {
+      throw new ShieldEventMissingError(receipt.transactionHash, proxy)
+    }
+    return result
+  }
+
+  /**
+   * Ensure the signer has sufficient ERC20 allowance or ERC721 approval.
+   * @param params - Shield inputs and approval options.
+   * @param proxy - RAILGUN proxy receiving token approval.
+   */
+  async #ensureAllowance (params: ShieldParams, proxy: string): Promise<void> {
+    if (params.skipApprove === true) {
+      return
+    }
+
+    const account = params.signer.account
+    const tokenAddress = getAddress(params.tokenAddress)
+    const spender = getAddress(proxy)
+    if (account === undefined) {
+      throw new ShieldApprovalRevertedError(
+        tokenAddress,
+        new Error('Shield approval requires a wallet client account.')
+      )
+    }
+
+    let txHash: Hash | undefined
+    try {
+      if (params.tokenType === 'ERC721') {
+        if (params.approvalMode === 'unlimited') {
+          const approved = await readContract(params.signer, {
+            address: tokenAddress,
+            abi: ERC721_APPROVAL_ABI,
+            functionName: 'isApprovedForAll',
+            args: [account.address, spender]
+          })
+          if (approved) return
+
+          txHash = await writeContract(params.signer, {
+            account,
+            chain: params.signer.chain,
+            address: tokenAddress,
+            abi: ERC721_APPROVAL_ABI,
+            functionName: 'setApprovalForAll',
+            args: [spender, true]
+          })
+        } else {
+          const approved = await readContract(params.signer, {
+            address: tokenAddress,
+            abi: ERC721_APPROVAL_ABI,
+            functionName: 'getApproved',
+            args: [params.tokenSubID]
+          })
+          if (isAddressEqual(approved, spender)) return
+
+          txHash = await writeContract(params.signer, {
+            account,
+            chain: params.signer.chain,
+            address: tokenAddress,
+            abi: ERC721_APPROVAL_ABI,
+            functionName: 'approve',
+            args: [spender, params.tokenSubID]
+          })
+        }
+      } else {
+        const allowance = await readContract(params.signer, {
+          address: tokenAddress,
+          abi: ERC20_APPROVAL_ABI,
+          functionName: 'allowance',
+          args: [account.address, spender]
+        })
+        if (allowance >= params.amount) return
+
+        txHash = await writeContract(params.signer, {
+          account,
+          chain: params.signer.chain,
+          address: tokenAddress,
+          abi: ERC20_APPROVAL_ABI,
+          functionName: 'approve',
+          args: [
+            spender,
+            params.approvalMode === 'unlimited' ? maxUint256 : params.amount
+          ]
+        })
+      }
+
+      const receipt = await this.#waitForReceipt(
+        txHash,
+        params.signer,
+        params.confirmations,
+        'approval'
+      )
+      if (receipt.status === 'reverted') {
+        throw new ShieldApprovalRevertedError(tokenAddress, receipt)
+      }
+    } catch (cause) {
+      if (
+        cause instanceof ShieldApprovalRevertedError ||
+        cause instanceof ShieldReceiptTimeoutError
+      ) {
+        throw cause
+      }
+      throw new ShieldApprovalRevertedError(tokenAddress, cause)
+    }
+  }
+
+  /**
+   * Submit an unsigned shield call and wait for its configured confirmations.
+   * @param transaction - Call target and calldata from `buildShield`.
+   * @param signer - Wallet client used to submit the call.
+   * @param confirmations - Required confirmation count.
+   * @returns Confirmed shield receipt.
+   */
+  async #sendAndWait (
+    transaction: UnsignedTx,
+    signer: WalletClient,
+    confirmations?: number
+  ): Promise<TransactionReceipt> {
+    const account = signer.account
+    if (account === undefined) {
+      throw new ShieldTransactionRevertedError(
+        new Error('Shield submission requires a wallet client account.')
+      )
+    }
+
+    let txHash: Hash
+    try {
+      txHash = await sendTransaction(signer, {
+        account,
+        chain: signer.chain,
+        to: transaction.to,
+        data: transaction.data
+      })
+    } catch (cause) {
+      throw new ShieldTransactionRevertedError(cause)
+    }
+
+    let receipt: TransactionReceipt
+    try {
+      receipt = await this.#waitForReceipt(
+        txHash,
+        signer,
+        confirmations,
+        'shield'
+      )
+    } catch (cause) {
+      if (cause instanceof ShieldReceiptTimeoutError) {
+        throw cause
+      }
+      throw new ShieldTransactionRevertedError(cause, txHash)
+    }
+    if (receipt.status === 'reverted') {
+      throw new ShieldTransactionRevertedError(receipt, txHash)
+    }
+    return receipt
+  }
+
+  /**
+   * Wait for a transaction receipt and map viem timeouts to the public error.
+   * @param txHash - Submitted transaction hash.
+   * @param signer - Client whose transport is used for receipt polling.
+   * @param confirmations - Required confirmation count.
+   * @param stage - Approval or shield stage.
+   * @returns Confirmed transaction receipt.
+   */
+  async #waitForReceipt (
+    txHash: Hash,
+    signer: WalletClient,
+    confirmations: number | undefined,
+    stage: 'approval' | 'shield'
+  ): Promise<TransactionReceipt> {
+    try {
+      return await waitForTransactionReceipt(signer, {
+        hash: txHash,
+        ...(confirmations !== undefined && { confirmations })
+      })
+    } catch (cause) {
+      if (cause instanceof WaitForTransactionReceiptTimeoutError) {
+        throw new ShieldReceiptTimeoutError(stage, txHash, cause)
+      }
+      throw cause
+    }
   }
 
   /**
@@ -443,6 +690,8 @@ export type {
   ScanParams,
   BuildShieldParams,
   BuildShieldResult,
+  ShieldParams,
+  ShieldResult,
   SyncParams,
   SyncProgress,
   SyncSummary,

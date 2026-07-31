@@ -10,7 +10,12 @@ export {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
+  ShieldApprovalRevertedError,
+  ShieldEventMissingError,
   ShieldFeeReadError,
+  ShieldReceiptTimeoutError,
+  ShieldSignatureRejectedError,
+  ShieldTransactionRevertedError,
   UnexpectedShieldFieldError
 } from './errors.js'
 export {
@@ -32,3 +37,11 @@ export type {
   BuildShieldParams,
   BuildShieldResult
 } from './shield.js'
+export type {
+  ShieldApprovalMode,
+  ShieldErc20Params,
+  ShieldErc721Params,
+  ShieldExecutionOptions,
+  ShieldParams,
+  ShieldResult
+} from './types.js'

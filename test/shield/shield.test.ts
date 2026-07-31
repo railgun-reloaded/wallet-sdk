@@ -20,7 +20,9 @@ import {
   encodeFunctionResult,
   getAddress,
   hexToBytes,
+  isHex,
   keccak256,
+  maxUint256,
   numberToBytes
 } from 'viem'
 import { privateKeyToAccount } from 'viem/accounts'
@@ -28,6 +30,7 @@ import { mainnet } from 'viem/chains'
 
 import { RailgunClient } from '../../src/client.js'
 import {
+  ERC20_APPROVAL_ABI,
   SHIELD_ABI,
   SHIELD_EVENT_ABI,
   SHIELD_FEE_ABI
@@ -47,7 +50,10 @@ import {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
+  ShieldApprovalRevertedError,
+  ShieldEventMissingError,
   ShieldFeeReadError,
+  ShieldSignatureRejectedError,
   UnexpectedShieldFieldError
 } from '../../src/shield/errors.js'
 import { computeShieldFee } from '../../src/shield/fee.js'
@@ -62,73 +68,10 @@ const FIXED_RANDOM = new Uint8Array(16).fill(7)
 const SHIELD_PRIVATE_KEY = new Uint8Array(32).fill(9)
 const ETHEREUM = NETWORK_CONFIG[NetworkName.Ethereum]
 const NFT_TOKEN_SUB_ID = 42n
-
-const TOKEN_TYPE_NAMES: Record<number, string> = {
-  [TokenType.ERC20]: 'ERC20',
-  [TokenType.ERC721]: 'ERC721'
-}
-
-/**
- * Decode the single shield request carried by shield calldata.
- * @param data - Encoded shield calldata.
- * @returns The decoded shield request struct.
- */
-const decodeRequest = (data: `0x${string}`) => {
-  const decoded = decodeFunctionData({ abi: SHIELD_ABI, data })
-  assert.equal(decoded.functionName, 'shield')
-
-  const [requests] = decoded.args
-  assert.equal(requests.length, 1)
-
-  return requests[0]!
-}
-
-/**
- * Rebuild the on-chain ShieldCommitment that shield calldata would produce, so
- * the note can be recovered the way a chain scanner recovers it.
- * @param data - Encoded shield calldata.
- * @returns The equivalent shield commitment.
- */
-const toShieldCommitment = (data: `0x${string}`): ShieldCommitment => {
-  const request = decodeRequest(data)
-
-  return {
-    hash: new Uint8Array(32),
-    treeNumber: 0,
-    treePosition: 0,
-    preimage: {
-      npk: hexToBytes(request.preimage.npk),
-      token: {
-        id: new Uint8Array(32),
-        tokenType: TOKEN_TYPE_NAMES[request.preimage.token.tokenType]!,
-        tokenAddress: hexToBytes(request.preimage.token.tokenAddress),
-        tokenSubID: numberToBytes(request.preimage.token.tokenSubID, { size: 32 })
-      },
-      value: request.preimage.value
-    },
-    encryptedBundle: request.ciphertext.encryptedBundle.map((part) => hexToBytes(part)),
-    shieldKey: hexToBytes(request.ciphertext.shieldKey)
-  }
-}
-
-/**
- * Build the shield inputs for a recipient, pinning the note random so the
- * recovered note is deterministic. The surrounding calldata is not: the AES
- * initialization vectors inside the shield request are generated per call.
- * @param recipient - 0zk address receiving the note.
- * @returns Shield parameters for the Ethereum mainnet contract.
- */
-const shieldParams = (recipient: string) => ({
-  tokenAddress: TOKEN_ADDRESS as `0x${string}`,
-  amount: AMOUNT,
-  recipient,
-  shieldPrivateKey: SHIELD_PRIVATE_KEY,
-  random: FIXED_RANDOM
-})
-
 const ACCOUNT_ADDRESS = '0x0000000000000000000000000000000000000001'
 const BLOCK_HASH = bytesToHex(new Uint8Array(32).fill(0x11))
 const TX_HASH = bytesToHex(new Uint8Array(32).fill(0x22))
+const APPROVAL_TX_HASH = bytesToHex(new Uint8Array(32).fill(0x33))
 const EVENT_NPK = bytesToHex(new Uint8Array(32).fill(0x44))
 const EVENT_SHIELD_KEY = bytesToHex(new Uint8Array(32).fill(0x55))
 const EVENT_ENCRYPTED_BUNDLE: readonly [Hex, Hex, Hex] = [
@@ -201,6 +144,28 @@ const shieldReceipt = (
   type: 'eip1559'
 })
 
+/**
+ * Convert a local receipt fixture into the RPC wire shape viem formats.
+ * @param receipt - Local bigint/status receipt.
+ * @returns JSON-RPC transaction receipt object.
+ */
+const toRpcReceipt = (receipt: TransactionReceipt) => ({
+  ...receipt,
+  blockNumber: `0x${receipt.blockNumber.toString(16)}`,
+  cumulativeGasUsed: `0x${receipt.cumulativeGasUsed.toString(16)}`,
+  effectiveGasPrice: `0x${receipt.effectiveGasPrice.toString(16)}`,
+  gasUsed: `0x${receipt.gasUsed.toString(16)}`,
+  logs: receipt.logs.map((log) => ({
+    ...log,
+    blockNumber: `0x${log.blockNumber.toString(16)}`,
+    logIndex: `0x${log.logIndex.toString(16)}`,
+    transactionIndex: `0x${log.transactionIndex.toString(16)}`
+  })),
+  status: receipt.status === 'success' ? '0x1' : '0x0',
+  transactionIndex: `0x${receipt.transactionIndex.toString(16)}`,
+  type: '0x2'
+})
+
 type NamedAbiItem = { name: string, type: string }
 
 /**
@@ -212,6 +177,69 @@ const isNamedAbiItem = (value: unknown): value is NamedAbiItem =>
   typeof value === 'object' && value !== null &&
   'name' in value && typeof value.name === 'string' &&
   'type' in value && typeof value.type === 'string'
+
+const TOKEN_TYPE_NAMES: Record<number, string> = {
+  [TokenType.ERC20]: 'ERC20',
+  [TokenType.ERC721]: 'ERC721'
+}
+
+/**
+ * Decode the single shield request carried by shield calldata.
+ * @param data - Encoded shield calldata.
+ * @returns The decoded shield request struct.
+ */
+const decodeRequest = (data: `0x${string}`) => {
+  const decoded = decodeFunctionData({ abi: SHIELD_ABI, data })
+  assert.equal(decoded.functionName, 'shield')
+
+  const [requests] = decoded.args
+  assert.equal(requests.length, 1)
+
+  return requests[0]!
+}
+
+/**
+ * Rebuild the on-chain ShieldCommitment that shield calldata would produce, so
+ * the note can be recovered the way a chain scanner recovers it.
+ * @param data - Encoded shield calldata.
+ * @returns The equivalent shield commitment.
+ */
+const toShieldCommitment = (data: `0x${string}`): ShieldCommitment => {
+  const request = decodeRequest(data)
+
+  return {
+    hash: new Uint8Array(32),
+    treeNumber: 0,
+    treePosition: 0,
+    preimage: {
+      npk: hexToBytes(request.preimage.npk),
+      token: {
+        id: new Uint8Array(32),
+        tokenType: TOKEN_TYPE_NAMES[request.preimage.token.tokenType]!,
+        tokenAddress: hexToBytes(request.preimage.token.tokenAddress),
+        tokenSubID: numberToBytes(request.preimage.token.tokenSubID, { size: 32 })
+      },
+      value: request.preimage.value
+    },
+    encryptedBundle: request.ciphertext.encryptedBundle.map((part) => hexToBytes(part)),
+    shieldKey: hexToBytes(request.ciphertext.shieldKey)
+  }
+}
+
+/**
+ * Build the shield inputs for a recipient, pinning the note random so the
+ * recovered note is deterministic. The surrounding calldata is not: the AES
+ * initialization vectors inside the shield request are generated per call.
+ * @param recipient - 0zk address receiving the note.
+ * @returns Shield parameters for the Ethereum mainnet contract.
+ */
+const shieldParams = (recipient: string) => ({
+  tokenAddress: TOKEN_ADDRESS as `0x${string}`,
+  amount: AMOUNT,
+  recipient,
+  shieldPrivateKey: SHIELD_PRIVATE_KEY,
+  random: FIXED_RANDOM
+})
 
 test('returns an unsigned transaction targeting the configured contract', async () => {
   const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
@@ -490,7 +518,7 @@ test('consecutive shields with identical inputs produce different ciphertexts', 
   )
 })
 
-test('client.shield resolves the network and delegates to the shield free function', async () => {
+test('client.buildShield resolves the network and delegates to the buildShield free function', async () => {
   const walletDB = await createWalletDB({
     path: ':memory:',
     runMigrations: true,
@@ -617,7 +645,7 @@ test('an ERC721 sub-ID outside uint256 is rejected before construction', async (
   }
 })
 
-test('client.shield shields an ERC721 through the network selector', async () => {
+test('client.buildShield shields an ERC721 through the network selector', async () => {
   const walletDB = await createWalletDB({
     path: ':memory:',
     runMigrations: true,
@@ -798,6 +826,287 @@ test('readShieldFee uses the injected public client and wraps RPC failures', asy
       return true
     }
   )
+})
+
+test('client.shield composes derivation, build, send, wait, and receipt parsing', async () => {
+  const signature = await privateKeyToAccount(
+    '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+  ).signMessage({ message: SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE })
+  const methods: string[] = []
+  const signer = createWalletClient({
+    account: ACCOUNT_ADDRESS,
+    chain: mainnet,
+    transport: custom({
+      /**
+       * Serve the offline signing, submission, and receipt fixture.
+       * @param root0 - RPC request.
+       * @param root0.method - RPC method name.
+       * @returns Mocked RPC response for the requested client action.
+       */
+      request: async ({ method }: { method: string }) => {
+        methods.push(method)
+        if (method === 'personal_sign') return signature
+        if (method === 'eth_chainId') return '0x1'
+        if (method === 'eth_sendTransaction') return TX_HASH
+        if (method === 'eth_getTransactionReceipt') {
+          return toRpcReceipt(shieldReceipt())
+        }
+        throw new Error(`Unexpected RPC method ${method}`)
+      }
+    })
+  })
+  const walletDB = await createWalletDB({
+    path: ':memory:',
+    runMigrations: true,
+    migrationsFolder: '../storage/drizzle/wallet'
+  })
+  const client = await RailgunClient.create({ walletDB })
+
+  try {
+    const keys = await deriveWalletKeys(MNEMONIC)
+    const result = await client.shield({
+      tokenAddress: TOKEN_ADDRESS,
+      amount: AMOUNT,
+      recipient: keys.railgunAddress,
+      signer,
+      skipApprove: true,
+      confirmations: 1
+    }, NetworkName.Ethereum)
+
+    assert.ok(result !== undefined)
+    assert.equal(result.txHash, TX_HASH)
+    assert.equal(result.shieldedAmount, 975n)
+    assert.equal(result.fee, 25n)
+    assert.deepEqual(methods, [
+      'personal_sign',
+      'eth_chainId',
+      'eth_sendTransaction',
+      'eth_getTransactionReceipt'
+    ])
+  } finally {
+    await client.close()
+  }
+})
+
+test('client.shield raises rather than returning undefined when the receipt has no Shield event', async () => {
+  const signature = await privateKeyToAccount(
+    '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+  ).signMessage({ message: SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE })
+  const unrelatedTopic = '0x1111111111111111111111111111111111111111111111111111111111111111'
+  const signer = createWalletClient({
+    account: ACCOUNT_ADDRESS,
+    chain: mainnet,
+    transport: custom({
+      /**
+       * Serve a confirmed receipt whose only log is not a Shield event.
+       * @param root0 - RPC request.
+       * @param root0.method - RPC method name.
+       * @returns Mocked RPC response for the requested client action.
+       */
+      request: async ({ method }: { method: string }) => {
+        if (method === 'personal_sign') return signature
+        if (method === 'eth_chainId') return '0x1'
+        if (method === 'eth_sendTransaction') return TX_HASH
+        if (method === 'eth_getTransactionReceipt') {
+          return toRpcReceipt(shieldReceipt(undefined, [unrelatedTopic]))
+        }
+        throw new Error(`Unexpected RPC method ${method}`)
+      }
+    })
+  })
+  const walletDB = await createWalletDB({
+    path: ':memory:',
+    runMigrations: true,
+    migrationsFolder: '../storage/drizzle/wallet'
+  })
+  const client = await RailgunClient.create({ walletDB })
+
+  try {
+    const keys = await deriveWalletKeys(MNEMONIC)
+    await assert.rejects(
+      () => client.shield({
+        tokenAddress: TOKEN_ADDRESS,
+        amount: AMOUNT,
+        recipient: keys.railgunAddress,
+        signer,
+        skipApprove: true,
+        confirmations: 1
+      }, NetworkName.Ethereum),
+      (error: unknown) => {
+        assert.ok(error instanceof ShieldEventMissingError)
+        assert.equal(error.txHash, TX_HASH)
+        return true
+      }
+    )
+  } finally {
+    await client.close()
+  }
+})
+
+test('client.shield encodes exact and unlimited ERC20 approvals', async () => {
+  const signature = await privateKeyToAccount(
+    '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+  ).signMessage({ message: SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE })
+  const zeroAllowance = encodeFunctionResult({
+    abi: ERC20_APPROVAL_ABI,
+    functionName: 'allowance',
+    result: 0n
+  })
+  const walletDB = await createWalletDB({
+    path: ':memory:',
+    runMigrations: true,
+    migrationsFolder: '../storage/drizzle/wallet'
+  })
+  const client = await RailgunClient.create({ walletDB })
+  const keys = await deriveWalletKeys(MNEMONIC)
+
+  try {
+    const vectors: Array<{
+      approvalMode: 'exact' | 'unlimited'
+      expected: bigint
+    }> = [
+      { approvalMode: 'exact', expected: AMOUNT },
+      { approvalMode: 'unlimited', expected: maxUint256 }
+    ]
+    for (const vector of vectors) {
+      const sentData: Hex[] = []
+      let sendCount = 0
+      const signer = createWalletClient({
+        account: ACCOUNT_ADDRESS,
+        chain: mainnet,
+        transport: custom({
+          /**
+           * Serve allowance, approval, shield, and receipt calls offline.
+           * @param root0 - RPC request.
+           * @param root0.method - RPC method name.
+           * @param root0.params - Optional RPC parameters.
+           * @returns Mocked RPC response for the requested action.
+           */
+          request: async ({
+            method,
+            params
+          }: { method: string, params?: readonly unknown[] }) => {
+            if (method === 'personal_sign') return signature
+            if (method === 'eth_call') return zeroAllowance
+            if (method === 'eth_chainId') return '0x1'
+            if (method === 'eth_sendTransaction') {
+              const request = params?.[0]
+              if (
+                typeof request === 'object' && request !== null &&
+                'data' in request && isHex(request.data)
+              ) {
+                sentData.push(request.data)
+              }
+              sendCount += 1
+              return sendCount === 1 ? APPROVAL_TX_HASH : TX_HASH
+            }
+            if (method === 'eth_getTransactionReceipt') {
+              return toRpcReceipt(shieldReceipt())
+            }
+            throw new Error(`Unexpected RPC method ${method}`)
+          }
+        })
+      })
+
+      const result = await client.shield({
+        tokenAddress: TOKEN_ADDRESS,
+        amount: AMOUNT,
+        recipient: keys.railgunAddress,
+        signer,
+        approvalMode: vector.approvalMode
+      }, NetworkName.Ethereum)
+
+      assert.ok(result !== undefined)
+      assert.equal(sentData.length, 2)
+      const decoded = decodeFunctionData({
+        abi: ERC20_APPROVAL_ABI,
+        data: sentData[0]!
+      })
+      assert.equal(decoded.functionName, 'approve')
+      assert.equal(decoded.args[0], getAddress(ETHEREUM.proxyContractAddress))
+      assert.equal(decoded.args[1], vector.expected)
+    }
+  } finally {
+    await client.close()
+  }
+})
+
+test('client.shield exposes signature and approval failures as distinct errors', async () => {
+  const walletDB = await createWalletDB({
+    path: ':memory:',
+    runMigrations: true,
+    migrationsFolder: '../storage/drizzle/wallet'
+  })
+  const client = await RailgunClient.create({ walletDB })
+  const keys = await deriveWalletKeys(MNEMONIC)
+
+  try {
+    const rejectingSigner = createWalletClient({
+      account: ACCOUNT_ADDRESS,
+      chain: mainnet,
+      transport: custom({
+        /**
+         * Simulate wallet rejection for every request.
+         * @returns A rejected promise.
+         */
+        request: async () => {
+          throw new Error('User rejected request')
+        }
+      })
+    })
+    await assert.rejects(
+      () => client.shield({
+        tokenAddress: TOKEN_ADDRESS,
+        amount: AMOUNT,
+        recipient: keys.railgunAddress,
+        signer: rejectingSigner,
+        skipApprove: true
+      }, NetworkName.Ethereum),
+      ShieldSignatureRejectedError
+    )
+
+    const signature = await privateKeyToAccount(
+      '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+    ).signMessage({ message: SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE })
+    const zeroAllowance = encodeFunctionResult({
+      abi: ERC20_APPROVAL_ABI,
+      functionName: 'allowance',
+      result: 0n
+    })
+    const approvalSigner = createWalletClient({
+      account: ACCOUNT_ADDRESS,
+      chain: mainnet,
+      transport: custom({
+        /**
+         * Serve a zero allowance followed by a reverted approval receipt.
+         * @param root0 - RPC request.
+         * @param root0.method - RPC method name.
+         * @returns Mocked RPC response for the requested approval action.
+         */
+        request: async ({ method }: { method: string }) => {
+          if (method === 'personal_sign') return signature
+          if (method === 'eth_call') return zeroAllowance
+          if (method === 'eth_chainId') return '0x1'
+          if (method === 'eth_sendTransaction') return APPROVAL_TX_HASH
+          if (method === 'eth_getTransactionReceipt') {
+            return toRpcReceipt(shieldReceipt(undefined, undefined, 'reverted'))
+          }
+          throw new Error(`Unexpected RPC method ${method}`)
+        }
+      })
+    })
+    await assert.rejects(
+      () => client.shield({
+        tokenAddress: TOKEN_ADDRESS,
+        amount: AMOUNT,
+        recipient: keys.railgunAddress,
+        signer: approvalSigner
+      }, NetworkName.Ethereum),
+      ShieldApprovalRevertedError
+    )
+  } finally {
+    await client.close()
+  }
 })
 
 test('shield module imports no Node built-ins', () => {

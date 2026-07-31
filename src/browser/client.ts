@@ -8,6 +8,8 @@ import type {
   DecryptSummary,
   DecryptedNote,
   ScanParams,
+  ShieldParams,
+  ShieldResult,
   SyncParams,
   SyncSummary,
   TokenBalance
@@ -230,15 +232,30 @@ class RailgunClient {
   }
 
   /**
-   * Build an unsigned transaction shielding tokens to a 0zk recipient. See
-   * `buildShield` in `src/shield/shield.ts` for the full contract.
-   * @param params - Token, recipient, and shield private key.
+   * Build an unsigned shield transaction without signing or network access.
+   * @param params - Token, recipient, and caller-derived shield private key.
    * @param network - Network whose RAILGUN contract receives the shield.
    * @returns The unsigned shield transaction.
-   * @throws {Error} If `network` has no entry in `NETWORK_CONFIG`.
    */
-  buildShield (params: BuildShieldParams, network: NetworkName): Promise<BuildShieldResult> {
+  buildShield (
+    params: BuildShieldParams,
+    network: NetworkName
+  ): Promise<BuildShieldResult> {
     return this.#core.buildShield(params, network)
+  }
+
+  /**
+   * Derive a shield key, approve the token, submit, and parse the receipt.
+   * @param params - Token, recipient, signer, and execution options.
+   * @param network - Network whose RAILGUN contract receives the shield.
+   * @returns Parsed shield result for the confirmed transaction.
+   * @throws {ShieldEventMissingError} If the confirmed receipt carries no Shield event.
+   */
+  shield (
+    params: ShieldParams,
+    network: NetworkName
+  ): Promise<ShieldResult> {
+    return this.#core.shield(params, network)
   }
 
   /**
@@ -253,9 +270,13 @@ class RailgunClient {
 
 export { RailgunClient }
 export type {
+  BuildShieldParams,
+  BuildShieldResult,
   DecryptParams,
   RailgunClientOptions,
   ScanParams,
+  ShieldParams,
+  ShieldResult,
   SyncParams,
   SyncSummary
 }

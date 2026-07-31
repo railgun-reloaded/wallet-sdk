@@ -31,7 +31,7 @@
     "clean": "tsc --build --clean && find src test -type f \\( -name '*.js' -o -name '*.d.ts' -o -name '*.d.ts.map' \\) -delete && rm -f tsconfig.tsbuildinfo tsconfig.test.tsbuildinfo",
     "rebuild": "npm run clean && npm run build",
     "fixture:browser:load-balances": "node config/check-browser-load-balances-fixture.mjs",
-    "check:browser": "npm run build && esbuild src/shield/index.js --bundle --platform=browser --format=esm --outfile=/dev/null",
+    "check:browser": "npm run build && esbuild src/browser/index.js --bundle --platform=browser --format=esm --outfile=/dev/null",
     "pretest": "npm run rebuild",
     "test": "node --test --enable-source-maps test/*.test.js test/**/*.test.js",
     "db:generate:chain": "db-generate-chain"
