@@ -78,12 +78,7 @@ class UnexpectedShieldFieldError extends Error {
   }
 }
 
-/**
- * Thrown when reading the shield fee from the RAILGUN contract fails.
- *
- * Wraps the underlying transport error so callers can distinguish an RPC
- * problem from a contract that returned an unusable value.
- */
+/** Thrown when the contract shield fee cannot be read through the supplied client. */
 class ShieldFeeReadError extends Error {
   /** Contract address whose fee read failed. */
   readonly contractAddress: `0x${string}`
@@ -101,11 +96,118 @@ class ShieldFeeReadError extends Error {
 }
 
 /** Thrown when the wallet rejects or fails shield key signature derivation. */
+class ShieldSignatureRejectedError extends Error {
+  /**
+   * Construct a ShieldSignatureRejectedError.
+   * @param cause - Original wallet signing error.
+   */
+  constructor (cause: unknown) {
+    super('Shield private key signature was rejected or failed.', { cause })
+    this.name = 'ShieldSignatureRejectedError'
+  }
+}
+
+/** Thrown when a token approval transaction fails or is mined as reverted. */
+class ShieldApprovalRevertedError extends Error {
+  /** Token whose approval failed. */
+  readonly tokenAddress: `0x${string}`
+
+  /**
+   * Construct a ShieldApprovalRevertedError.
+   * @param tokenAddress - Token contract whose approval failed.
+   * @param cause - Original viem/RPC error or reverted receipt.
+   */
+  constructor (tokenAddress: `0x${string}`, cause: unknown) {
+    super(`Shield approval failed or reverted for token ${tokenAddress}.`, { cause })
+    this.name = 'ShieldApprovalRevertedError'
+    this.tokenAddress = tokenAddress
+  }
+}
+
+/** Thrown when the shield transaction fails to submit or is mined as reverted. */
+class ShieldTransactionRevertedError extends Error {
+  /** Transaction hash when submission completed before the revert. */
+  readonly txHash: `0x${string}` | undefined
+
+  /**
+   * Construct a ShieldTransactionRevertedError.
+   * @param cause - Original viem/RPC error or reverted receipt.
+   * @param txHash - Submitted transaction hash, when available.
+   */
+  constructor (cause: unknown, txHash?: `0x${string}`) {
+    super('Shield transaction failed or reverted.', { cause })
+    this.name = 'ShieldTransactionRevertedError'
+    this.txHash = txHash
+  }
+}
+
+/** Thrown when an approval or shield receipt exceeds viem's wait timeout. */
+class ShieldReceiptTimeoutError extends Error {
+  /** Transaction stage whose receipt timed out. */
+  readonly stage: 'approval' | 'shield'
+
+  /** Submitted transaction hash. */
+  readonly txHash: `0x${string}`
+
+  /**
+   * Construct a ShieldReceiptTimeoutError.
+   * @param stage - Approval or shield receipt stage.
+   * @param txHash - Submitted transaction hash.
+   * @param cause - Original viem timeout error.
+   */
+  constructor (
+    stage: 'approval' | 'shield',
+    txHash: `0x${string}`,
+    cause: unknown
+  ) {
+    super(`Timed out waiting for the ${stage} transaction receipt ${txHash}.`, { cause })
+    this.name = 'ShieldReceiptTimeoutError'
+    this.stage = stage
+    this.txHash = txHash
+  }
+}
+
+/**
+ * Thrown when a shield transaction succeeds on-chain but its receipt carries no
+ * decodable Shield event.
+ *
+ * `parseShieldReceipt` returns `undefined` in this case because a caller may
+ * legitimately hand it an unrelated receipt. For `shield()` the same state is an
+ * anomaly — the transaction it just submitted and confirmed should always emit
+ * the event — so it is raised rather than returned, keeping the success path
+ * free of a null check.
+ */
+class ShieldEventMissingError extends Error {
+  /** Hash of the confirmed shield transaction. */
+  readonly txHash: `0x${string}`
+
+  /** Contract address the receipt was searched against. */
+  readonly contractAddress: string
+
+  /**
+   * Construct a ShieldEventMissingError.
+   * @param txHash - Hash of the confirmed shield transaction.
+   * @param contractAddress - Contract address the receipt was searched against.
+   */
+  constructor (txHash: `0x${string}`, contractAddress: string) {
+    super(
+      `Shield transaction ${txHash} succeeded but its receipt contains no Shield event from ${contractAddress}.`
+    )
+    this.name = 'ShieldEventMissingError'
+    this.txHash = txHash
+    this.contractAddress = contractAddress
+  }
+}
 
 export {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
+  ShieldApprovalRevertedError,
+  ShieldEventMissingError,
   ShieldFeeReadError,
+  ShieldReceiptTimeoutError,
+  ShieldSignatureRejectedError,
+  ShieldTransactionRevertedError,
   UnexpectedShieldFieldError
 }

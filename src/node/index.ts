@@ -54,21 +54,29 @@ export {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
-  UnexpectedShieldFieldError,
   SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE,
+  ShieldApprovalRevertedError,
+  ShieldEventMissingError,
   ShieldFeeReadError,
+  ShieldReceiptTimeoutError,
+  ShieldSignatureRejectedError,
+  ShieldTransactionRevertedError,
+  UnexpectedShieldFieldError,
+  buildShield,
   computeShieldFee,
   deriveShieldPrivateKey,
   parseShieldReceipt,
   readShieldFee,
-  shieldPrivateKeyFromSignature,
-  buildShield
+  shieldPrivateKeyFromSignature
 } from '../shield/index.js'
 export type {
   BuildShieldParams,
   BuildShieldResult,
+  ShieldApprovalMode,
   ShieldCommitmentPreimage,
-  ShieldReceiptResult
+  ShieldParams,
+  ShieldReceiptResult,
+  ShieldResult
 } from '../shield/index.js'
 
 export {
