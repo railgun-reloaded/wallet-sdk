@@ -56,12 +56,20 @@ export {
   InvalidTokenSubIDError,
   UnexpectedShieldFieldError,
   SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE,
+  ShieldFeeReadError,
   computeShieldFee,
   deriveShieldPrivateKey,
+  parseShieldReceipt,
+  readShieldFee,
   shieldPrivateKeyFromSignature,
   shield
 } from '../shield/index.js'
-export type { ShieldParams, ShieldResult } from '../shield/index.js'
+export type {
+  ShieldCommitmentPreimage,
+  ShieldParams,
+  ShieldReceiptResult,
+  ShieldResult
+} from '../shield/index.js'
 
 export {
   COMMITMENT_TREE_CAPACITY,

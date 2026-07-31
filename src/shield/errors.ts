@@ -78,9 +78,34 @@ class UnexpectedShieldFieldError extends Error {
   }
 }
 
+/**
+ * Thrown when reading the shield fee from the RAILGUN contract fails.
+ *
+ * Wraps the underlying transport error so callers can distinguish an RPC
+ * problem from a contract that returned an unusable value.
+ */
+class ShieldFeeReadError extends Error {
+  /** Contract address whose fee read failed. */
+  readonly contractAddress: `0x${string}`
+
+  /**
+   * Construct a ShieldFeeReadError.
+   * @param contractAddress - Contract whose `shieldFee()` call failed.
+   * @param cause - Original viem/RPC error.
+   */
+  constructor (contractAddress: `0x${string}`, cause: unknown) {
+    super(`Failed to read shield fee from ${contractAddress}.`, { cause })
+    this.name = 'ShieldFeeReadError'
+    this.contractAddress = contractAddress
+  }
+}
+
+/** Thrown when the wallet rejects or fails shield key signature derivation. */
+
 export {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
+  ShieldFeeReadError,
   UnexpectedShieldFieldError
 }

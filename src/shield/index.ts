@@ -10,6 +10,7 @@ export {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
+  ShieldFeeReadError,
   UnexpectedShieldFieldError
 } from './errors.js'
 export {
@@ -18,6 +19,11 @@ export {
   shieldPrivateKeyFromSignature
 } from './derivation.js'
 export { computeShieldFee } from './fee.js'
+export { parseShieldReceipt, readShieldFee } from './receipt.js'
+export type {
+  ShieldCommitmentPreimage,
+  ShieldReceiptResult
+} from './receipt.js'
 export { shield } from './shield.js'
 export type {
   ShieldBaseParams,
