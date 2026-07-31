@@ -12,6 +12,12 @@ export {
   InvalidTokenSubIDError,
   UnexpectedShieldFieldError
 } from './errors.js'
+export {
+  SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE,
+  deriveShieldPrivateKey,
+  shieldPrivateKeyFromSignature
+} from './derivation.js'
+export { computeShieldFee } from './fee.js'
 export { shield } from './shield.js'
 export type {
   ShieldBaseParams,

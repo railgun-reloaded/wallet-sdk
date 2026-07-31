@@ -43,6 +43,8 @@ export { NETWORK_CONFIG, NetworkName } from '../network-config.js'
 
 export type { UnsignedTx } from '../contracts/index.js'
 export {
+  SHIELD_ABI,
+  SHIELD_EVENT_ABI,
   UnsupportedChainError,
   UnsupportedTokenTypeError,
   buildShieldTransaction
@@ -53,6 +55,10 @@ export {
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
   UnexpectedShieldFieldError,
+  SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE,
+  computeShieldFee,
+  deriveShieldPrivateKey,
+  shieldPrivateKeyFromSignature,
   shield
 } from '../shield/index.js'
 export type { ShieldParams, ShieldResult } from '../shield/index.js'

@@ -61,4 +61,134 @@ const SHIELD_ABI = [
   }
 ] as const
 
-export { SHIELD_ABI, SHIELD_FUNCTION_SIGNATURE }
+/**
+ * Minimal ABI fragment for the V2.1 `Shield` event.
+ *
+ * This is the five-field event emitted by RailgunV2_1. The final `fees`
+ * array is required to distinguish the net shielded value from the inclusive
+ * amount supplied by the caller.
+ */
+const SHIELD_EVENT_ABI = [
+  {
+    name: 'Shield',
+    type: 'event',
+    anonymous: false,
+    inputs: [
+      { name: 'treeNumber', type: 'uint256', indexed: false },
+      { name: 'startPosition', type: 'uint256', indexed: false },
+      {
+        name: 'commitments',
+        type: 'tuple[]',
+        indexed: false,
+        components: [
+          { name: 'npk', type: 'bytes32' },
+          {
+            name: 'token',
+            type: 'tuple',
+            components: [
+              { name: 'tokenType', type: 'uint8' },
+              { name: 'tokenAddress', type: 'address' },
+              { name: 'tokenSubID', type: 'uint256' }
+            ]
+          },
+          { name: 'value', type: 'uint120' }
+        ]
+      },
+      {
+        name: 'shieldCiphertext',
+        type: 'tuple[]',
+        indexed: false,
+        components: [
+          { name: 'encryptedBundle', type: 'bytes32[3]' },
+          { name: 'shieldKey', type: 'bytes32' }
+        ]
+      },
+      { name: 'fees', type: 'uint256[]', indexed: false }
+    ]
+  }
+] as const
+
+/** Minimal ABI fragment for the public shield fee getter. */
+const SHIELD_FEE_ABI = [
+  {
+    name: 'shieldFee',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [],
+    outputs: [{ name: '', type: 'uint120' }]
+  }
+] as const
+
+/** Minimal ERC20 approval surface used by the high-level shield path. */
+const ERC20_APPROVAL_ABI = [
+  {
+    name: 'allowance',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'spender', type: 'address' }
+    ],
+    outputs: [{ name: '', type: 'uint256' }]
+  },
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'spender', type: 'address' },
+      { name: 'amount', type: 'uint256' }
+    ],
+    outputs: [{ name: '', type: 'bool' }]
+  }
+] as const
+
+/** Minimal ERC721 approval surface used by the high-level shield path. */
+const ERC721_APPROVAL_ABI = [
+  {
+    name: 'getApproved',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [{ name: 'tokenId', type: 'uint256' }],
+    outputs: [{ name: '', type: 'address' }]
+  },
+  {
+    name: 'isApprovedForAll',
+    type: 'function',
+    stateMutability: 'view',
+    inputs: [
+      { name: 'owner', type: 'address' },
+      { name: 'operator', type: 'address' }
+    ],
+    outputs: [{ name: '', type: 'bool' }]
+  },
+  {
+    name: 'approve',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'to', type: 'address' },
+      { name: 'tokenId', type: 'uint256' }
+    ],
+    outputs: []
+  },
+  {
+    name: 'setApprovalForAll',
+    type: 'function',
+    stateMutability: 'nonpayable',
+    inputs: [
+      { name: 'operator', type: 'address' },
+      { name: 'approved', type: 'bool' }
+    ],
+    outputs: []
+  }
+] as const
+
+export {
+  ERC20_APPROVAL_ABI,
+  ERC721_APPROVAL_ABI,
+  SHIELD_ABI,
+  SHIELD_EVENT_ABI,
+  SHIELD_FEE_ABI,
+  SHIELD_FUNCTION_SIGNATURE
+}

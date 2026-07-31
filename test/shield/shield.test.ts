@@ -10,14 +10,19 @@ import { ShieldNote, TokenType } from '@railgun-reloaded/wallet-node'
 import {
   IntegerOutOfRangeError,
   bytesToHex,
+  createWalletClient,
+  custom,
   decodeFunctionData,
   getAddress,
   hexToBytes,
+  keccak256,
   numberToBytes
 } from 'viem'
+import { privateKeyToAccount } from 'viem/accounts'
+import { mainnet } from 'viem/chains'
 
 import { RailgunClient } from '../../src/client.js'
-import { SHIELD_ABI } from '../../src/contracts/abi.js'
+import { SHIELD_ABI, SHIELD_EVENT_ABI } from '../../src/contracts/abi.js'
 import {
   UnsupportedChainError,
   UnsupportedTokenTypeError
@@ -25,11 +30,17 @@ import {
 import { NETWORK_CONFIG, NetworkName } from '../../src/network-config.js'
 import { deriveWalletKeys } from '../../src/services/wallet/keys.js'
 import {
+  SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE,
+  deriveShieldPrivateKey,
+  shieldPrivateKeyFromSignature
+} from '../../src/shield/derivation.js'
+import {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
   UnexpectedShieldFieldError
 } from '../../src/shield/errors.js'
+import { computeShieldFee } from '../../src/shield/fee.js'
 import type { ShieldParams } from '../../src/shield/shield.js'
 import { shield } from '../../src/shield/shield.js'
 import { MNEMONIC } from '../fixtures/wallet-vectors.js'
@@ -103,6 +114,18 @@ const shieldParams = (recipient: string) => ({
   shieldPrivateKey: SHIELD_PRIVATE_KEY,
   random: FIXED_RANDOM
 })
+
+type NamedAbiItem = { name: string, type: string }
+
+/**
+ * Narrow an unknown JSON value to a named ABI item.
+ * @param value - JSON value to inspect.
+ * @returns Whether the value has string ABI `name` and `type` fields.
+ */
+const isNamedAbiItem = (value: unknown): value is NamedAbiItem =>
+  typeof value === 'object' && value !== null &&
+  'name' in value && typeof value.name === 'string' &&
+  'type' in value && typeof value.type === 'string'
 
 test('returns an unsigned transaction targeting the configured contract', async () => {
   const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
@@ -537,6 +560,86 @@ test('client.shield shields an ERC721 through the network selector', async () =>
   } finally {
     await client.close()
   }
+})
+
+test('shield private key derivation matches keccak256 of the EIP-191 signature', async () => {
+  const account = privateKeyToAccount(
+    '0x0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
+  )
+  const signer = createWalletClient({
+    account,
+    chain: mainnet,
+    transport: custom({
+      /**
+       * Reject if local account signing unexpectedly reaches the transport.
+       * @returns A rejected promise.
+       */
+      request: async () => {
+        throw new Error('Local signing should not use the transport.')
+      }
+    })
+  })
+
+  const signature = await account.signMessage({
+    message: SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE
+  })
+  const expected = hexToBytes(keccak256(signature))
+
+  assert.equal(SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE, 'RAILGUN_SHIELD')
+  assert.deepEqual(await deriveShieldPrivateKey(signer), expected)
+  assert.deepEqual(shieldPrivateKeyFromSignature(signature), expected)
+  assert.equal(expected.length, 32)
+})
+
+test('computeShieldFee matches independently calculated inclusive ERC20 vectors', () => {
+  const vectors = [
+    { amount: 0n, feeBasisPoints: 0n, expectedNet: 0n, expectedFee: 0n },
+    { amount: 1n, feeBasisPoints: 25n, expectedNet: 1n, expectedFee: 0n },
+    { amount: 10_000n, feeBasisPoints: 1n, expectedNet: 9_999n, expectedFee: 1n },
+    { amount: 10_001n, feeBasisPoints: 25n, expectedNet: 9_976n, expectedFee: 25n },
+    { amount: 999_999n, feeBasisPoints: 0n, expectedNet: 999_999n, expectedFee: 0n },
+    { amount: 3n, feeBasisPoints: 5_000n, expectedNet: 2n, expectedFee: 1n }
+  ]
+
+  for (const vector of vectors) {
+    const result = computeShieldFee(vector.amount, vector.feeBasisPoints)
+    assert.equal(result.net, vector.expectedNet)
+    assert.equal(result.fee, vector.expectedFee)
+  }
+})
+
+test('computeShieldFee rejects negative amounts and out-of-range contract fees', () => {
+  assert.throws(() => computeShieldFee(-1n, 25n), RangeError)
+  assert.throws(() => computeShieldFee(1n, -1n), RangeError)
+  assert.throws(() => computeShieldFee(1n, 5_001n), RangeError)
+})
+
+test('Shield event ABI matches the five-field RailgunV2_1 contract ABI', () => {
+  const abiPath = join(
+    import.meta.dirname,
+    '..',
+    '..',
+    'node_modules',
+    '@railgun-reloaded',
+    'contract-abis',
+    'abis',
+    'RailgunV2_1.json'
+  )
+  const parsed: unknown = JSON.parse(readFileSync(abiPath, 'utf8'))
+  assert.ok(Array.isArray(parsed))
+  const contractEvent = parsed.find((item: unknown) =>
+    isNamedAbiItem(item) && item.type === 'event' && item.name === 'Shield'
+  )
+  assert.ok(contractEvent !== undefined)
+
+  const withoutInternalTypes: unknown = JSON.parse(JSON.stringify(
+    contractEvent,
+    (key, value: unknown) => key === 'internalType' ? undefined : value
+  ))
+  assert.deepEqual(withoutInternalTypes, SHIELD_EVENT_ABI[0])
+  assert.equal(SHIELD_EVENT_ABI[0].inputs.length, 5)
+  assert.equal(SHIELD_EVENT_ABI[0].inputs[4].name, 'fees')
+  assert.equal(SHIELD_EVENT_ABI[0].inputs[4].type, 'uint256[]')
 })
 
 test('shield module imports no Node built-ins', () => {
