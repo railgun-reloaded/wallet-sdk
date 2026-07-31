@@ -6,6 +6,16 @@
  * flows extend this file instead of declaring their own fragments.
  */
 
+// @TODO: these fragments duplicate the shared contract ABI package, and are the
+// third copy in the workspace alongside the snapshot checkpoint fragments and
+// the ones consumers hand-write to decode their own receipts. The shared package
+// ships whole-contract artifacts, so importing it to obtain a single event is
+// what motivated inlining here. The duplication is a correctness hazard rather
+// than a tidiness one: the older V2 artifact declares the Shield event with four
+// fields and no `fees` while the deployed contract emits five, so a stale copy
+// decodes without error and silently drops the fee. Replace these with named
+// fragment exports from the shared package once it publishes them.
+
 /**
  * Canonical Solidity signature of `shield`. The 4-byte selector is derived
  * from this string, so tests can assert the selector without hardcoding it.
