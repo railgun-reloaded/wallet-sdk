@@ -7,12 +7,17 @@ import { RailgunAddressError } from '@railgun-reloaded/0zk-addresses'
 import type { ShieldCommitment } from '@railgun-reloaded/scanner'
 import { createWalletDB } from '@railgun-reloaded/storage/node'
 import { ShieldNote, TokenType } from '@railgun-reloaded/wallet-node'
+import type { Hex, TransactionReceipt } from 'viem'
 import {
   IntegerOutOfRangeError,
   bytesToHex,
+  createPublicClient,
   createWalletClient,
   custom,
   decodeFunctionData,
+  encodeAbiParameters,
+  encodeEventTopics,
+  encodeFunctionResult,
   getAddress,
   hexToBytes,
   keccak256,
@@ -22,7 +27,11 @@ import { privateKeyToAccount } from 'viem/accounts'
 import { mainnet } from 'viem/chains'
 
 import { RailgunClient } from '../../src/client.js'
-import { SHIELD_ABI, SHIELD_EVENT_ABI } from '../../src/contracts/abi.js'
+import {
+  SHIELD_ABI,
+  SHIELD_EVENT_ABI,
+  SHIELD_FEE_ABI
+} from '../../src/contracts/abi.js'
 import {
   UnsupportedChainError,
   UnsupportedTokenTypeError
@@ -38,9 +47,11 @@ import {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
   InvalidTokenSubIDError,
+  ShieldFeeReadError,
   UnexpectedShieldFieldError
 } from '../../src/shield/errors.js'
 import { computeShieldFee } from '../../src/shield/fee.js'
+import { parseShieldReceipt, readShieldFee } from '../../src/shield/receipt.js'
 import type { ShieldParams } from '../../src/shield/shield.js'
 import { shield } from '../../src/shield/shield.js'
 import { MNEMONIC } from '../fixtures/wallet-vectors.js'
@@ -113,6 +124,81 @@ const shieldParams = (recipient: string) => ({
   recipient,
   shieldPrivateKey: SHIELD_PRIVATE_KEY,
   random: FIXED_RANDOM
+})
+
+const ACCOUNT_ADDRESS = '0x0000000000000000000000000000000000000001'
+const BLOCK_HASH = bytesToHex(new Uint8Array(32).fill(0x11))
+const TX_HASH = bytesToHex(new Uint8Array(32).fill(0x22))
+const EVENT_NPK = bytesToHex(new Uint8Array(32).fill(0x44))
+const EVENT_SHIELD_KEY = bytesToHex(new Uint8Array(32).fill(0x55))
+const EVENT_ENCRYPTED_BUNDLE: readonly [Hex, Hex, Hex] = [
+  bytesToHex(new Uint8Array(32).fill(0x66)),
+  bytesToHex(new Uint8Array(32).fill(0x77)),
+  bytesToHex(new Uint8Array(32).fill(0x88))
+]
+
+const EVENT_COMMITMENT = {
+  npk: EVENT_NPK,
+  token: {
+    tokenType: 0,
+    tokenAddress: getAddress(TOKEN_ADDRESS),
+    tokenSubID: 0n
+  },
+  value: 975n
+}
+
+const SHIELD_EVENT_DATA = encodeAbiParameters(
+  SHIELD_EVENT_ABI[0].inputs,
+  [
+    2n,
+    9n,
+    [EVENT_COMMITMENT],
+    [{ encryptedBundle: EVENT_ENCRYPTED_BUNDLE, shieldKey: EVENT_SHIELD_KEY }],
+    [25n]
+  ]
+)
+
+const SHIELD_EVENT_TOPICS = encodeEventTopics({
+  abi: SHIELD_EVENT_ABI,
+  eventName: 'Shield'
+})
+
+/**
+ * Build a viem receipt containing one V2.1 Shield event.
+ * @param address - Address emitting the event.
+ * @param topics - Topics attached to the event log.
+ * @param status - Receipt execution status.
+ * @returns Complete transaction receipt for parser and client tests.
+ */
+const shieldReceipt = (
+  address = getAddress(ETHEREUM.proxyContractAddress),
+  topics: [Hex, ...Hex[]] = [SHIELD_EVENT_TOPICS[0]],
+  status: 'success' | 'reverted' = 'success'
+): TransactionReceipt => ({
+  blockHash: BLOCK_HASH,
+  blockNumber: 12n,
+  contractAddress: null,
+  cumulativeGasUsed: 100_000n,
+  effectiveGasPrice: 1n,
+  from: ACCOUNT_ADDRESS,
+  gasUsed: 90_000n,
+  logs: [{
+    address,
+    blockHash: BLOCK_HASH,
+    blockNumber: 12n,
+    data: SHIELD_EVENT_DATA,
+    logIndex: 0,
+    removed: false,
+    topics,
+    transactionHash: TX_HASH,
+    transactionIndex: 0
+  }],
+  logsBloom: '0x00',
+  status,
+  to: getAddress(ETHEREUM.proxyContractAddress),
+  transactionHash: TX_HASH,
+  transactionIndex: 0,
+  type: 'eip1559'
 })
 
 type NamedAbiItem = { name: string, type: string }
@@ -640,6 +726,78 @@ test('Shield event ABI matches the five-field RailgunV2_1 contract ABI', () => {
   assert.equal(SHIELD_EVENT_ABI[0].inputs.length, 5)
   assert.equal(SHIELD_EVENT_ABI[0].inputs[4].name, 'fees')
   assert.equal(SHIELD_EVENT_ABI[0].inputs[4].type, 'uint256[]')
+})
+
+test('parseShieldReceipt filters by contract and topic and returns V2.1 values', () => {
+  const receipt = shieldReceipt()
+  receipt.logs.unshift({
+    ...receipt.logs[0]!,
+    address: '0x0000000000000000000000000000000000000002'
+  })
+  const result = parseShieldReceipt(receipt, ETHEREUM.proxyContractAddress)
+
+  assert.ok(result !== undefined)
+  assert.equal(result.txHash, TX_HASH)
+  assert.equal(result.receipt, receipt)
+  assert.equal(result.treeNumber, 2n)
+  assert.equal(result.startPosition, 9n)
+  assert.deepEqual(result.commitment, EVENT_COMMITMENT)
+  assert.equal(result.shieldedAmount, 975n)
+  assert.equal(result.fee, 25n)
+
+  assert.equal(
+    parseShieldReceipt(receipt, '0x0000000000000000000000000000000000000003'),
+    undefined
+  )
+  const wrongTopic: [Hex] = [bytesToHex(new Uint8Array(32).fill(0x99))]
+  assert.equal(
+    parseShieldReceipt(shieldReceipt(undefined, wrongTopic), ETHEREUM.proxyContractAddress),
+    undefined
+  )
+})
+
+test('readShieldFee uses the injected public client and wraps RPC failures', async () => {
+  const encodedFee = encodeFunctionResult({
+    abi: SHIELD_FEE_ABI,
+    functionName: 'shieldFee',
+    result: 25n
+  })
+  const publicClient = createPublicClient({
+    transport: custom({
+      /**
+       * Return the encoded fee for the contract read.
+       * @param root0 - RPC request.
+       * @param root0.method - RPC method name.
+       * @returns Encoded `shieldFee()` result.
+       */
+      request: async ({ method }: { method: string }) => {
+        if (method === 'eth_call') return encodedFee
+        throw new Error(`Unexpected RPC method ${method}`)
+      }
+    })
+  })
+
+  assert.equal(await readShieldFee(publicClient, ETHEREUM.proxyContractAddress), 25n)
+
+  const failingClient = createPublicClient({
+    transport: custom({
+      /**
+       * Simulate an unavailable RPC transport.
+       * @returns A rejected promise.
+       */
+      request: async () => {
+        throw new Error('RPC unavailable')
+      }
+    })
+  })
+  await assert.rejects(
+    () => readShieldFee(failingClient, ETHEREUM.proxyContractAddress),
+    (error: unknown) => {
+      assert.ok(error instanceof ShieldFeeReadError)
+      assert.equal(error.contractAddress, getAddress(ETHEREUM.proxyContractAddress))
+      return true
+    }
+  )
 })
 
 test('shield module imports no Node built-ins', () => {
