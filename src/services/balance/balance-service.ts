@@ -1,5 +1,6 @@
 import { bytesToHex } from '@railgun-reloaded/bytes'
 import type { DBNote, WalletStorage } from '@railgun-reloaded/storage'
+import { TokenType } from '@railgun-reloaded/wallet-node'
 
 import type { NetworkConfig as NetworkConfigEntry } from '../../network-config.js'
 import { NETWORK_CONFIG } from '../../network-config.js'
@@ -19,14 +20,22 @@ type TokenBalance = {
   balance: bigint
 }
 
+/**
+ * An unspent private ERC-721 holding.
+ */
+type ERC721Holding = {
+  token: string
+  tokenSubID: string
+}
+
 type BalanceMode = 'spendable' | 'all' | WalletBalanceBucket
 
 /**
  * A note owned by a wallet. Bytes columns are exposed as 0x-prefixed lowercase
  * hex; the leaf index is widened to bigint for uniformity with `blockNumber`
- * and `amount`. `tokenType` is the integer token-class enum
- * (0 = ERC20, 1 = ERC721); `tokenSubID` is the 32-byte
- * sub-identifier (zero hex for ERC20). `spendState` separates protocol
+ * and `amount`. `tokenType` is the protocol `TokenType` discriminant;
+ * `tokenSubID` is the 32-byte sub-identifier (zero hex for ERC20).
+ * `spendState` separates protocol
  * spendability from optional POI-service state.
  */
 type DecryptedNote = {
@@ -153,7 +162,7 @@ function mapNoteSpendState (
 }
 
 /**
- * Add a note amount to a token balance accumulator.
+ * Add an ERC-20 note amount to a token balance accumulator.
  * @param balances - Mutable token balance map.
  * @param note - Stored note whose amount should be added.
  */
@@ -161,6 +170,9 @@ function addNoteBalance (
   balances: Map<string, bigint>,
   note: DBNote
 ): void {
+  if (note.tokenType !== TokenType.ERC20) {
+    return
+  }
   balances.set(note.token, (balances.get(note.token) ?? 0n) + note.amount)
 }
 
@@ -313,6 +325,26 @@ class BalanceService {
   }
 
   /**
+   * Read unspent private ERC-721 holdings for a wallet on a given chain.
+   * @param walletId - Wallet ID returned by `createWallet`.
+   * @param chainId - Chain id to scope the lookup to.
+   * @returns ERC-721 contract addresses and token sub-IDs.
+   */
+  async getNFTs (
+    walletId: string,
+    chainId: number
+  ): Promise<ERC721Holding[]> {
+    await this.#assertWalletExists(walletId)
+    const notes = await this.#storage.getUnspentNotes(walletId, chainId)
+    return notes
+      .filter(note => note.tokenType === TokenType.ERC721)
+      .map(note => ({
+        token: note.token,
+        tokenSubID: bytesToHex(note.tokenSubID, { prefix: true })
+      }))
+  }
+
+  /**
    * Read decrypted notes for a wallet on a given chain.
    * @param walletId - Wallet ID returned by `createWallet`.
    * @param chainId - Chain id to scope the lookup to.
@@ -334,4 +366,4 @@ class BalanceService {
 }
 
 export { BalanceService, mapNoteRow, mapNoteSpendState }
-export type { BalanceMode, DecryptedNote, TokenBalance }
+export type { BalanceMode, DecryptedNote, ERC721Holding, TokenBalance }

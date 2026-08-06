@@ -19,6 +19,7 @@ import type {
   DecryptParams,
   DecryptSummary,
   DecryptedNote,
+  ERC721Holding,
   ScanParams,
   ShieldParams,
   ShieldResult,
@@ -247,6 +248,19 @@ class RailgunClient {
     chainId: number
   ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
     return this.#core.getBalancesByBucket(walletId, chainId)
+  }
+
+  /**
+   * Read unspent private ERC-721 holdings for a wallet on a given chain.
+   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
+   * @param chainId - Chain id to scope the lookup to.
+   * @returns ERC-721 contract addresses and token sub-IDs.
+   */
+  getNFTs (
+    walletId: string,
+    chainId: number
+  ): Promise<ERC721Holding[]> {
+    return this.#core.getNFTs(walletId, chainId)
   }
 
   /**
@@ -679,6 +693,7 @@ export type {
   BuildShieldParams,
   BuildShieldResult,
   DecryptedNote,
+  ERC721Holding,
   DecryptParams,
   RailgunClientOptions,
   ScanParams,

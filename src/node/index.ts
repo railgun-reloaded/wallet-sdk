@@ -10,6 +10,7 @@ export type {
   BalanceMode,
   DecryptedNote,
   DecryptParams,
+  ERC721Holding,
   RailgunClientOptions,
   ScanParams,
   SyncParams,
@@ -17,6 +18,8 @@ export type {
   SyncSummary,
   TokenBalance
 } from '../client.js'
+
+export { TokenType } from '@railgun-reloaded/wallet-node'
 
 export type { DecryptSummary } from '../sync/wallet-decryptor.js'
 export { SyncPhase } from '../sync/wallet-decryptor.js'

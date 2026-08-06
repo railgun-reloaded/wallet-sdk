@@ -34,6 +34,7 @@ import {
 import type {
   BalanceMode,
   DecryptedNote,
+  ERC721Holding,
   TokenBalance
 } from './services/balance/balance-service.js'
 import { BalanceService } from './services/balance/balance-service.js'
@@ -270,6 +271,19 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     chainId: number
   ): Promise<Record<WalletBalanceBucket, TokenBalance[]>> {
     return this.#balanceService.getBalancesByBucket(walletId, chainId)
+  }
+
+  /**
+   * Read unspent private ERC-721 holdings for a wallet on a given chain.
+   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
+   * @param chainId - Chain id to scope the lookup to.
+   * @returns ERC-721 contract addresses and token sub-IDs.
+   */
+  getNFTs (
+    walletId: string,
+    chainId: number
+  ): Promise<ERC721Holding[]> {
+    return this.#balanceService.getNFTs(walletId, chainId)
   }
 
   /**
@@ -697,6 +711,7 @@ export { RailgunClientCore }
 export type {
   BalanceMode,
   DecryptedNote,
+  ERC721Holding,
   DecryptSummary,
   DecryptParams,
   RailgunClientCoreEngine,

@@ -25,8 +25,11 @@ export { RailgunEngine } from './engine.js'
 export type {
   BalanceMode,
   DecryptedNote,
+  ERC721Holding,
   TokenBalance
 } from '../services/balance/balance-service.js'
+
+export { TokenType } from '@railgun-reloaded/wallet-node'
 
 export type { DecryptSummary, SyncProgress } from '../sync/wallet-decryptor.js'
 export { SyncPhase } from '../sync/wallet-decryptor.js'

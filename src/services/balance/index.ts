@@ -6,6 +6,7 @@ export {
 export type {
   BalanceMode,
   DecryptedNote,
+  ERC721Holding,
   TokenBalance
 } from './balance-service.js'
 

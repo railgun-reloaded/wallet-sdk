@@ -12,6 +12,7 @@ import {
   createWalletDB,
   createWalletStorage
 } from '@railgun-reloaded/storage/node'
+import { TokenType } from '@railgun-reloaded/wallet-node'
 
 import { RailgunClient as BrowserRailgunClient } from '../src/browser/client.js'
 import { RailgunClient, SyncPhase } from '../src/client.js'
@@ -181,7 +182,33 @@ test('RailgunClient balance API returns empty values for an empty wallet', async
 
   const balances = await client.getBalances(wallet.walletId, 11155111)
   assert.deepEqual(balances, [])
+  assert.deepEqual(await client.getNFTs(wallet.walletId, 11155111), [])
   assert.deepEqual(await client.getNotes(wallet.walletId, 11155111), [])
+  await client.close()
+})
+
+test('RailgunClient.getNFTs returns private ERC721 holdings', async () => {
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
+  const key = new Uint8Array(randomBytes(32))
+  const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
+  const token = '0x1111111111111111111111111111111111111111'
+  const tokenSubID = filledBytes(42)
+
+  await seedNotes(walletDB, wallet.walletId, [
+    noteFixture({
+      commitment: filledBytes(40),
+      nullifier: filledBytes(41),
+      token,
+      tokenType: TokenType.ERC721,
+      tokenSubID
+    })
+  ])
+
+  assert.deepEqual(await client.getNFTs(wallet.walletId, 11155111), [{
+    token,
+    tokenSubID: `0x${'2a'.repeat(32)}`
+  }])
   await client.close()
 })
 
@@ -258,6 +285,7 @@ test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', 
   for (const action of [
     () => client.getBalances(unknown, 11155111),
     () => client.getBalancesByBucket(unknown, 11155111),
+    () => client.getNFTs(unknown, 11155111),
     () => client.getNotes(unknown, 11155111)
   ]) {
     try {
