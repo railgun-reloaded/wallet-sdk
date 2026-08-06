@@ -63,6 +63,7 @@ type RailgunClientCoreEngine = {
   setDataSource: (dataSource: SourceAggregator<EVMBlock>) => void
   setNetwork: (networkName: NetworkName) => Promise<void>
   scan: (options?: {
+    startBlock?: bigint | undefined
     endBlock?: bigint | undefined
     onBatch?: ((startHeight: bigint, lastBlock: bigint) => void) | undefined
     persistRailgunTransactions?: boolean | undefined
@@ -76,6 +77,12 @@ type RailgunClientCoreEngine = {
 type ScanParams = {
   network: NetworkName
   dataSource: SourceAggregator<EVMBlock>
+  /**
+   * Inclusive chain ingestion floor on empty storage. Values below the
+   * network deployment block are rejected. Ignored when a cursor exists.
+   */
+  startBlock?: bigint
+  /** Inclusive ceiling on chain ingestion. */
   endBlock?: bigint
   /** Fired per batch with `phase: 'scan'`. Synchronous; throwing aborts the run. */
   onProgress?: (progress: SyncProgress) => void
@@ -105,9 +112,14 @@ type DecryptParams = {
 type SyncParams = {
   network: NetworkName
   dataSource: SourceAggregator<EVMBlock>
+  /**
+   * Inclusive chain ingestion floor on empty storage. Values below the
+   * network deployment block are rejected. Ignored when a cursor exists.
+   */
+  startBlock?: bigint
   /** Inclusive ceiling on chain ingestion. */
   endBlock?: bigint
-  /** Override the wallet decryption cursor; defaults to scanState + 1. */
+  /** Override only the wallet decryption cursor; defaults to scanState + 1. */
   fromBlock?: bigint
   /** Stop point for decryption; defaults to chain storage's tip. */
   toBlock?: bigint
@@ -287,6 +299,7 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     await this.#engine.setNetwork(params.network)
     const onProgress = params.onProgress
     return this.#engine.scan({
+      ...(params.startBlock !== undefined && { startBlock: params.startBlock }),
       ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
       ...(onProgress !== undefined && {
         onBatch: makeScanOnBatch(onProgress, params.endBlock)
@@ -354,6 +367,7 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     const lastBlock = await this.scan({
       network: params.network,
       dataSource: params.dataSource,
+      ...(params.startBlock !== undefined && { startBlock: params.startBlock }),
       ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
       ...(params.onProgress !== undefined && { onProgress: params.onProgress })
     })

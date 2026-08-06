@@ -330,7 +330,7 @@ class RailgunClient {
     const previousLastBlock = await this.#getPreviousChainLastBlock(chainId)
     const scanStartBlock = previousLastBlock !== undefined
       ? previousLastBlock + 1n
-      : NETWORK_CONFIG[params.network].deploymentBlock
+      : params.startBlock ?? NETWORK_CONFIG[params.network].deploymentBlock
     const startedAt = Date.now()
     let blocksScanned = 0n
 
@@ -350,6 +350,7 @@ class RailgunClient {
 
     try {
       const lastBlock = await this.#engine.scan({
+        ...(params.startBlock !== undefined && { startBlock: params.startBlock }),
         ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
         onBatch
       })
@@ -487,6 +488,7 @@ class RailgunClient {
       const lastBlock = await this.scan({
         network: params.network,
         dataSource: params.dataSource,
+        ...(params.startBlock !== undefined && { startBlock: params.startBlock }),
         ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
         ...(params.onProgress !== undefined && { onProgress: params.onProgress })
       })
