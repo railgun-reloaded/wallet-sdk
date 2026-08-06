@@ -92,18 +92,14 @@ class WalletService {
     const encryptedKeys = encryptWalletBlob({ mnemonic, index }, encryptionKey)
     const createdAt = new Date()
 
-    try {
-      await this.#storage.createWallet({
-        id: walletId,
-        encryptedKeys,
-        name: name ?? null,
-        createdAt
-      })
-    } catch (err: unknown) {
-      if (isPrimaryKeyConflict(err)) {
-        throw new WalletAlreadyExistsError(walletId)
-      }
-      throw err
+    const created = await this.#storage.createWallet({
+      id: walletId,
+      encryptedKeys,
+      name: name ?? null,
+      createdAt
+    })
+    if (!created) {
+      throw new WalletAlreadyExistsError(walletId)
     }
 
     return { walletId, name: name ?? null, createdAt }
@@ -170,20 +166,6 @@ class WalletService {
   async deleteWallet (walletId: string): Promise<void> {
     await this.#storage.deleteWallet(walletId)
   }
-}
-
-/**
- * Narrow check for a better-sqlite3 PRIMARY KEY constraint violation.
- * @param err - Thrown value from a SQLite operation.
- * @returns True when the error represents a PK collision specifically.
- */
-function isPrimaryKeyConflict (err: unknown): boolean {
-  return (
-    typeof err === 'object' &&
-    err !== null &&
-    'code' in err &&
-    (err as { code: string }).code === 'SQLITE_CONSTRAINT_PRIMARYKEY'
-  )
 }
 
 export { WalletService }
