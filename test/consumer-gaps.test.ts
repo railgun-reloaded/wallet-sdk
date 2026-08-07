@@ -105,15 +105,12 @@ test('readShieldFeeForNetwork rejects an unconfigured network with a typed error
   )
 })
 
-test('network config exposes only the verified Sepolia indexer endpoint', () => {
-  assert.equal(
-    NETWORK_CONFIG[NetworkName.EthereumSepolia].indexerURL,
-    SEPOLIA_INDEXER_URL
-  )
-
+test('network config carries protocol facts, not caller-supplied service endpoints', () => {
   for (const network of Object.values(NetworkName)) {
-    if (network !== NetworkName.EthereumSepolia) {
-      assert.equal(NETWORK_CONFIG[network].indexerURL, undefined)
-    }
+    const config = NETWORK_CONFIG[network]
+    assert.equal(typeof config.chainID, 'number')
+    assert.equal(typeof config.proxyContractAddress, 'string')
+    assert.ok(!('indexerURL' in config), `${network} must not pin an indexer endpoint`)
+    assert.ok(!('poiNodeURL' in config), `${network} must not pin a PPOI node endpoint`)
   }
 })

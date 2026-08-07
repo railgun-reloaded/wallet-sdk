@@ -10,22 +10,23 @@ enum NetworkName {
 }
 
 /**
- * Canonical protocol deployment metadata for a supported network.
+ * Canonical protocol deployment metadata for a supported network. Every field
+ * here is a fact about the deployment itself.
  *
- * PPOI node URLs are deliberately caller-supplied through
- * `RailgunClientOptions.poiNodeUrls`: node operators and failover choices are
- * deployment-specific rather than protocol constants.
+ * Service endpoints are deliberately absent. Both the indexer endpoint and the
+ * PPOI node URL name a hosted service that an operator chooses, runs, and can
+ * rotate or self-host, so neither belongs to the protocol and neither should
+ * ship on an SDK release cycle. Callers pass their indexer endpoint to
+ * `createDataSource` and their PPOI nodes through
+ * `RailgunClientOptions.poiNodeUrls`. The public Subsquid squid for Sepolia is
+ * `https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql`, named
+ * here only so a first integration knows where to point.
  */
 type NetworkConfig = {
   chainID: number
   deploymentBlock: bigint
   proxyContractAddress: string
   rpcURL: string
-  /**
-   * Verified Subsquid indexer endpoint. When absent, the caller supplies its
-   * chosen endpoint to `createDataSource` because no canonical URL is known.
-   */
-  indexerURL?: string
   poi?: NetworkPoiConfig
 }
 
@@ -41,7 +42,6 @@ const NETWORK_CONFIG : Record<NetworkName, NetworkConfig> = {
     deploymentBlock: 5784866n,
     proxyContractAddress: '0xeCFCf3b4eC647c4Ca6D49108b311b7a7C9543fea',
     rpcURL: 'https://ethereum-sepolia-rpc.publicnode.com',
-    indexerURL: 'https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql',
     poi: SEPOLIA_POI_CONFIG
   },
   [NetworkName.Polygon]: {
