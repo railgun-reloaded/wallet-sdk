@@ -42,6 +42,8 @@ function makeDBNote (overrides: Partial<DBNote> = {}): DBNote {
     tokenSubID: new Uint8Array(32),
     spent: false,
     spentTxid: null,
+    spentBlockNumber: null,
+    spentTimestamp: null,
     blockNumber: 100n,
     treeNumber: 0,
     treePosition: 0,
@@ -176,15 +178,23 @@ test('mapNoteRow preserves bytesToHex format on tokenSubID (matches commitment/n
   assert.equal(note.tokenSubID, bytesToHex(row.tokenSubID, { prefix: true }))
 })
 
-test('mapNoteRow exposes spent state with public spentTxid hex', () => {
+test('mapNoteRow exposes transaction provenance for creation and spend', () => {
   const spentTxid = hexToBytes(`0x${'cd'.repeat(32)}`)
+  const creationTxid = hexToBytes(`0x${'ab'.repeat(32)}`)
+  const spentTimestamp = new Date('2025-01-02T03:04:05.000Z')
   const row = makeDBNote({
     spent: true,
-    spentTxid
+    spentTxid,
+    spentBlockNumber: 456n,
+    spentTimestamp,
+    creationTxid
   })
   const note = mapNoteRow(row)
 
   assert.equal(note.spentTxid, `0x${'cd'.repeat(32)}`)
+  assert.equal(note.spentBlockNumber, 456n)
+  assert.deepEqual(note.spentTimestamp, spentTimestamp)
+  assert.equal(note.creationTxid, `0x${'ab'.repeat(32)}`)
   assert.deepEqual(note.spendState, {
     spendable: false,
     poi: {

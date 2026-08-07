@@ -17,8 +17,10 @@ export type {
   DecryptParams,
   RailgunClientOptions,
   ScanParams,
+  SyncCursor,
   SyncParams,
-  SyncSummary
+  SyncSummary,
+  TransactionHistoryEntry
 } from './browser/client.js'
 export { RailgunEngine } from './browser/engine.js'
 

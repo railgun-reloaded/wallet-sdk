@@ -864,6 +864,10 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
 
   try {
     const keys = await deriveWalletKeys(MNEMONIC)
+    const wallet = await client.createWallet({
+      mnemonic: MNEMONIC,
+      encryptionKey: new Uint8Array(32).fill(1)
+    })
     const result = await client.shield({
       tokenAddress: TOKEN_ADDRESS,
       amount: AMOUNT,
@@ -877,6 +881,30 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
     assert.equal(result.txHash, TX_HASH)
     assert.equal(result.shieldedAmount, 975n)
     assert.equal(result.fee, 25n)
+
+    const timestamp = new Date('2026-01-02T03:04:05.000Z')
+    await client.recordShield(wallet.walletId, ETHEREUM.chainID, result, timestamp)
+    await client.recordShield(wallet.walletId, ETHEREUM.chainID, result, timestamp)
+    const history = await client.getTransactionHistory(
+      wallet.walletId,
+      ETHEREUM.chainID
+    )
+    assert.equal(history.length, 1, 'confirmed shield record is idempotent')
+    assert.equal(history[0]?.walletId, wallet.walletId)
+    assert.equal(history[0]?.chainId, ETHEREUM.chainID)
+    assert.equal(history[0]?.type, 'shield')
+    assert.equal(history[0]?.txid, TX_HASH)
+    assert.equal(history[0]?.blockNumber, 12n)
+    assert.deepEqual(history[0]?.timestamp, timestamp)
+    assert.deepEqual(history[0]?.metadata, {
+      token: TOKEN_ADDRESS,
+      amount: '975'
+    })
+    assert.deepEqual(
+      await client.getTransactionHistory(wallet.walletId, 11155111),
+      [],
+      'history is chain-scoped'
+    )
     assert.deepEqual(methods, [
       'personal_sign',
       'eth_chainId',

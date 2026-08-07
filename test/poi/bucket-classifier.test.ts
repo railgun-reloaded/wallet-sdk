@@ -72,6 +72,8 @@ function noteFixture (overrides: Partial<DBNote> = {}): DBNote {
     tokenSubID: new Uint8Array(32),
     spent: false,
     spentTxid: null,
+    spentBlockNumber: null,
+    spentTimestamp: null,
     blockNumber: 1n,
     treeNumber: 0,
     treePosition: 0,

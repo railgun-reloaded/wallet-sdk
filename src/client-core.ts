@@ -1,5 +1,9 @@
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
-import type { ChainStorage, WalletStorage } from '@railgun-reloaded/storage'
+import type {
+  ChainStorage,
+  DBTxHistory,
+  WalletStorage
+} from '@railgun-reloaded/storage'
 import type { Hash, TransactionReceipt, WalletClient } from 'viem'
 import {
   WaitForTransactionReceiptTimeoutError,
@@ -142,11 +146,20 @@ type SyncSummary = {
   poi?: RefreshSummary
 }
 
+/** Persisted chain-ingestion progress, including the explicit fresh state. */
+type SyncCursor =
+  | { status: 'never-synced' }
+  | { status: 'synced', lastBlockHeight: bigint }
+
+/** One wallet-scoped transaction-history row. */
+type TransactionHistoryEntry = DBTxHistory
+
 type RailgunClientCoreOptions<T extends RailgunClientCoreEngine> = {
   engine: T
   walletStorage: WalletStorage
   poiNodeUrls?: Partial<Record<NetworkName, string[]>>
   missingChainStorageMessage?: string
+  readPersistedSyncCursor?: (chainId: number) => Promise<bigint | undefined>
 }
 
 const EMPTY_REFRESH_SUMMARY: RefreshSummary = {
@@ -179,6 +192,9 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
   /** Error message used when decrypt runs before chain storage exists. */
   readonly #missingChainStorageMessage: string
 
+  /** Runtime-specific persisted cursor reader, when storage is not yet open. */
+  readonly #readPersistedSyncCursor: ((chainId: number) => Promise<bigint | undefined>) | undefined
+
   /**
    * Wire shared client behavior around injected storage and engine contracts.
    * @param options - Engine, wallet storage, PPOI URLs, and optional errors.
@@ -191,6 +207,7 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     this.#engine = options.engine
     this.#missingChainStorageMessage = options.missingChainStorageMessage ??
       'Decrypt failed: chain storage not initialized — call scan() first'
+    this.#readPersistedSyncCursor = options.readPersistedSyncCursor
   }
 
   /**
@@ -300,6 +317,65 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     options?: { unspent?: boolean }
   ): Promise<DecryptedNote[]> {
     return this.#balanceService.getNotes(walletId, chainId, options)
+  }
+
+  /**
+   * Record a confirmed shield in wallet-scoped transaction history.
+   * @param walletId - Wallet that received the shield.
+   * @param chainId - Chain on which the shield confirmed.
+   * @param result - Confirmed shield receipt returned by `shield()`.
+   * @param timestamp - Timestamp of the confirmed shield block.
+   * @returns Resolves once the history row is stored.
+   */
+  recordShield (
+    walletId: string,
+    chainId: number,
+    result: ShieldResult,
+    timestamp: Date
+  ): Promise<void> {
+    return this.#walletStorage.insertTxHistory({
+      id: `${walletId}:${chainId}:${result.txHash}`,
+      walletId,
+      chainId,
+      type: 'shield',
+      txid: result.txHash,
+      blockNumber: result.receipt.blockNumber,
+      timestamp,
+      metadata: {
+        token: result.commitment.token.tokenAddress.toLowerCase(),
+        amount: result.shieldedAmount.toString()
+      }
+    })
+  }
+
+  /**
+   * Read stored transaction history for one wallet and chain, newest first.
+   * @param walletId - Wallet whose history should be returned.
+   * @param chainId - Chain to scope the history query to.
+   * @param limit - Optional maximum number of rows to return.
+   * @returns Stored wallet transaction history.
+   */
+  getTransactionHistory (
+    walletId: string,
+    chainId: number,
+    limit?: number
+  ): Promise<TransactionHistoryEntry[]> {
+    return this.#walletStorage.getTxHistory(walletId, chainId, limit)
+  }
+
+  /**
+   * Read persisted chain-ingestion progress without exposing engine storage.
+   * @param chainId - Chain whose persisted cursor should be returned.
+   * @returns Explicit synced or never-synced state.
+   */
+  async getSyncCursor (chainId: number): Promise<SyncCursor> {
+    const lastBlockHeight = this.#readPersistedSyncCursor !== undefined
+      ? await this.#readPersistedSyncCursor(chainId)
+      : (await this.#engine.storage?.getSyncState(chainId))?.lastBlockHeight
+
+    return lastBlockHeight === undefined
+      ? { status: 'never-synced' }
+      : { status: 'synced', lastBlockHeight }
   }
 
   /**
@@ -721,8 +797,10 @@ export type {
   BuildShieldResult,
   ShieldParams,
   ShieldResult,
+  SyncCursor,
   SyncParams,
   SyncProgress,
   SyncSummary,
+  TransactionHistoryEntry,
   TokenBalance
 }

@@ -118,6 +118,24 @@ test('RailgunClient exposes engine property', async () => {
   await client.close()
 })
 
+test('RailgunClient.getSyncCursor distinguishes fresh and persisted chain state', async () => {
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
+
+  assert.deepEqual(await client.getSyncCursor(11155111), {
+    status: 'never-synced'
+  })
+
+  await createChainStorage(chainDB).updateSyncState(11155111, 5784867n)
+  assert.deepEqual(await client.getSyncCursor(11155111), {
+    status: 'synced',
+    lastBlockHeight: 5784867n
+  })
+
+  await client.close()
+})
+
 test('RailgunClient.getBalances returns note-derived aggregated balances', async () => {
   const walletDB = await memDB()
   const client = await RailgunClient.create({ walletDB })
@@ -236,6 +254,8 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const tokenMixed = '0xA0b86991C6218b36c1d19D4a2e9Eb0cE3606eB48'
   const spentTxid = filledBytes(33)
+  const creationTxid = filledBytes(35)
+  const spentTimestamp = new Date('2026-02-04T05:06:07.000Z')
 
   await seedNotes(walletDB, wallet.walletId, [
     noteFixture({
@@ -246,6 +266,7 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
       blockNumber: 100n,
       treeNumber: 2,
       treePosition: 7,
+      creationTxid,
       decryptedAt: new Date('2026-02-03T04:05:06.000Z')
     }),
     noteFixture({
@@ -254,7 +275,9 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
       token: tokenMixed,
       amount: 20n,
       spent: true,
-      spentTxid
+      spentTxid,
+      spentBlockNumber: 200n,
+      spentTimestamp
     })
   ])
 
@@ -272,8 +295,11 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
   assert.equal(first?.nullifier, `0x${'1f'.repeat(32)}`)
   assert.equal(first?.token, tokenMixed.toLowerCase())
   assert.equal(first?.leafIndex, 7n)
+  assert.equal(first?.creationTxid, `0x${'23'.repeat(32)}`)
   assert.equal(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
   assert.equal(spent?.spentTxid, `0x${'21'.repeat(32)}`)
+  assert.equal(spent?.spentBlockNumber, 200n)
+  assert.deepEqual(spent?.spentTimestamp, spentTimestamp)
   await client.close()
 })
 

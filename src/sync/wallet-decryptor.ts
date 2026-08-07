@@ -89,6 +89,28 @@ type DecryptSummary = {
 const DEFAULT_BATCH_SIZE = 10_000n
 
 /**
+ * Smallest block timestamp treated as milliseconds. Data sources disagree on
+ * the unit: Subsquid reports milliseconds, while an RPC source passes the raw
+ * EVM value through in seconds. Any real chain timestamp expressed in seconds
+ * is far below this bound, and any expressed in milliseconds is far above it,
+ * so the magnitude identifies the unit unambiguously.
+ */
+const MILLISECOND_TIMESTAMP_FLOOR = 100_000_000_000n
+
+/**
+ * Convert a block timestamp to a `Date`, accepting either seconds or
+ * milliseconds.
+ * @param timestamp - Block timestamp from the data source.
+ * @returns The instant the block was mined.
+ */
+function blockTimestampToDate (timestamp: bigint): Date {
+  const milliseconds = timestamp < MILLISECOND_TIMESTAMP_FLOOR
+    ? timestamp * 1000n
+    : timestamp
+  return new Date(Number(milliseconds))
+}
+
+/**
  * Group chain commitment rows by their block number, preserving query order
  * within each group. Used to feed `decryptActions` per-block so the resulting
  * `DecryptedNote.blockNumber` matches the block the commitment came from.
@@ -230,6 +252,9 @@ async function runWalletDecryption (
 
     const commitmentRows = await chainStorage.getCommitmentsByBlockRange(batchFrom, batchTo)
     const nullifierRows = await chainStorage.getNullifiersByBlockRange(batchFrom, batchTo)
+    const railgunTransactions = nullifierRows.length > 0
+      ? await chainStorage.getRailgunTransactionsByBlockRange(batchFrom, batchTo)
+      : []
 
     if (commitmentRows.length > 0) {
       const blockGroups = groupCommitmentsByBlock(commitmentRows)
@@ -272,6 +297,14 @@ async function runWalletDecryption (
     if (nullifierRows.length > 0) {
       const ownedNotes = await walletStorage.getUnspentNotes(walletId, chainId)
       if (ownedNotes.length > 0) {
+        const spendProvenanceByTxid = new Map<string, { blockNumber: bigint, timestamp: Date }>()
+        for (const transaction of railgunTransactions) {
+          spendProvenanceByTxid.set(bytesToHex(transaction.chainTxid), {
+            blockNumber: transaction.blockNumber,
+            timestamp: blockTimestampToDate(transaction.timestamp)
+          })
+        }
+
         const ownedByNullifier = new Map<string, NoteIdentity>()
         for (const note of ownedNotes) {
           ownedByNullifier.set(nullifierKey(note.nullifier, note.treeNumber), {
@@ -281,7 +314,12 @@ async function runWalletDecryption (
           })
         }
 
-        const spendsByTxid = new Map<string, { txHash: Uint8Array, identities: NoteIdentity[] }>()
+        const spendsByTxid = new Map<string, {
+          txHash: Uint8Array
+          blockNumber: bigint
+          timestamp: Date | null
+          identities: NoteIdentity[]
+        }>()
         for (const row of nullifierRows) {
           const identity = ownedByNullifier.get(nullifierKey(row.nullifier, row.treeNumber))
           if (!identity) continue
@@ -290,12 +328,23 @@ async function runWalletDecryption (
           if (bucket) {
             bucket.identities.push(identity)
           } else {
-            spendsByTxid.set(txKey, { txHash: row.transactionHash, identities: [identity] })
+            const provenance = spendProvenanceByTxid.get(txKey)
+            spendsByTxid.set(txKey, {
+              txHash: row.transactionHash,
+              blockNumber: provenance?.blockNumber ?? row.blockNumber,
+              timestamp: provenance?.timestamp ?? null,
+              identities: [identity]
+            })
           }
         }
 
-        for (const { txHash, identities } of spendsByTxid.values()) {
-          notesSpent += await walletStorage.markNotesSpentBatch(identities, txHash)
+        for (const { txHash, blockNumber, timestamp, identities } of spendsByTxid.values()) {
+          notesSpent += await walletStorage.markNotesSpentBatch(
+            identities,
+            txHash,
+            blockNumber,
+            timestamp
+          )
         }
       }
     }

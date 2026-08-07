@@ -50,6 +50,9 @@ type DecryptedNote = {
   leafIndex: bigint
   spent: boolean
   spentTxid: string | null
+  spentBlockNumber: bigint | null
+  spentTimestamp: Date | null
+  creationTxid: string | null
   spendState: NoteSpendState
   decryptedAt: Date
 }
@@ -78,11 +81,17 @@ function mapNoteRow (
     treePosition,
     spent,
     spentTxid,
+    spentBlockNumber,
+    spentTimestamp,
+    creationTxid,
     decryptedAt
   } = row
   const publicSpentTxid = spentTxid === null
     ? null
     : bytesToHex(spentTxid, { prefix: true })
+  const publicCreationTxid = creationTxid === null
+    ? null
+    : bytesToHex(creationTxid, { prefix: true })
   return {
     commitment: bytesToHex(commitment, { prefix: true }),
     nullifier: bytesToHex(nullifier, { prefix: true }),
@@ -95,6 +104,9 @@ function mapNoteRow (
     leafIndex: BigInt(treePosition),
     spent,
     spentTxid: publicSpentTxid,
+    spentBlockNumber,
+    spentTimestamp,
+    creationTxid: publicCreationTxid,
     spendState: mapNoteSpendState(row, network),
     decryptedAt
   }

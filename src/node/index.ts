@@ -13,9 +13,11 @@ export type {
   ERC721Holding,
   RailgunClientOptions,
   ScanParams,
+  SyncCursor,
   SyncParams,
   SyncProgress,
   SyncSummary,
+  TransactionHistoryEntry,
   TokenBalance
 } from '../client.js'
 
