@@ -3,10 +3,11 @@ import { test } from 'node:test'
 
 import type { EncryptedCommitment, GeneratedCommitment, Shield, ShieldCommitment, Transact, TransactCommitment } from '@railgun-reloaded/scanner'
 import { ActionType } from '@railgun-reloaded/scanner'
-import { createChainDB, createChainStorage } from '@railgun-reloaded/storage/node'
+import { createChainStorage } from '@railgun-reloaded/storage/node'
 
 import { denormalizeBlockData, rehydrateActions } from '../src/sync/index.js'
 
+import { openChainDB } from './helpers/databases.js'
 import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } from './test-vector.js'
 
 /**
@@ -14,7 +15,7 @@ import { TEST_VECTOR_ALL_ACTIONS, TEST_VECTOR_SHIELD, TEST_VECTOR_TRANSACT } fro
  * @returns ChainStorage with migrations applied.
  */
 async function memChainDB () {
-  return createChainStorage(await createChainDB({
+  return createChainStorage(await openChainDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/chain'

@@ -4,9 +4,10 @@ import { test } from 'node:test'
 
 import { bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import type { DBNote, WalletStorage } from '@railgun-reloaded/storage'
-import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
+import { createWalletStorage } from '@railgun-reloaded/storage/node'
 
 import { BalanceService, mapNoteRow } from '../../../src/services/balance/balance-service.js'
+import { openWalletDB } from '../../helpers/databases.js'
 
 const ERC20_NULL_SUB_ID_HEX = `0x${'00'.repeat(32)}`
 const ERC721_SUB_ID_HEX = `0x${'ab'.repeat(32)}`
@@ -18,7 +19,7 @@ const CHAIN_ID = 11155111
  * @returns New fixture state per test.
  */
 async function fixture (): Promise<{ db: WalletStorage, walletId: string }> {
-  const db = createWalletStorage(await createWalletDB({ path: ':memory:', runMigrations: true }))
+  const db = createWalletStorage(await openWalletDB({ path: ':memory:', runMigrations: true }))
   const walletId = 'test-wallet'
   await db.createWallet({ id: walletId, encryptedKeys: Buffer.from('keys') })
   return { db, walletId }

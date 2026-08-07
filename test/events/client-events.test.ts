@@ -13,15 +13,14 @@ import type {
   WalletDB
 } from '@railgun-reloaded/storage/node'
 import {
-  createChainDB,
   createChainStorage,
-  createWalletDB,
   createWalletStorage
 } from '@railgun-reloaded/storage/node'
 
 import { RailgunClient } from '../../src/client.js'
 import { NetworkName } from '../../src/network-config.js'
 import { MNEMONIC } from '../fixtures/wallet-vectors.js'
+import { openChainDB, openWalletDB } from '../helpers/databases.js'
 import { TEST_VECTOR_TRANSACT } from '../test-vector.js'
 
 const SEPOLIA_CHAIN_ID = 11155111
@@ -33,7 +32,7 @@ const TOKEN = '0x0000000000000000000000000000000000000000'
  * @returns Fresh wallet DB.
  */
 function memWalletDB () {
-  return createWalletDB({
+  return openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
@@ -45,7 +44,7 @@ function memWalletDB () {
  * @returns Fresh chain DB.
  */
 function memChainDB () {
-  return createChainDB({
+  return openChainDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/chain'

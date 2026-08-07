@@ -4,7 +4,7 @@ import { test } from 'node:test'
 
 import { bytesToHex } from '@railgun-reloaded/bytes'
 import type { WalletStorage } from '@railgun-reloaded/storage'
-import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
+import { createWalletStorage } from '@railgun-reloaded/storage/node'
 
 import {
   InvalidEncryptionKeyError,
@@ -14,13 +14,14 @@ import {
 } from '../../../src/services/wallet/errors.js'
 import { WalletService } from '../../../src/services/wallet/wallet-service.js'
 import { MNEMONIC, VECTORS } from '../../fixtures/wallet-vectors.js'
+import { openWalletDB } from '../../helpers/databases.js'
 
 /**
  * Build a fresh in-memory WalletService and a random 32-byte encryption key.
  * @returns New fixture state per test.
  */
 async function fixture (): Promise<{ service: WalletService, db: WalletStorage, key: Uint8Array }> {
-  const db = createWalletStorage(await createWalletDB({
+  const db = createWalletStorage(await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'

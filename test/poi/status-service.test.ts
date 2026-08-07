@@ -3,7 +3,7 @@ import { test } from 'node:test'
 
 import { bytesToHex } from '@railgun-reloaded/bytes'
 import type { DBNewNote, WalletStorage } from '@railgun-reloaded/storage'
-import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
+import { createWalletStorage } from '@railgun-reloaded/storage/node'
 
 import { NetworkName } from '../../src/network-config.js'
 import type {
@@ -22,6 +22,7 @@ import {
   PoiStatusService
 } from '../../src/poi/index.js'
 import type { SyncProgress } from '../../src/sync/wallet-decryptor.js'
+import { openWalletDB } from '../helpers/databases.js'
 
 const WALLET_ID = 'status-wallet'
 const CHAIN_ID = 11155111
@@ -49,7 +50,7 @@ function fixtureBytes (value: number, namespace = 0): Uint8Array {
  * @returns Fresh wallet storage.
  */
 async function memWalletDB (): Promise<WalletStorage> {
-  const db = createWalletStorage(await createWalletDB({
+  const db = createWalletStorage(await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'

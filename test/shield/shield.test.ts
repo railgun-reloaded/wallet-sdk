@@ -5,7 +5,6 @@ import { test } from 'node:test'
 
 import { RailgunAddressError } from '@railgun-reloaded/0zk-addresses'
 import type { ShieldCommitment } from '@railgun-reloaded/scanner'
-import { createWalletDB } from '@railgun-reloaded/storage/node'
 import { ShieldNote, TokenType } from '@railgun-reloaded/wallet-node'
 import type { Hex, TransactionReceipt } from 'viem'
 import {
@@ -61,6 +60,7 @@ import { parseShieldReceipt, readShieldFee } from '../../src/shield/receipt.js'
 import type { BuildShieldParams } from '../../src/shield/shield.js'
 import { buildShield } from '../../src/shield/shield.js'
 import { MNEMONIC } from '../fixtures/wallet-vectors.js'
+import { openWalletDB } from '../helpers/databases.js'
 
 const TOKEN_ADDRESS = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 const AMOUNT = 1_000_000n
@@ -519,7 +519,7 @@ test('consecutive shields with identical inputs produce different ciphertexts', 
 })
 
 test('client.buildShield resolves the network and delegates to the buildShield free function', async () => {
-  const walletDB = await createWalletDB({
+  const walletDB = await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
@@ -646,7 +646,7 @@ test('an ERC721 sub-ID outside uint256 is rejected before construction', async (
 })
 
 test('client.buildShield shields an ERC721 through the network selector', async () => {
-  const walletDB = await createWalletDB({
+  const walletDB = await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
@@ -855,7 +855,7 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
       }
     })
   })
-  const walletDB = await createWalletDB({
+  const walletDB = await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
@@ -914,7 +914,7 @@ test('client.shield raises rather than returning undefined when the receipt has 
       }
     })
   })
-  const walletDB = await createWalletDB({
+  const walletDB = await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
@@ -952,7 +952,7 @@ test('client.shield encodes exact and unlimited ERC20 approvals', async () => {
     functionName: 'allowance',
     result: 0n
   })
-  const walletDB = await createWalletDB({
+  const walletDB = await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
@@ -1032,7 +1032,7 @@ test('client.shield encodes exact and unlimited ERC20 approvals', async () => {
 })
 
 test('client.shield exposes signature and approval failures as distinct errors', async () => {
-  const walletDB = await createWalletDB({
+  const walletDB = await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'

@@ -2,11 +2,12 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
 import type { DBNewNote, WalletStorage } from '@railgun-reloaded/storage'
-import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
+import { createWalletStorage } from '@railgun-reloaded/storage/node'
 
 import { POIStatus, WalletBalanceBucket } from '../../src/poi/index.js'
 import type { TokenBalance } from '../../src/services/balance/balance-service.js'
 import { BalanceService } from '../../src/services/balance/balance-service.js'
+import { openWalletDB } from '../helpers/databases.js'
 
 const WALLET_ID = 'wallet-id'
 const CHAIN_ID = 11155111
@@ -24,7 +25,7 @@ const OUTPUT_TYPE_CHANGE = 2
  * @returns Wallet storage.
  */
 async function memWalletDB (): Promise<WalletStorage> {
-  return createWalletStorage(await createWalletDB({
+  return createWalletStorage(await openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'

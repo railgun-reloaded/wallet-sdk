@@ -7,9 +7,7 @@ import { SourceAggregator } from '@railgun-reloaded/scanner'
 import type { DBNewNote } from '@railgun-reloaded/storage'
 import type { WalletDB } from '@railgun-reloaded/storage/node'
 import {
-  createChainDB,
   createChainStorage,
-  createWalletDB,
   createWalletStorage
 } from '@railgun-reloaded/storage/node'
 
@@ -22,13 +20,14 @@ import {
 import { WalletNotFoundError } from '../src/services/wallet/errors.js'
 
 import { MNEMONIC, VECTORS } from './fixtures/wallet-vectors.js'
+import { openChainDB, openWalletDB } from './helpers/databases.js'
 
 /**
  * Build a fresh in-memory WalletDB for a RailgunClient test.
  * @returns New drizzle-wrapped in-memory SQLite.
  */
 function memDB () {
-  return createWalletDB({
+  return openWalletDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/wallet'
@@ -278,7 +277,7 @@ test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', 
  * @returns Fresh ChainDB suitable for client.scan() injection.
  */
 function memChainDB () {
-  return createChainDB({
+  return openChainDB({
     path: ':memory:',
     runMigrations: true,
     migrationsFolder: '../storage/drizzle/chain'
