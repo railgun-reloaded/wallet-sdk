@@ -13,8 +13,10 @@ import {
 } from 'viem'
 
 import { SHIELD_EVENT_ABI, SHIELD_FEE_ABI } from '../contracts/abi.js'
+import type { NetworkName } from '../network-config.js'
+import { NETWORK_CONFIG } from '../network-config.js'
 
-import { ShieldFeeReadError } from './errors.js'
+import { ShieldFeeReadError, UnsupportedNetworkError } from './errors.js'
 
 type ShieldCommitmentPreimage = {
   npk: Hex
@@ -103,5 +105,26 @@ async function readShieldFee (
   }
 }
 
-export { parseShieldReceipt, readShieldFee }
+/**
+ * Read the current ERC20 shield fee for a configured network. The RAILGUN
+ * proxy address is resolved from `NETWORK_CONFIG`, so callers pass a network
+ * rather than a contract address.
+ * @param publicClient - Caller-owned public client for the target chain.
+ * @param network - Network whose RAILGUN proxy exposes `shieldFee()`.
+ * @returns Shield fee in basis points.
+ * @throws {UnsupportedChainError} If the network has no configured contract.
+ * @throws {ShieldFeeReadError} If the RPC or contract read fails.
+ */
+async function readShieldFeeForNetwork (
+  publicClient: PublicClient,
+  network: NetworkName
+): Promise<bigint> {
+  const config = NETWORK_CONFIG[network]
+  if (config === undefined) {
+    throw new UnsupportedNetworkError(network, Object.keys(NETWORK_CONFIG))
+  }
+  return readShieldFee(publicClient, config.proxyContractAddress)
+}
+
+export { parseShieldReceipt, readShieldFee, readShieldFeeForNetwork }
 export type { ShieldCommitmentPreimage, ShieldReceiptResult }

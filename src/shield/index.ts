@@ -13,6 +13,7 @@ export {
   ShieldApprovalRevertedError,
   ShieldEventMissingError,
   ShieldFeeReadError,
+  UnsupportedNetworkError,
   ShieldReceiptTimeoutError,
   ShieldSignatureRejectedError,
   ShieldTransactionRevertedError,
@@ -24,7 +25,11 @@ export {
   shieldPrivateKeyFromSignature
 } from './derivation.js'
 export { computeShieldFee } from './fee.js'
-export { parseShieldReceipt, readShieldFee } from './receipt.js'
+export {
+  parseShieldReceipt,
+  readShieldFee,
+  readShieldFeeForNetwork
+} from './receipt.js'
 export type {
   ShieldCommitmentPreimage,
   ShieldReceiptResult

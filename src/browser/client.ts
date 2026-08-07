@@ -38,8 +38,10 @@ type RailgunClientOptions = {
   walletStorage: WalletStorage
 
   /**
-   * PPOI node URLs by network. Presence is validated only when a
-   * PPOI-aware operation runs on a network that requires PPOI.
+   * PPOI node URLs by network. These are caller-supplied rather than protocol
+   * config because node operators and failover choices are deployment-specific.
+   * Presence is validated only when a PPOI-aware operation runs on a network
+   * that requires PPOI.
    */
   poiNodeUrls?: Partial<Record<NetworkName, string[]>>
 }

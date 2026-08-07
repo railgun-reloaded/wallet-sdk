@@ -38,6 +38,11 @@ export { RailgunEngine } from '../engine.js'
 
 export { initializeCrypto } from '../init/crypto.js'
 
+export { Mnemonic } from '../mnemonic.js'
+
+export { createDataSource } from '../data-source.js'
+export type { RailgunDataSource } from '../data-source.js'
+
 export type { NetworkConfig } from '../network-config.js'
 export { NETWORK_CONFIG, NetworkName } from '../network-config.js'
 
@@ -58,6 +63,7 @@ export {
   ShieldApprovalRevertedError,
   ShieldEventMissingError,
   ShieldFeeReadError,
+  UnsupportedNetworkError,
   ShieldReceiptTimeoutError,
   ShieldSignatureRejectedError,
   ShieldTransactionRevertedError,
@@ -67,6 +73,7 @@ export {
   deriveShieldPrivateKey,
   parseShieldReceipt,
   readShieldFee,
+  readShieldFeeForNetwork,
   shieldPrivateKeyFromSignature
 } from '../shield/index.js'
 export type {

@@ -9,11 +9,23 @@ enum NetworkName {
   BNBChain = 'BNBChain'
 }
 
+/**
+ * Canonical protocol deployment metadata for a supported network.
+ *
+ * PPOI node URLs are deliberately caller-supplied through
+ * `RailgunClientOptions.poiNodeUrls`: node operators and failover choices are
+ * deployment-specific rather than protocol constants.
+ */
 type NetworkConfig = {
   chainID: number
   deploymentBlock: bigint
   proxyContractAddress: string
   rpcURL: string
+  /**
+   * Verified Subsquid indexer endpoint. When absent, the caller supplies its
+   * chosen endpoint to `createDataSource` because no canonical URL is known.
+   */
+  indexerURL?: string
   poi?: NetworkPoiConfig
 }
 
@@ -29,6 +41,7 @@ const NETWORK_CONFIG : Record<NetworkName, NetworkConfig> = {
     deploymentBlock: 5784866n,
     proxyContractAddress: '0xeCFCf3b4eC647c4Ca6D49108b311b7a7C9543fea',
     rpcURL: 'https://ethereum-sepolia-rpc.publicnode.com',
+    indexerURL: 'https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql',
     poi: SEPOLIA_POI_CONFIG
   },
   [NetworkName.Polygon]: {
