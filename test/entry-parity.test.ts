@@ -10,6 +10,8 @@ import * as rootEntry from '../src/index.js'
 import * as nodeEntry from '../src/node/index.js'
 import * as snapshotBootstrap from '../src/snapshot-bootstrap/index.js'
 
+import { MNEMONIC, VECTORS } from './fixtures/wallet-vectors.js'
+
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 const BUILTINS = new Set(builtinModules)
 const SPECIFIER = /(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g
@@ -169,10 +171,12 @@ test('snapshot bootstrap values stay off the portable entries', () => {
   }
 })
 
-test('generateWalletId is reachable from every entry', () => {
-  assert.equal(typeof rootEntry.generateWalletId, 'function')
-  assert.equal(typeof browserEntry.generateWalletId, 'function')
-  assert.equal(typeof nodeEntry.generateWalletId, 'function')
+test('every entry exports the same working generateWalletId', () => {
+  const expected = VECTORS[0]?.walletId
+
+  assert.equal(rootEntry.generateWalletId(MNEMONIC, 0), expected)
+  assert.equal(browserEntry.generateWalletId(MNEMONIC, 0), expected)
+  assert.equal(nodeEntry.generateWalletId(MNEMONIC, 0), expected)
 })
 
 test('portable declaration graphs resolve completely', () => {
