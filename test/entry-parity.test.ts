@@ -15,8 +15,21 @@ import { MNEMONIC, VECTORS } from './fixtures/wallet-vectors.js'
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 const BUILTINS = new Set(builtinModules)
 const SPECIFIER = /(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g
+const TRIPLE_SLASH_TYPES = /\/\/\/\s*<reference\s+types=["']([^"']+)["']/g
 const DECLARED_EXPORT = /export\s+(?:type\s+)?\{([^}]*)\}/g
 const PORTABLE_ENTRIES = ['index.d.ts', 'browser/index.d.ts']
+const ENTRIES = [...PORTABLE_ENTRIES, 'node/index.d.ts']
+
+/**
+ * Packages that resolve only under Node but that no naming rule catches.
+ * `node` is the name a `/// <reference types="node" />` directive carries, and
+ * `better-sqlite3` backs the Node storage driver.
+ */
+const NODE_ONLY_PACKAGES = new Set([
+  'better-sqlite3',
+  'drizzle-orm/better-sqlite3',
+  'node'
+])
 
 type DeclarationGraph = {
   files: string[]
@@ -26,13 +39,15 @@ type DeclarationGraph = {
 
 /**
  * Decide whether a package specifier resolves only under Node.
- * @param specifier - Bare import specifier.
- * @returns True for Node built-ins and for `/node` subpath exports.
+ * @param specifier - Bare import specifier, or a referenced types package.
+ * @returns True for Node built-ins, `/node` subpaths, and known Node packages.
  */
 function isNodeOnly (specifier: string): boolean {
   return specifier.startsWith('node:') ||
     BUILTINS.has(specifier) ||
-    specifier.endsWith('/node')
+    NODE_ONLY_PACKAGES.has(specifier) ||
+    specifier.endsWith('/node') ||
+    specifier.includes('/node/')
 }
 
 /**
@@ -88,8 +103,15 @@ function walkDeclarations (entry: string): DeclarationGraph {
       continue
     }
     files.add(file)
+    const source = readFileSync(file, 'utf8')
 
-    for (const [, specifier] of readFileSync(file, 'utf8').matchAll(SPECIFIER)) {
+    for (const [, referenced] of source.matchAll(TRIPLE_SLASH_TYPES)) {
+      if (referenced !== undefined) {
+        packages.add(referenced)
+      }
+    }
+
+    for (const [, specifier] of source.matchAll(SPECIFIER)) {
       if (specifier === undefined) {
         continue
       }
@@ -100,6 +122,7 @@ function walkDeclarations (entry: string): DeclarationGraph {
       }
 
       const target = join(dirname(file), specifier.replace(/\.js$/, '.d.ts'))
+
       if (existsSync(target)) {
         queue.push(target)
       } else {
@@ -142,6 +165,15 @@ test('node entry declares only snapshot bootstrap and event names beyond the por
   assert.deepEqual(extra.filter((name) => !allowed.has(name)), [])
 })
 
+test('entry declarations use only export forms the parser can see', () => {
+  for (const entry of ENTRIES) {
+    const source = readFileSync(resolve(SRC, entry), 'utf8')
+
+    assert.ok(!/export\s+\*/.test(source), `${entry} uses export *, which the declared-name parser cannot see`)
+    assert.ok(!/export\s+default/.test(source), `${entry} uses export default, which the declared-name parser cannot see`)
+  }
+})
+
 test('the declared surface covers the type-only exports', () => {
   const declared = new Set(declaredNames('browser/index.d.ts'))
   const values = namesOf(browserEntry)
@@ -161,6 +193,16 @@ test('portable entries export nothing the node entry lacks', () => {
 
   assert.deepEqual(namesOf(browserEntry).filter((name) => !node.has(name)), [])
   assert.deepEqual(namesOf(rootEntry).filter((name) => !node.has(name)), [])
+})
+
+test('portable entries declare nothing the node entry lacks', () => {
+  const node = new Set(declaredNames('node/index.d.ts'))
+
+  for (const entry of PORTABLE_ENTRIES) {
+    const missing = declaredNames(entry).filter((name) => !node.has(name))
+
+    assert.deepEqual(missing, [], `${entry} declares ${missing.join(', ')} but the node entry does not`)
+  }
 })
 
 test('snapshot bootstrap values stay off the portable entries', () => {
