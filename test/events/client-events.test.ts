@@ -28,6 +28,9 @@ import { TEST_VECTOR_TRANSACT } from '../test-vector.js'
 const SEPOLIA_CHAIN_ID = 11155111
 const SEPOLIA_DEPLOYMENT_BLOCK = 5784866n
 const TOKEN = '0x0000000000000000000000000000000000000000'
+const SPEND_TIMESTAMP_MS = 1_735_789_245_000n
+const SPEND_TIMESTAMP_SECONDS = SPEND_TIMESTAMP_MS / 1000n
+const SPEND_INSTANT = new Date(Number(SPEND_TIMESTAMP_MS))
 
 /**
  * In-memory wallet DB with migrations applied.
@@ -222,7 +225,7 @@ async function seedChainNullifier (
     chainTxid: transactionHash,
     graphID: null,
     blockNumber,
-    timestamp: options.timestamp ?? 1_735_789_245_000n,
+    timestamp: options.timestamp ?? SPEND_TIMESTAMP_MS,
     nullifiers: [nullifier],
     commitments: [],
     boundParamsHash: filledBytes(92),
@@ -347,7 +350,7 @@ test('balance:update fires with a fresh snapshot when decrypt marks a note spent
   assert.equal(spentNote?.spentBlockNumber, 1n)
   assert.deepEqual(
     spentNote?.spentTimestamp,
-    new Date(Number(1_735_789_245_000n))
+    SPEND_INSTANT
   )
   await client.close()
 })
@@ -368,7 +371,7 @@ test('a seconds-denominated block timestamp records the same instant as millisec
     })
   ])
   await seedChainNullifier(chainDB, spentNullifier, 1n, {
-    timestamp: 1_735_789_245n
+    timestamp: SPEND_TIMESTAMP_SECONDS
   })
 
   await client.decrypt(wallet.walletId, encryptionKey, {
@@ -381,7 +384,7 @@ test('a seconds-denominated block timestamp records the same instant as millisec
     .find((note) => note.spent)
   assert.deepEqual(
     spentNote?.spentTimestamp,
-    new Date(Number(1_735_789_245_000n)),
+    SPEND_INSTANT,
     'RPC seconds resolve to the same instant as Subsquid milliseconds'
   )
   await client.close()
