@@ -167,6 +167,8 @@ export type {
 export { deriveWalletKeys } from '../services/wallet/keys.js'
 export type { WalletKeys } from '../services/wallet/keys.js'
 
+export { generateWalletId } from '../services/wallet/wallet-id.js'
+
 export type {
   CreateWalletParams,
   WalletContext,
