@@ -23,19 +23,6 @@ export {
 } from './bucket-classifier.js'
 
 export {
-  BlindedCommitmentInputError,
-  getBlindedCommitment,
-  getBlindedCommitmentForShieldOrTransact,
-  getBlindedCommitmentForUnshield
-} from './blinded-commitment.js'
-export type {
-  BlindedCommitmentInput,
-  BlindedCommitmentInputErrorCode,
-  ShieldOrTransactBlindedCommitmentInput,
-  UnshieldBlindedCommitmentInput
-} from './blinded-commitment.js'
-
-export {
   CHAINALYSIS_OFAC_SANCTIONS_LIST_KEY,
   SEPOLIA_POI_CONFIG,
   SEPOLIA_REQUIRED_LIST_KEYS,

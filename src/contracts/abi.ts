@@ -17,13 +17,6 @@
 // fragment exports from the shared package once it publishes them.
 
 /**
- * Canonical Solidity signature of `shield`. The 4-byte selector is derived
- * from this string, so tests can assert the selector without hardcoding it.
- */
-const SHIELD_FUNCTION_SIGNATURE =
-  'shield(((bytes32,(uint8,address,uint256),uint120),(bytes32[3],bytes32))[])'
-
-/**
  * Minimal ABI fragment for `shield(ShieldRequest[])`.
  *
  * A ShieldRequest pairs a plaintext `preimage` with the `ciphertext` that lets
@@ -199,6 +192,5 @@ export {
   ERC721_APPROVAL_ABI,
   SHIELD_ABI,
   SHIELD_EVENT_ABI,
-  SHIELD_FEE_ABI,
-  SHIELD_FUNCTION_SIGNATURE
+  SHIELD_FEE_ABI
 }

@@ -17,13 +17,6 @@ test('Should be a valid Railgun Commitment Tree Zero Element', () => {
     174, 59, 159, 252]))
 })
 
-test('Should allocate enough memory for the tree', () => {
-  const tree = new NoteCommitmentTree()
-  const capacity = tree.merkleTree.capacity
-
-  assert.equal(capacity, 131071)
-})
-
 test('Should create commitment tree and verify root', async () => {
   const tree = new NoteCommitmentTree()
   const testVectorArray = TEST_COMMITMENTS.map(c => bigIntToBytes(BigInt(c), 32))

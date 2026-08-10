@@ -7,9 +7,6 @@ import type { NoteSpendState, PoiClassification } from './types.js'
 import { POIStatus, WalletBalanceBucket } from './types.js'
 
 type POIStatusMap = Record<string, POIStatus | string | undefined>
-type PoiNetworkConfig = NetworkConfigEntry & {
-  poi: NonNullable<NetworkConfigEntry['poi']>
-}
 
 const SHIELD_COMMITMENT_TYPE = 0
 const OUTPUT_TYPE_CHANGE = 2
@@ -193,4 +190,3 @@ export {
   isSpendableProtocol,
   toWalletBalanceBucket
 }
-export type { PoiNetworkConfig }

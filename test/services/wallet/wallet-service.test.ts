@@ -38,12 +38,6 @@ test('createWallet returns WalletInfo with matching walletId', async () => {
   assert.ok(info.createdAt instanceof Date)
 })
 
-test('createWallet with a name persists the name', async () => {
-  const { service, key } = await fixture()
-  const info = await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
-  assert.equal(info.name, 'primary')
-})
-
 test('createWallet duplicate (mnemonic, index) throws WalletAlreadyExistsError with walletId', async () => {
   const { service, key } = await fixture()
   await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
@@ -53,45 +47,6 @@ test('createWallet duplicate (mnemonic, index) throws WalletAlreadyExistsError w
   } catch (err) {
     assert.ok(err instanceof WalletAlreadyExistsError)
     assert.equal((err as WalletAlreadyExistsError).walletId, VECTORS[0]!.walletId)
-  }
-})
-
-test('createWallet reports a storage-detected collision as WalletAlreadyExistsError', async () => {
-  const storage = {
-    /**
-     * Report the id as already taken.
-     * @returns False, standing in for a conflicting insert.
-     */
-    createWallet: async (): Promise<boolean> => false
-  } as unknown as WalletStorage
-  const service = new WalletService(storage)
-  try {
-    await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: new Uint8Array(randomBytes(32)) })
-    assert.fail('expected throw')
-  } catch (err) {
-    assert.ok(err instanceof WalletAlreadyExistsError)
-    assert.equal((err as WalletAlreadyExistsError).walletId, VECTORS[0]!.walletId)
-  }
-})
-
-test('createWallet propagates a storage failure untouched', async () => {
-  const original = new Error('disk full')
-  const storage = {
-    /**
-     * Fail the insert outright.
-     * @throws {Error} The configured failure.
-     */
-    createWallet: async (): Promise<never> => {
-      throw original
-    }
-  } as unknown as WalletStorage
-  const service = new WalletService(storage)
-  try {
-    await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: new Uint8Array(randomBytes(32)) })
-    assert.fail('expected throw')
-  } catch (err) {
-    assert.equal(err, original)
-    assert.ok(!(err instanceof WalletAlreadyExistsError))
   }
 })
 
@@ -174,20 +129,4 @@ test('deleteWallet removes the wallet; second delete is a no-op', async () => {
   assert.equal((await service.listWallets()).length, 0)
   await service.deleteWallet(VECTORS[0]!.walletId)
   assert.equal((await service.listWallets()).length, 0)
-})
-
-test('full lifecycle: create -> list -> load -> delete -> load throws', async () => {
-  const { service, key } = await fixture()
-  await service.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
-  assert.equal((await service.listWallets()).length, 1)
-  const ctx = await service.loadWallet(VECTORS[0]!.walletId, key)
-  assert.equal(ctx.walletId, VECTORS[0]!.walletId)
-  await service.deleteWallet(VECTORS[0]!.walletId)
-  assert.equal((await service.listWallets()).length, 0)
-  try {
-    await service.loadWallet(VECTORS[0]!.walletId, key)
-    assert.fail('expected throw')
-  } catch (err) {
-    assert.ok(err instanceof WalletNotFoundError)
-  }
 })

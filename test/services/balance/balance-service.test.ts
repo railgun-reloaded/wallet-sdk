@@ -2,12 +2,12 @@ import assert from 'node:assert/strict'
 import { randomBytes } from 'node:crypto'
 import { test } from 'node:test'
 
-import { bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
+import { hexToBytes } from '@railgun-reloaded/bytes'
 import type { DBNote, WalletStorage } from '@railgun-reloaded/storage'
 import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
 import { TokenType } from '@railgun-reloaded/wallet-node'
 
-import { BalanceService, mapNoteRow } from '../../../src/services/balance/balance-service.js'
+import { BalanceService } from '../../../src/services/balance/balance-service.js'
 
 const ERC20_NULL_SUB_ID_HEX = `0x${'00'.repeat(32)}`
 const ERC721_SUB_ID_HEX = `0x${'ab'.repeat(32)}`
@@ -59,32 +59,6 @@ function makeDBNote (overrides: Partial<DBNote> = {}): DBNote {
     ...overrides,
   }
 }
-
-test('mapNoteRow: ERC20 row exposes tokenType 0 and the 32-zero-byte tokenSubID hex', () => {
-  const row = makeDBNote()
-  const note = mapNoteRow(row)
-
-  assert.equal(note.tokenType, TokenType.ERC20)
-  assert.equal(note.tokenSubID, ERC20_NULL_SUB_ID_HEX)
-  assert.deepEqual(note.spendState, {
-    spendable: true,
-    poi: {
-      kind: 'pending',
-      reason: 'MissingExternalPOI'
-    }
-  })
-})
-
-test('mapNoteRow: ERC721 row exposes tokenType 1 and the original tokenSubID bytes as 0x-prefixed hex', () => {
-  const row = makeDBNote({
-    tokenType: TokenType.ERC721,
-    tokenSubID: hexToBytes(ERC721_SUB_ID_HEX),
-  })
-  const note = mapNoteRow(row)
-
-  assert.equal(note.tokenType, TokenType.ERC721)
-  assert.equal(note.tokenSubID, ERC721_SUB_ID_HEX)
-})
 
 test('BalanceService.getNotes returns tokenType and tokenSubID for stored ERC20 + ERC721 notes', async () => {
   const { db, walletId } = await fixture()
@@ -167,39 +141,4 @@ test('BalanceService.getNFTs returns only unspent ERC721 contract and token IDs'
     token: nftContract,
     tokenSubID: ERC721_SUB_ID_HEX
   }])
-})
-
-test('mapNoteRow preserves bytesToHex format on tokenSubID (matches commitment/nullifier convention)', () => {
-  const row = makeDBNote()
-  const note = mapNoteRow(row)
-
-  assert.equal(note.commitment, bytesToHex(row.commitment, { prefix: true }))
-  assert.equal(note.nullifier, bytesToHex(row.nullifier, { prefix: true }))
-  assert.equal(note.tokenSubID, bytesToHex(row.tokenSubID, { prefix: true }))
-})
-
-test('mapNoteRow exposes transaction provenance for creation and spend', () => {
-  const spentTxid = hexToBytes(`0x${'cd'.repeat(32)}`)
-  const creationTxid = hexToBytes(`0x${'ab'.repeat(32)}`)
-  const spentTimestamp = new Date('2025-01-02T03:04:05.000Z')
-  const row = makeDBNote({
-    spent: true,
-    spentTxid,
-    spentBlockNumber: 456n,
-    spentTimestamp,
-    creationTxid
-  })
-  const note = mapNoteRow(row)
-
-  assert.equal(note.spentTxid, `0x${'cd'.repeat(32)}`)
-  assert.equal(note.spentBlockNumber, 456n)
-  assert.deepEqual(note.spentTimestamp, spentTimestamp)
-  assert.equal(note.creationTxid, `0x${'ab'.repeat(32)}`)
-  assert.deepEqual(note.spendState, {
-    spendable: false,
-    poi: {
-      kind: 'pending',
-      reason: 'MissingExternalPOI'
-    }
-  })
 })

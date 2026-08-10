@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
+import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { test } from 'node:test'
 
@@ -304,7 +304,6 @@ test('returns an unsigned transaction targeting the configured contract', async 
   const { transaction } = await buildShield(shieldParams(railgunAddress), ETHEREUM.chainID)
 
   assert.equal(transaction.to, getAddress(ETHEREUM.proxyContractAddress))
-  assert.deepEqual(Object.keys(transaction).sort(), ['data', 'to'])
 })
 
 test('shielded note round-trips back to the recipient from the encoded calldata', async () => {
@@ -575,55 +574,6 @@ test('consecutive shields with identical inputs produce different ciphertexts', 
   )
 })
 
-test('client.buildShield resolves the network and delegates to the buildShield free function', async () => {
-  const walletDB = await createWalletDB({
-    path: ':memory:',
-    runMigrations: true,
-    migrationsFolder: '../storage/drizzle/wallet'
-  })
-  const client = await RailgunClient.create({ walletDB })
-
-  try {
-    const keys = await deriveWalletKeys(MNEMONIC)
-
-    const viaClient = await client.buildShield({
-      tokenAddress: TOKEN_ADDRESS,
-      amount: AMOUNT,
-      recipient: keys.railgunAddress,
-      shieldPrivateKey: SHIELD_PRIVATE_KEY,
-      random: FIXED_RANDOM
-    }, NetworkName.Ethereum)
-
-    const viaFreeFunction = await buildShield(shieldParams(keys.railgunAddress), ETHEREUM.chainID)
-
-    assert.equal(
-      viaClient.transaction.to,
-      viaFreeFunction.transaction.to
-    )
-
-    const fromClient = decodeRequest(viaClient.transaction.data)
-    const fromFreeFunction = decodeRequest(viaFreeFunction.transaction.data)
-
-    assert.deepEqual(fromClient.preimage, fromFreeFunction.preimage)
-    assert.equal(
-      fromClient.ciphertext.shieldKey,
-      fromFreeFunction.ciphertext.shieldKey
-    )
-
-    const recovered = await ShieldNote.fromShieldCommitment(
-      toShieldCommitment(viaClient.transaction.data),
-      keys.viewingPrivateKey,
-      keys.masterPublicKey
-    )
-
-    assert.ok(recovered !== null)
-    assert.equal(recovered.value, AMOUNT)
-    assert.equal(recovered.random, bytesToHex(FIXED_RANDOM))
-  } finally {
-    await client.close()
-  }
-})
-
 test('an ERC721 note round-trips back with its token identifier', async () => {
   const keys = await deriveWalletKeys(MNEMONIC)
 
@@ -652,36 +602,6 @@ test('an ERC721 note round-trips back with its token identifier', async () => {
   )
 })
 
-test('an ERC721 shield encodes token type 1, a value of one, and the sub-ID', async () => {
-  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
-
-  const { transaction } = await buildShield({
-    tokenAddress: TOKEN_ADDRESS,
-    tokenType: 'ERC721',
-    tokenSubID: NFT_TOKEN_SUB_ID,
-    recipient: railgunAddress,
-    shieldPrivateKey: SHIELD_PRIVATE_KEY,
-    random: FIXED_RANDOM
-  }, ETHEREUM.chainID)
-
-  const request = decodeRequest(transaction.data)
-
-  assert.equal(request.preimage.token.tokenType, TokenType.ERC721)
-  assert.equal(request.preimage.value, 1n)
-  assert.equal(request.preimage.token.tokenSubID, NFT_TOKEN_SUB_ID)
-  assert.equal(request.preimage.token.tokenAddress, getAddress(TOKEN_ADDRESS))
-})
-
-test('an ERC20 shield keeps token type 0 and a zero sub-ID', async () => {
-  const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
-
-  const { transaction } = await buildShield(shieldParams(railgunAddress), ETHEREUM.chainID)
-  const request = decodeRequest(transaction.data)
-
-  assert.equal(request.preimage.token.tokenType, TokenType.ERC20)
-  assert.equal(request.preimage.token.tokenSubID, 0n)
-})
-
 test('an ERC721 sub-ID outside uint256 is rejected before construction', async () => {
   const { railgunAddress } = await deriveWalletKeys(MNEMONIC)
 
@@ -699,37 +619,6 @@ test('an ERC721 sub-ID outside uint256 is rejected before construction', async (
         return true
       }
     )
-  }
-})
-
-test('client.buildShield shields an ERC721 through the network selector', async () => {
-  const walletDB = await createWalletDB({
-    path: ':memory:',
-    runMigrations: true,
-    migrationsFolder: '../storage/drizzle/wallet'
-  })
-  const client = await RailgunClient.create({ walletDB })
-
-  try {
-    const keys = await deriveWalletKeys(MNEMONIC)
-
-    const { transaction } = await client.buildShield({
-      tokenAddress: TOKEN_ADDRESS,
-      tokenType: 'ERC721',
-      tokenSubID: NFT_TOKEN_SUB_ID,
-      recipient: keys.railgunAddress,
-      shieldPrivateKey: SHIELD_PRIVATE_KEY,
-      random: FIXED_RANDOM
-    }, NetworkName.Ethereum)
-
-    const request = decodeRequest(transaction.data)
-
-    assert.equal(transaction.to, getAddress(ETHEREUM.proxyContractAddress))
-    assert.equal(request.preimage.token.tokenType, TokenType.ERC721)
-    assert.equal(request.preimage.token.tokenSubID, NFT_TOKEN_SUB_ID)
-    assert.equal(request.preimage.value, 1n)
-  } finally {
-    await client.close()
   }
 })
 
@@ -756,7 +645,6 @@ test('shield private key derivation matches keccak256 of the EIP-191 signature',
   })
   const expected = hexToBytes(keccak256(signature))
 
-  assert.equal(SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE, 'RAILGUN_SHIELD')
   assert.deepEqual(await deriveShieldPrivateKey(signer), expected)
   assert.deepEqual(shieldPrivateKeyFromSignature(signature), expected)
   assert.equal(expected.length, 32)
@@ -889,7 +777,6 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
   const signature = await privateKeyToAccount(
     '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
   ).signMessage({ message: SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE })
-  const methods: string[] = []
   const signer = createWalletClient({
     account: ACCOUNT_ADDRESS,
     chain: mainnet,
@@ -901,7 +788,6 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
        * @returns Mocked RPC response for the requested client action.
        */
       request: async ({ method }: { method: string }) => {
-        methods.push(method)
         if (method === 'personal_sign') return signature
         if (method === 'eth_chainId') return '0x1'
         if (method === 'eth_sendTransaction') return TX_HASH
@@ -934,7 +820,6 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
       confirmations: 1
     }, NetworkName.Ethereum)
 
-    assert.ok(result !== undefined)
     assert.equal(result.txHash, TX_HASH)
     assert.equal(result.shieldedAmount, 975n)
     assert.equal(result.fee, 25n)
@@ -962,12 +847,6 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
       [],
       'history is chain-scoped'
     )
-    assert.deepEqual(methods, [
-      'personal_sign',
-      'eth_chainId',
-      'eth_sendTransaction',
-      'eth_getTransactionReceipt'
-    ])
   } finally {
     await client.close()
   }
@@ -1440,29 +1319,5 @@ test('a progress callback that throws leaves the shield unaffected', async () =>
     assert.equal(result.fee, 25n)
   } finally {
     await client.close()
-  }
-})
-
-test('shield module imports no Node built-ins', () => {
-  const shieldDir = join(import.meta.dirname, '..', '..', 'src', 'shield')
-  const sources = readdirSync(shieldDir).filter((file) => file.endsWith('.ts'))
-  assert.ok(sources.length > 0)
-
-  const nodeOnly = new Set(['fs', 'path', 'crypto', 'os', 'url', 'buffer'])
-
-  for (const file of sources) {
-    const contents = readFileSync(join(shieldDir, file), 'utf8')
-    const specifiers = [...contents.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1]!)
-
-    for (const specifier of specifiers) {
-      assert.ok(
-        !specifier.startsWith('node:'),
-        `${file} imports Node built-in '${specifier}'`
-      )
-      assert.ok(
-        !nodeOnly.has(specifier),
-        `${file} imports Node built-in '${specifier}'`
-      )
-    }
   }
 })

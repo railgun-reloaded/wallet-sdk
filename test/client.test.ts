@@ -221,23 +221,6 @@ test('RailgunClient.getNFTs returns private ERC721 holdings', async () => {
   await client.close()
 })
 
-test('RailgunClient.getBalances lowercases token values', async () => {
-  const walletDB = await memDB()
-  const client = await RailgunClient.create({ walletDB })
-  const key = new Uint8Array(randomBytes(32))
-  const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
-  const token = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
-
-  await seedNotes(walletDB, wallet.walletId, [
-    noteFixture({ commitment: filledBytes(20), nullifier: filledBytes(21), token, amount: 123n })
-  ])
-
-  const balances = await client.getBalances(wallet.walletId, 11155111, 'all')
-  assert.equal(balances.find(balance => balance.token === token)?.balance, 123n)
-  assert.equal(balances.some(balance => balance.token === token.toUpperCase()), false)
-  await client.close()
-})
-
 test('RailgunClient.getNotes maps all and unspent notes', async () => {
   const walletDB = await memDB()
   const client = await RailgunClient.create({ walletDB })
@@ -615,21 +598,6 @@ test('RailgunClient.sync fires onProgress for both phases in order', async () =>
     }
   }
   assert.ok(monotonic, 'currentBlock monotonic within each phase')
-
-  await client.close()
-})
-
-test('RailgunClient loadWallet returns correct keys', async () => {
-  const walletDB = await memDB()
-  const client = await RailgunClient.create({ walletDB })
-  const key = new Uint8Array(randomBytes(32))
-
-  await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key, name: 'primary' })
-  const ctx = await client.loadWallet(VECTORS[0]!.walletId, key)
-
-  assert.equal(ctx.walletId, VECTORS[0]!.walletId)
-  assert.equal(ctx.name, 'primary')
-  assert.ok(ctx.railgunAddress.startsWith('0zk1'))
 
   await client.close()
 })

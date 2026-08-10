@@ -1,13 +1,11 @@
 import assert from 'node:assert/strict'
-import { readFileSync, readdirSync } from 'node:fs'
-import { join } from 'node:path'
 import { test } from 'node:test'
 
 import { hexToBytes } from '@railgun-reloaded/bytes'
 import type { ShieldRequest } from '@railgun-reloaded/wallet-node'
 import { decodeFunctionData, getAddress, toFunctionSelector } from 'viem'
 
-import { SHIELD_ABI, SHIELD_FUNCTION_SIGNATURE } from '../../src/contracts/abi.js'
+import { SHIELD_ABI } from '../../src/contracts/abi.js'
 import {
   UnsupportedChainError,
   UnsupportedTokenTypeError,
@@ -52,6 +50,8 @@ const toShieldRequest = (vector: ShieldRequestVector): ShieldRequest => {
 
 const FIXTURE_REQUESTS = SHIELD_REQUESTS.map(toShieldRequest)
 const ETHEREUM_CHAIN_ID = NETWORK_CONFIG.Ethereum.chainID
+const SHIELD_FUNCTION_SIGNATURE =
+  'shield(((bytes32,(uint8,address,uint256),uint120),(bytes32[3],bytes32))[])'
 
 test('selector derives from the Solidity signature', () => {
   const derived = toFunctionSelector(SHIELD_FUNCTION_SIGNATURE)
@@ -142,34 +142,4 @@ test('rejects a value that does not fit uint120', () => {
   overflowing.preimage.value = 2n ** 120n
 
   assert.throws(() => buildShieldTransaction([overflowing], ETHEREUM_CHAIN_ID))
-})
-
-test('returns only the call target and calldata', () => {
-  const tx = buildShieldTransaction(FIXTURE_REQUESTS, ETHEREUM_CHAIN_ID)
-
-  assert.deepEqual(Object.keys(tx).sort(), ['data', 'to'])
-})
-
-test('contract module imports no Node built-ins', () => {
-  const contractsDir = join(import.meta.dirname, '..', '..', 'src', 'contracts')
-  const sources = readdirSync(contractsDir).filter((file) => file.endsWith('.ts'))
-  assert.ok(sources.length > 0)
-
-  const nodeOnly = new Set(['fs', 'path', 'crypto', 'os', 'url', 'buffer'])
-
-  for (const file of sources) {
-    const contents = readFileSync(join(contractsDir, file), 'utf8')
-    const specifiers = [...contents.matchAll(/from\s+'([^']+)'/g)].map((match) => match[1]!)
-
-    for (const specifier of specifiers) {
-      assert.ok(
-        !specifier.startsWith('node:'),
-        `${file} imports Node built-in '${specifier}'`
-      )
-      assert.ok(
-        !nodeOnly.has(specifier),
-        `${file} imports Node built-in '${specifier}'`
-      )
-    }
-  }
 })

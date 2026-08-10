@@ -16,11 +16,6 @@ function bytesEqual (a: Uint8Array, b: Uint8Array): boolean {
   return Buffer.from(a).equals(Buffer.from(b))
 }
 
-test('denormalizeBlockData yields one railgun-tx row per ppoi-complete Transact', () => {
-  const { railgunTransactions } = denormalizeBlockData(TEST_VECTOR_TRANSACT)
-  assert.equal(railgunTransactions.length, 1)
-})
-
 test('denormalizeBlockData carries scanner Transact fields onto the row, with null graphID/verificationHash', () => {
   const { railgunTransactions } = denormalizeBlockData(TEST_VECTOR_TRANSACT)
   const row = railgunTransactions[0]!

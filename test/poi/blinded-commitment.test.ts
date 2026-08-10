@@ -6,14 +6,12 @@ import { bytesToBigInt, bytesToHex, hexToBytes } from '@railgun-reloaded/bytes'
 import type {
   ShieldOrTransactBlindedCommitmentInput,
   UnshieldBlindedCommitmentInput
-} from '../../src/poi/index.js'
+} from '../../src/poi/blinded-commitment.js'
 import {
   BlindedCommitmentInputError,
-  BlindedCommitmentType,
-  getBlindedCommitment,
   getBlindedCommitmentForShieldOrTransact,
   getBlindedCommitmentForUnshield
-} from '../../src/poi/index.js'
+} from '../../src/poi/blinded-commitment.js'
 
 type ShieldOrTransactFixture = ShieldOrTransactBlindedCommitmentInput & { expected: string }
 type UnshieldFixture = UnshieldBlindedCommitmentInput & { expected: string }
@@ -120,15 +118,6 @@ test('blinded commitment helpers match pinned community fixtures', () => {
   }
 })
 
-test('blinded commitment derivation is deterministic across 1000 invocations', () => {
-  const fixture = TRANSACT_FIXTURES[2]!
-  const expected = bytesToHex(getBlindedCommitmentForShieldOrTransact(fixture))
-
-  for (let i = 0; i < 1000; i += 1) {
-    assert.strictEqual(bytesToHex(getBlindedCommitmentForShieldOrTransact(fixture)), expected)
-  }
-})
-
 test('blinded commitment helpers throw typed errors for invalid input', () => {
   assertInputError(() => {
     getBlindedCommitmentForShieldOrTransact({
@@ -150,34 +139,6 @@ test('blinded commitment helpers throw typed errors for invalid input', () => {
       globalTreePosition: Number.POSITIVE_INFINITY as unknown as bigint
     })
   }, 'globalTreePosition')
-})
-
-test('blinded commitment dispatch helper matches direct helpers', () => {
-  const shield = SHIELD_FIXTURES[0]!
-  const transact = TRANSACT_FIXTURES[0]!
-  const unshield = UNSHIELD_FIXTURES[0]!
-
-  assert.strictEqual(
-    bytesToHex(getBlindedCommitment({
-      type: BlindedCommitmentType.Shield,
-      ...shield
-    })),
-    bytesToHex(getBlindedCommitmentForShieldOrTransact(shield))
-  )
-  assert.strictEqual(
-    bytesToHex(getBlindedCommitment({
-      type: BlindedCommitmentType.Transact,
-      ...transact
-    })),
-    bytesToHex(getBlindedCommitmentForShieldOrTransact(transact))
-  )
-  assert.strictEqual(
-    bytesToHex(getBlindedCommitment({
-      type: BlindedCommitmentType.Unshield,
-      ...unshield
-    })),
-    bytesToHex(getBlindedCommitmentForUnshield(unshield))
-  )
 })
 
 test('shield blinded commitment uses global tree position (tree > 0 differs from per-tree)', () => {

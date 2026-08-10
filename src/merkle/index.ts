@@ -5,5 +5,5 @@
  * Consolidated from standalone @railgun-reloaded/note-commitment-indexer package.
  */
 
-export { NoteCommitmentTree, COMMITMENT_TREE_ZERO_ELEMENT } from './note-commitment-tree.js'
+export { NoteCommitmentTree } from './note-commitment-tree.js'
 export { poseidonHash } from './hash.js'

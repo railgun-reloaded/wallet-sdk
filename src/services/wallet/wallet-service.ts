@@ -92,14 +92,22 @@ class WalletService {
     const encryptedKeys = encryptWalletBlob({ mnemonic, index }, encryptionKey)
     const createdAt = new Date()
 
-    const created = await this.#storage.createWallet({
-      id: walletId,
-      encryptedKeys,
-      name: name ?? null,
-      createdAt
-    })
-    if (!created) {
+    if (await this.#storage.getWallet(walletId) !== undefined) {
       throw new WalletAlreadyExistsError(walletId)
+    }
+
+    try {
+      await this.#storage.createWallet({
+        id: walletId,
+        encryptedKeys,
+        name: name ?? null,
+        createdAt
+      })
+    } catch (error) {
+      if (await this.#storage.getWallet(walletId) !== undefined) {
+        throw new WalletAlreadyExistsError(walletId)
+      }
+      throw error
     }
 
     return { walletId, name: name ?? null, createdAt }

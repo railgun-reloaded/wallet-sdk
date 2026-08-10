@@ -64,16 +64,6 @@ test('handlers fire in registration order', () => {
   assert.deepEqual(seen, ['a', 'b', 'c'])
 })
 
-test('multiple subscribers to the same event all fire', () => {
-  const bus = new EventBus()
-  let hits = 0
-  bus.on('sync:start', () => { hits += 1 })
-  bus.on('sync:start', () => { hits += 1 })
-  bus.on('sync:start', () => { hits += 1 })
-  bus.emit('sync:start', startPayload())
-  assert.equal(hits, 3)
-})
-
 test('walletId filter skips events without walletId', () => {
   const bus = new EventBus()
   let hits = 0

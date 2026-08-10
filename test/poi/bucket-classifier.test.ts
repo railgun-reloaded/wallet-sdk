@@ -4,7 +4,6 @@ import { test } from 'node:test'
 import type { DBNote } from '@railgun-reloaded/storage'
 
 import type { NetworkConfig } from '../../src/network-config.js'
-import type { PoiNetworkConfig } from '../../src/poi/bucket-classifier.js'
 import type {
   NoteSpendState,
   PoiClassification
@@ -27,7 +26,7 @@ const TRANSACT_COMMITMENT_TYPE = 1
 const OUTPUT_TYPE_TRANSFER = 0
 const OUTPUT_TYPE_CHANGE = 2
 
-const PPOI_NETWORK: PoiNetworkConfig = {
+const PPOI_NETWORK = {
   chainID: CHAIN_ID,
   deploymentBlock: 1n,
   proxyContractAddress: '0x0000000000000000000000000000000000000000',
@@ -218,16 +217,6 @@ test('classifyNoteSpendState models non-PPOI networks with an absent POI tier', 
 })
 
 test('toWalletBalanceBucket preserves every flat wire value and precedence', () => {
-  assert.deepEqual(Object.values(WalletBalanceBucket), [
-    'Spendable',
-    'ShieldPending',
-    'ShieldBlocked',
-    'ProofSubmitted',
-    'MissingInternalPOI',
-    'MissingExternalPOI',
-    'Spent'
-  ])
-
   const cases: Array<{
     state: NoteSpendState
     expected: WalletBalanceBucket

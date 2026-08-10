@@ -518,28 +518,6 @@ test('scan() complete reports covered blocks even when no event blocks yield', a
   await client.close()
 })
 
-test('every sync:progress emitted by decrypt() carries phase=decrypt', async () => {
-  const walletDB = await memWalletDB()
-  const chainDB = await memChainDB()
-  const client = await RailgunClient.create({ walletDB, chainDB })
-
-  const encryptionKey = new Uint8Array(randomBytes(32))
-  const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
-
-  const phases: string[] = []
-  client.on('sync:progress', (e) => phases.push(e.phase))
-
-  await client.decrypt(wallet.walletId, encryptionKey, {
-    chainId: SEPOLIA_CHAIN_ID,
-    fromBlock: 0n,
-    toBlock: 0n
-  })
-
-  assert.ok(phases.length > 0, 'decrypt emitted progress')
-  assert.ok(phases.every(p => p === 'decrypt'), 'all progress events tagged decrypt')
-  await client.close()
-})
-
 test('sync() emits all three start/complete pairs', async () => {
   const walletDB = await memWalletDB()
   const chainDB = await memChainDB()

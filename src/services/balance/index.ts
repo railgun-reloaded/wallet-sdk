@@ -1,8 +1,4 @@
-export {
-  BalanceService,
-  mapNoteRow,
-  mapNoteSpendState
-} from './balance-service.js'
+export { BalanceService } from './balance-service.js'
 export type {
   BalanceMode,
   DecryptedNote,

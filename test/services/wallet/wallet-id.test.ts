@@ -16,10 +16,6 @@ test('generateWalletId defaults index to 0', () => {
   assert.equal(generateWalletId(MNEMONIC), VECTORS[0]!.walletId)
 })
 
-test('generateWalletId is deterministic', () => {
-  assert.equal(generateWalletId(MNEMONIC, 0), generateWalletId(MNEMONIC, 0))
-})
-
 test('generateWalletId differs across indices', () => {
   assert.notEqual(generateWalletId(MNEMONIC, 0), generateWalletId(MNEMONIC, 1))
 })

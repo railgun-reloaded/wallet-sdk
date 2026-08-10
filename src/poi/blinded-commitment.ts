@@ -1,8 +1,6 @@
 import { bytesToBigInt } from '@railgun-reloaded/bytes'
 import { poseidonFunc } from '@railgun-reloaded/cryptography'
 
-import { BlindedCommitmentType } from './types.js'
-
 const BYTES_32_LENGTH = 32
 const ADDRESS_LENGTH = 20
 
@@ -10,7 +8,6 @@ type BlindedCommitmentInputErrorCode =
   | 'InvalidBigInt'
   | 'InvalidByteLength'
   | 'InvalidByteInput'
-  | 'InvalidType'
 
 /**
  * Input validation error for blinded commitment derivation.
@@ -51,11 +48,6 @@ type UnshieldBlindedCommitmentInput = {
   toAddress: Uint8Array
   value: bigint
 }
-
-type BlindedCommitmentInput =
-  | ({ type: BlindedCommitmentType.Shield } & ShieldOrTransactBlindedCommitmentInput)
-  | ({ type: BlindedCommitmentType.Transact } & ShieldOrTransactBlindedCommitmentInput)
-  | ({ type: BlindedCommitmentType.Unshield } & UnshieldBlindedCommitmentInput)
 
 /**
  * Validate a fixed-length byte input.
@@ -148,37 +140,12 @@ function getBlindedCommitmentForUnshield (
   return new Uint8Array(railgunTxid)
 }
 
-/**
- * Dispatch blinded commitment derivation by commitment type.
- * @param input - Typed blinded commitment input.
- * @returns Derived blinded commitment bytes.
- */
-function getBlindedCommitment (
-  input: BlindedCommitmentInput
-): Uint8Array {
-  switch (input.type) {
-    case BlindedCommitmentType.Shield:
-    case BlindedCommitmentType.Transact:
-      return getBlindedCommitmentForShieldOrTransact(input)
-    case BlindedCommitmentType.Unshield:
-      return getBlindedCommitmentForUnshield(input)
-    default:
-      throw new BlindedCommitmentInputError(
-        'InvalidType',
-        'type',
-        'Invalid blinded commitment type'
-      )
-  }
-}
-
 export {
   BlindedCommitmentInputError,
-  getBlindedCommitment,
   getBlindedCommitmentForShieldOrTransact,
   getBlindedCommitmentForUnshield
 }
 export type {
-  BlindedCommitmentInput,
   BlindedCommitmentInputErrorCode,
   ShieldOrTransactBlindedCommitmentInput,
   UnshieldBlindedCommitmentInput

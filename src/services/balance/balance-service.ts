@@ -107,7 +107,7 @@ function mapNoteRow (
     spentBlockNumber,
     spentTimestamp,
     creationTxid: publicCreationTxid,
-    spendState: mapNoteSpendState(row, network),
+    spendState: classifyNoteSpendState(row, network),
     decryptedAt
   }
 }
@@ -158,19 +158,6 @@ function getNetworkConfigByChainId (chainId: number): NetworkConfigEntry {
     throw new Error(`Missing network config for chain ${chainId}`)
   }
   return network
-}
-
-/**
- * Build the protocol and optional POI tiers for a stored note.
- * @param note - Stored wallet note.
- * @param network - Network config for the note chain.
- * @returns Two-tier note spend state.
- */
-function mapNoteSpendState (
-  note: DBNote,
-  network: NetworkConfigEntry
-): NoteSpendState {
-  return classifyNoteSpendState(note, network)
 }
 
 /**
@@ -377,5 +364,5 @@ class BalanceService {
   }
 }
 
-export { BalanceService, mapNoteRow, mapNoteSpendState }
+export { BalanceService }
 export type { BalanceMode, DecryptedNote, ERC721Holding, TokenBalance }
