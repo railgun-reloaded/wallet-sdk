@@ -1,6 +1,7 @@
 import type { EVMBlock } from '@railgun-reloaded/scanner'
 import { SourceAggregator, SubsquidProvider } from '@railgun-reloaded/scanner'
 
+/** SDK-owned source of RAILGUN blocks from a configured indexer. */
 type RailgunDataSource = SourceAggregator<EVMBlock>
 
 /**

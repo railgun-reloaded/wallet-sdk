@@ -10,17 +10,11 @@ enum NetworkName {
 }
 
 /**
- * Canonical protocol deployment metadata for a supported network. Every field
- * here is a fact about the deployment itself.
- *
- * Service endpoints are deliberately absent. Both the indexer endpoint and the
- * PPOI node URL name a hosted service that an operator chooses, runs, and can
- * rotate or self-host, so neither belongs to the protocol and neither should
- * ship on an SDK release cycle. Callers pass their indexer endpoint to
- * `createDataSource` and their PPOI nodes through
- * `RailgunClientOptions.poiNodeUrls`. The public Subsquid squid for Sepolia is
- * `https://rail-squid.squids.live/squid-railgun-eth-sepolia-v2/graphql`, named
- * here only so a first integration knows where to point.
+ * Canonical metadata for a supported network. Deployment fields are protocol
+ * facts; `rpcURL` is an SDK-selected default endpoint that may rotate.
+ * Caller-selected service endpoints remain external: pass the indexer endpoint
+ * to `createDataSource` and PPOI node URLs through
+ * `RailgunClientOptions.poiNodeUrls`.
  */
 type NetworkConfig = {
   chainID: number
@@ -64,5 +58,25 @@ const NETWORK_CONFIG : Record<NetworkName, NetworkConfig> = {
   }
 }
 
-export { NetworkName, NETWORK_CONFIG }
+/** Thrown when a network has no entry in the canonical network config. */
+class UnsupportedNetworkError extends Error {
+  /** Network that could not be resolved to a configured deployment. */
+  readonly network: string
+
+  /**
+   * Construct an UnsupportedNetworkError.
+   * @param network - The network that is not configured.
+   * @param supportedNetworks - Networks that are configured, listed to help
+   * callers correct the argument.
+   */
+  constructor (network: string, supportedNetworks: readonly string[]) {
+    super(
+      `No RAILGUN contract configured for network ${network}. Supported networks: ${supportedNetworks.join(', ')}`
+    )
+    this.name = 'UnsupportedNetworkError'
+    this.network = network
+  }
+}
+
+export { NetworkName, NETWORK_CONFIG, UnsupportedNetworkError }
 export type { NetworkConfig }

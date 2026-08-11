@@ -44,7 +44,7 @@ export { createDataSource } from '../data-source.js'
 export type { RailgunDataSource } from '../data-source.js'
 
 export type { NetworkConfig } from '../network-config.js'
-export { NETWORK_CONFIG, NetworkName } from '../network-config.js'
+export { NETWORK_CONFIG, NetworkName, UnsupportedNetworkError } from '../network-config.js'
 
 export type { UnsignedTx } from '../contracts/index.js'
 export {
@@ -63,7 +63,6 @@ export {
   ShieldApprovalRevertedError,
   ShieldEventMissingError,
   ShieldFeeReadError,
-  UnsupportedNetworkError,
   ShieldReceiptTimeoutError,
   ShieldSignatureRejectedError,
   ShieldTransactionRevertedError,

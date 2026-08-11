@@ -14,9 +14,9 @@ import {
 
 import { SHIELD_EVENT_ABI, SHIELD_FEE_ABI } from '../contracts/abi.js'
 import type { NetworkName } from '../network-config.js'
-import { NETWORK_CONFIG } from '../network-config.js'
+import { NETWORK_CONFIG, UnsupportedNetworkError } from '../network-config.js'
 
-import { ShieldFeeReadError, UnsupportedNetworkError } from './errors.js'
+import { ShieldFeeReadError } from './errors.js'
 
 type ShieldCommitmentPreimage = {
   npk: Hex
@@ -110,16 +110,16 @@ async function readShieldFee (
  * proxy address is resolved from `NETWORK_CONFIG`, so callers pass a network
  * rather than a contract address.
  * @param publicClient - Caller-owned public client for the target chain.
- * @param network - Network whose RAILGUN proxy exposes `shieldFee()`.
+ * @param network - Network name to validate against the configured deployments.
  * @returns Shield fee in basis points.
- * @throws {UnsupportedChainError} If the network has no configured contract.
+ * @throws {UnsupportedNetworkError} If the network has no configured contract.
  * @throws {ShieldFeeReadError} If the RPC or contract read fails.
  */
 async function readShieldFeeForNetwork (
   publicClient: PublicClient,
-  network: NetworkName
+  network: NetworkName | (string & {})
 ): Promise<bigint> {
-  const config = NETWORK_CONFIG[network]
+  const config = NETWORK_CONFIG[network as NetworkName]
   if (config === undefined) {
     throw new UnsupportedNetworkError(network, Object.keys(NETWORK_CONFIG))
   }

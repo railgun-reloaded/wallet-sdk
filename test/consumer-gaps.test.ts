@@ -83,20 +83,45 @@ test('readShieldFeeForNetwork resolves the configured proxy from every entry', a
   )
 })
 
-test('createDataSource returns a ready SDK-owned source from every entry', () => {
+test('createDataSource wires the supplied endpoint through every entry', async () => {
   assert.equal(createBrowserDataSource, createDataSource)
   assert.equal(createNodeDataSource, createDataSource)
 
+  const originalFetch = globalThis.fetch
   const source = createDataSource(SEPOLIA_INDEXER_URL)
-  assert.equal(source.lastIteratedHeight, undefined)
-  assert.equal(typeof source.from, 'function')
-  assert.equal(typeof source.destroy, 'function')
-  source.destroy()
+  let requestedURL: string | URL | Request | undefined
+  /**
+   * Return a successful mocked Subsquid head response.
+   * @param input - Request URL to capture.
+   * @returns Mocked Subsquid response.
+   */
+  globalThis.fetch = async (input) => {
+    requestedURL = input
+    return new Response(JSON.stringify({
+      data: { squidStatus: { height: '0' } }
+    }), {
+      headers: { 'Content-Type': 'application/json' },
+      status: 200
+    })
+  }
+
+  try {
+    const iterator = source.from({
+      startHeight: 1n,
+      endHeight: 1n,
+      liveSync: false
+    })
+    assert.deepEqual(await iterator.next(), { done: true, value: undefined })
+    assert.equal(requestedURL, SEPOLIA_INDEXER_URL)
+  } finally {
+    globalThis.fetch = originalFetch
+    source.destroy()
+  }
 })
 
 test('readShieldFeeForNetwork rejects an unconfigured network with a typed error', async () => {
   await assert.rejects(
-    readShieldFeeForNetwork({} as never, 'Optimism' as NetworkName),
+    readShieldFeeForNetwork({} as never, 'Optimism'),
     (error: unknown) => {
       assert.ok(error instanceof UnsupportedNetworkError)
       assert.equal(error.network, 'Optimism')

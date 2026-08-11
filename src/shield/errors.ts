@@ -199,26 +199,6 @@ class ShieldEventMissingError extends Error {
   }
 }
 
-/** Thrown when a network has no entry in the canonical network config. */
-class UnsupportedNetworkError extends Error {
-  /** Network that could not be resolved to a configured deployment. */
-  readonly network: string
-
-  /**
-   * Construct an UnsupportedNetworkError.
-   * @param network - The network that is not configured.
-   * @param supportedNetworks - Networks that are configured, listed to help
-   * callers correct the argument.
-   */
-  constructor (network: string, supportedNetworks: readonly string[]) {
-    super(
-      `No RAILGUN contract configured for network ${network}. Supported networks: ${supportedNetworks.join(', ')}`
-    )
-    this.name = 'UnsupportedNetworkError'
-    this.network = network
-  }
-}
-
 export {
   InvalidShieldAmountError,
   InvalidShieldPrivateKeyError,
@@ -229,6 +209,5 @@ export {
   ShieldReceiptTimeoutError,
   ShieldSignatureRejectedError,
   ShieldTransactionRevertedError,
-  UnexpectedShieldFieldError,
-  UnsupportedNetworkError
+  UnexpectedShieldFieldError
 }

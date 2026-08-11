@@ -13,7 +13,6 @@ export {
   ShieldApprovalRevertedError,
   ShieldEventMissingError,
   ShieldFeeReadError,
-  UnsupportedNetworkError,
   ShieldReceiptTimeoutError,
   ShieldSignatureRejectedError,
   ShieldTransactionRevertedError,
