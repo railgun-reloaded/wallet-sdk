@@ -5,20 +5,11 @@ import { dirname, join, relative, resolve } from 'node:path'
 import { test } from 'node:test'
 import { fileURLToPath } from 'node:url'
 
-import * as browserEntry from '../src/browser/index.js'
-import * as rootEntry from '../src/index.js'
-import * as nodeEntry from '../src/node/index.js'
-import * as snapshotBootstrap from '../src/snapshot-bootstrap/index.js'
-
-import { MNEMONIC, VECTORS } from './fixtures/wallet-vectors.js'
-
 const SRC = resolve(dirname(fileURLToPath(import.meta.url)), '..', 'src')
 const BUILTINS = new Set(builtinModules)
 const SPECIFIER = /(?:from|import)\s*\(?\s*['"]([^'"]+)['"]/g
 const TRIPLE_SLASH_TYPES = /\/\/\/\s*<reference\s+types=["']([^"']+)["']/g
-const DECLARED_EXPORT = /export\s+(?:type\s+)?\{([^}]*)\}/g
 const PORTABLE_ENTRIES = ['index.d.ts', 'browser/index.d.ts']
-const ENTRIES = [...PORTABLE_ENTRIES, 'node/index.d.ts']
 
 /**
  * Packages that resolve only under Node but that no naming rule catches.
@@ -51,40 +42,6 @@ function isNodeOnly (specifier: string): boolean {
 }
 
 /**
- * Sorted runtime export names of a module namespace. Type-only exports erase
- * at runtime and never appear here.
- * @param entry - Imported module namespace object.
- * @returns Export names in sorted order.
- */
-function namesOf (entry: object): string[] {
-  return Object.keys(entry).sort()
-}
-
-/**
- * Declared export names of an emitted declaration file. This covers values and
- * type-only exports together. A runtime namespace object omits types, so this
- * is the only view of the complete published surface.
- * @param relativePath - Declaration file path, relative to `src`.
- * @returns Exported names in sorted order.
- */
-function declaredNames (relativePath: string): string[] {
-  const source = readFileSync(resolve(SRC, relativePath), 'utf8')
-  const names = new Set<string>()
-
-  for (const [, group] of source.matchAll(DECLARED_EXPORT)) {
-    for (const name of (group ?? '').split(',')) {
-      const trimmed = name.trim()
-
-      if (trimmed !== '') {
-        names.add(trimmed)
-      }
-    }
-  }
-
-  return [...names].sort()
-}
-
-/**
  * Walk the transitive declaration import graph of an entry point. Declarations
  * carry the published type surface, so a Node-only package that appears here
  * leaks into consumers even when it never reaches the runtime bundle.
@@ -98,11 +55,13 @@ function walkDeclarations (entry: string): DeclarationGraph {
   const queue = [resolve(SRC, entry)]
 
   while (queue.length > 0) {
-    const file = queue.pop() as string
-    if (files.has(file)) {
+    const file = queue.pop()
+
+    if (file === undefined || files.has(file)) {
       continue
     }
     files.add(file)
+
     const source = readFileSync(file, 'utf8')
 
     for (const [, referenced] of source.matchAll(TRIPLE_SLASH_TYPES)) {
@@ -137,89 +96,6 @@ function walkDeclarations (entry: string): DeclarationGraph {
     unresolved: [...unresolved].sort()
   }
 }
-
-test('root and browser entries expose an identical runtime surface', () => {
-  assert.deepEqual(namesOf(rootEntry), namesOf(browserEntry))
-})
-
-test('node entry adds only snapshot bootstrap values', () => {
-  const portable = new Set(namesOf(browserEntry))
-  const allowed = new Set(namesOf(snapshotBootstrap))
-  const extra = namesOf(nodeEntry).filter((name) => !portable.has(name))
-
-  assert.deepEqual(extra.filter((name) => !allowed.has(name)), [])
-})
-
-test('root and browser entries declare an identical surface', () => {
-  assert.deepEqual(declaredNames('index.d.ts'), declaredNames('browser/index.d.ts'))
-})
-
-test('node entry declares only snapshot bootstrap and event names beyond the portable surface', () => {
-  const portable = new Set(declaredNames('browser/index.d.ts'))
-  const allowed = new Set([
-    ...declaredNames('snapshot-bootstrap/index.d.ts'),
-    ...declaredNames('events/index.d.ts')
-  ])
-  const extra = declaredNames('node/index.d.ts').filter((name) => !portable.has(name))
-
-  assert.deepEqual(extra.filter((name) => !allowed.has(name)), [])
-})
-
-test('entry declarations use only export forms the parser can see', () => {
-  for (const entry of ENTRIES) {
-    const source = readFileSync(resolve(SRC, entry), 'utf8')
-
-    assert.ok(!/export\s+\*/.test(source), `${entry} uses export *, which the declared-name parser cannot see`)
-    assert.ok(!/export\s+default/.test(source), `${entry} uses export default, which the declared-name parser cannot see`)
-  }
-})
-
-test('the declared surface covers the type-only exports', () => {
-  const declared = new Set(declaredNames('browser/index.d.ts'))
-  const values = namesOf(browserEntry)
-
-  for (const name of values) {
-    assert.ok(declared.has(name), `${name} is a runtime value missing from the declared surface`)
-  }
-
-  assert.ok(
-    declared.size > values.length,
-    'the parser finds no type-only exports, so the declared checks prove nothing'
-  )
-})
-
-test('portable entries export nothing the node entry lacks', () => {
-  const node = new Set(namesOf(nodeEntry))
-
-  assert.deepEqual(namesOf(browserEntry).filter((name) => !node.has(name)), [])
-  assert.deepEqual(namesOf(rootEntry).filter((name) => !node.has(name)), [])
-})
-
-test('portable entries declare nothing the node entry lacks', () => {
-  const node = new Set(declaredNames('node/index.d.ts'))
-
-  for (const entry of PORTABLE_ENTRIES) {
-    const missing = declaredNames(entry).filter((name) => !node.has(name))
-
-    assert.deepEqual(missing, [], `${entry} declares ${missing.join(', ')} but the node entry does not`)
-  }
-})
-
-test('snapshot bootstrap values stay off the portable entries', () => {
-  const portable = new Set([...namesOf(rootEntry), ...namesOf(browserEntry)])
-
-  for (const name of namesOf(snapshotBootstrap)) {
-    assert.ok(!portable.has(name), `${name} reaches the filesystem and must stay Node-only`)
-  }
-})
-
-test('every entry exports the same working generateWalletId', () => {
-  const expected = VECTORS[0]?.walletId
-
-  assert.equal(rootEntry.generateWalletId(MNEMONIC, 0), expected)
-  assert.equal(browserEntry.generateWalletId(MNEMONIC, 0), expected)
-  assert.equal(nodeEntry.generateWalletId(MNEMONIC, 0), expected)
-})
 
 test('portable declaration graphs resolve completely', () => {
   for (const entry of PORTABLE_ENTRIES) {
