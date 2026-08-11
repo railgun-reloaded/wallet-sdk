@@ -1,13 +1,3 @@
-/**
- * Node entry for @railgun-reloaded/wallet-sdk.
- *
- * Re-exports the portable surface, then adds what only Node can provide:
- * filesystem-backed wallet and chain database ownership, event emission, and
- * snapshot bootstrap. The explicit exports below shadow the portable ones of
- * the same name, so `RailgunClient` and `RailgunEngine` resolve to the
- * filesystem-backed implementations here.
- */
-
 export * from '../browser/index.js'
 
 export { RailgunClient } from '../client.js'
