@@ -11,8 +11,13 @@ import { Mnemonic } from '@railgun-reloaded/wallet-node'
  * @param index - BIP44-style derivation index (default 0). Enables multi-
  *   account from the same seed.
  * @returns Unprefixed lowercase hex (64 chars).
+ * @throws RangeError When `index` is negative or not an integer.
  */
 function generateWalletId (mnemonic: string, index: number = 0): string {
+  if (!Number.isInteger(index) || index < 0) {
+    throw new RangeError('index must be a non-negative integer')
+  }
+
   const seed = Mnemonic.toSeed(mnemonic)
 
   const rawHex = index.toString(16)

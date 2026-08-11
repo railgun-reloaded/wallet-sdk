@@ -29,6 +29,12 @@ test('generateWalletId differs across mnemonics', () => {
   assert.notEqual(generateWalletId(MNEMONIC, 0), generateWalletId(other, 0))
 })
 
+test('generateWalletId rejects a negative or non-integer index', () => {
+  assert.throws(() => generateWalletId(MNEMONIC, -1), RangeError)
+  assert.throws(() => generateWalletId(MNEMONIC, 1.5), RangeError)
+  assert.throws(() => generateWalletId(MNEMONIC, Number.NaN), RangeError)
+})
+
 test('generateWalletId returns unprefixed 64-character hex', () => {
   const id = generateWalletId(MNEMONIC, 0)
   assert.equal(id.length, 64)
