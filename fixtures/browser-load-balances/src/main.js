@@ -1,5 +1,3 @@
-import { SourceAggregator } from '@railgun-reloaded/scanner/src/sources/source-aggregator.js'
-import { SubsquidProvider } from '@railgun-reloaded/scanner/src/sources/subsquid/provider.js'
 import {
   chainDatabaseName,
   closeChainDB,
@@ -11,6 +9,7 @@ import {
   deleteDatabase
 } from '@railgun-reloaded/storage/browser'
 import {
+  createDataSource,
   NETWORK_CONFIG,
   NetworkName,
   RailgunClient,
@@ -247,9 +246,7 @@ async function runFixture (options) {
     step(`loaded wallet ${walletContext.railgunAddress.slice(0, 18)}...`)
 
     setStatus('Scanning bounded Sepolia range')
-    const dataSource = new SourceAggregator([
-      new SubsquidProvider(SUBSQUID_URL)
-    ])
+    const dataSource = createDataSource(SUBSQUID_URL)
     const summary = await client.sync(wallet.walletId, ENCRYPTION_KEY, {
       network: NETWORK,
       dataSource,

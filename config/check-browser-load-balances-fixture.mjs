@@ -22,8 +22,7 @@ const fallbackPackagesRoot = path.resolve(process.env.RAILGUN_PACKAGES_ROOT ?? p
 const PREVIEW_PORT = Number(process.env.RAILGUN_BROWSER_FIXTURE_PORT ?? 43123)
 const DIRECT_FIXTURE_PACKAGES = [
   '@railgun-reloaded/wallet-sdk',
-  '@railgun-reloaded/storage',
-  '@railgun-reloaded/scanner'
+  '@railgun-reloaded/storage'
 ]
 
 const FORBIDDEN_BUNDLE_PATTERNS = [
