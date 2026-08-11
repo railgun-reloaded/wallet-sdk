@@ -35,6 +35,12 @@ test('generateWalletId rejects a negative or non-integer index', () => {
   assert.throws(() => generateWalletId(MNEMONIC, Number.NaN), RangeError)
 })
 
+test('generateWalletId rejects an index that BIP-32 would wrap onto another wallet', () => {
+  assert.equal(typeof generateWalletId(MNEMONIC, 0x7fffffff), 'string')
+  assert.throws(() => generateWalletId(MNEMONIC, 0x80000000), RangeError)
+  assert.throws(() => generateWalletId(MNEMONIC, 2 ** 32), RangeError)
+})
+
 test('generateWalletId returns unprefixed 64-character hex', () => {
   const id = generateWalletId(MNEMONIC, 0)
   assert.equal(id.length, 64)

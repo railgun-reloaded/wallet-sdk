@@ -3,7 +3,7 @@ import { RailgunWallet } from '@railgun-reloaded/wallet-node'
 
 import { initializeCrypto } from '../../init/crypto.js'
 
-import { generateWalletId } from './wallet-id.js'
+import { assertDerivationIndex, generateWalletId } from './wallet-id.js'
 
 /**
  * The full set of RAILGUN key material derivable from a mnemonic, plus the
@@ -37,8 +37,11 @@ type WalletKeys = {
  * @param mnemonic - BIP39 mnemonic phrase.
  * @param index - BIP44-style derivation index (default 0).
  * @returns The derived key material plus walletId and 0zk address.
+ * @throws RangeError When `index` is not an integer in the derivable range.
  */
 async function deriveWalletKeys (mnemonic: string, index: number = 0): Promise<WalletKeys> {
+  assertDerivationIndex(index)
+
   await initializeCrypto()
 
   const railgunWallet = new RailgunWallet(mnemonic, index)
