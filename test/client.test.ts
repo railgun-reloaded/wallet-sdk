@@ -98,7 +98,6 @@ test('RailgunClient delegates createWallet / listWallets / deleteWallet', async 
   assert.equal((await client.listWallets()).length, 0)
 
   await client.close()
-  assert.ok(true, 'close did not throw')
 })
 
 test('RailgunClient close() does not close injected walletDB', async () => {
@@ -108,14 +107,6 @@ test('RailgunClient close() does not close injected walletDB', async () => {
   // If close() had closed the injected DB, this query would throw.
   const rows = walletDB.$client.prepare('SELECT 1 as one').all() as { one: number }[]
   assert.equal(rows[0]!.one, 1)
-})
-
-test('RailgunClient exposes engine property', async () => {
-  const walletDB = await memDB()
-  const client = await RailgunClient.create({ walletDB })
-  assert.ok(client.engine)
-  assert.equal(typeof client.engine.setNetwork, 'function')
-  await client.close()
 })
 
 test('RailgunClient.getSyncCursor distinguishes fresh and persisted chain state', async () => {

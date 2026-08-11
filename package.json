@@ -33,7 +33,7 @@
     "fixture:browser:load-balances": "node config/check-browser-load-balances-fixture.mjs",
     "check:browser": "npm run build && esbuild src/browser/index.js --bundle --platform=browser --format=esm --outfile=/dev/null",
     "pretest": "npm run rebuild",
-    "test": "node --test --enable-source-maps test/*.test.js test/**/*.test.js",
+    "test": "node --test --enable-source-maps 'test/**/*.test.js'",
     "db:generate:chain": "db-generate-chain"
   },
   "repository": {
