@@ -50,7 +50,7 @@
   "devDependencies": {
     "@railgun-reloaded/eslint-config": "^1.1.0",
     "@railgun-reloaded/tsconfig": "^1.2.0",
-    "better-sqlite3": "^11.10.0",
+    "better-sqlite3": "^13.0.3",
     "esbuild": "^0.28.1",
     "eslint": "^9.24.0",
     "typescript": "^5.8.3"
@@ -67,7 +67,7 @@
     "viem": "^2.31.4"
   },
   "peerDependencies": {
-    "better-sqlite3": "^11.8.1"
+    "better-sqlite3": "^13.0.0"
   },
   "peerDependenciesMeta": {
     "better-sqlite3": {
