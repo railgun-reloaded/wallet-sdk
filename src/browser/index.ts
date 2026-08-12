@@ -46,6 +46,7 @@ export {
   ShieldFeeReadError,
   ShieldReceiptTimeoutError,
   ShieldSignatureRejectedError,
+  ShieldStage,
   ShieldTransactionRevertedError,
   UnexpectedShieldFieldError,
   buildShield,
@@ -61,6 +62,7 @@ export type {
   ShieldApprovalMode,
   ShieldCommitmentPreimage,
   ShieldParams,
+  ShieldProgress,
   ShieldReceiptResult,
   ShieldResult
 } from '../shield/index.js'

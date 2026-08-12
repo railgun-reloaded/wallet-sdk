@@ -37,11 +37,13 @@ export type {
   BuildShieldParams,
   BuildShieldResult
 } from './shield.js'
+export { ShieldStage } from './types.js'
 export type {
   ShieldApprovalMode,
   ShieldErc20Params,
   ShieldErc721Params,
   ShieldExecutionOptions,
   ShieldParams,
+  ShieldProgress,
   ShieldResult
 } from './types.js'

@@ -31,6 +31,7 @@ import { mainnet } from 'viem/chains'
 import { RailgunClient } from '../../src/client.js'
 import {
   ERC20_APPROVAL_ABI,
+  ERC721_APPROVAL_ABI,
   SHIELD_ABI,
   SHIELD_EVENT_ABI,
   SHIELD_FEE_ABI
@@ -60,6 +61,8 @@ import { computeShieldFee } from '../../src/shield/fee.js'
 import { parseShieldReceipt, readShieldFee } from '../../src/shield/receipt.js'
 import type { BuildShieldParams } from '../../src/shield/shield.js'
 import { buildShield } from '../../src/shield/shield.js'
+import type { ShieldProgress } from '../../src/shield/types.js'
+import { ShieldStage } from '../../src/shield/types.js'
 import { MNEMONIC } from '../fixtures/wallet-vectors.js'
 
 const TOKEN_ADDRESS = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
@@ -165,6 +168,60 @@ const toRpcReceipt = (receipt: TransactionReceipt) => ({
   transactionIndex: `0x${receipt.transactionIndex.toString(16)}`,
   type: '0x2'
 })
+
+/**
+ * Build a wallet client that serves an entire shield flow from fixtures.
+ * @param root0 - Transport behaviour for one test.
+ * @param root0.call - Encoded result for every `eth_call`. Omit when the flow
+ * is not expected to read an allowance or approval.
+ * @param root0.hashes - Hashes returned by successive `eth_sendTransaction`
+ * calls. The last entry is reused once the list is exhausted.
+ * @returns Offline wallet client.
+ */
+const offlineSigner = async ({
+  call,
+  hashes = [TX_HASH]
+}: {
+  call?: () => Hex
+  hashes?: Hex[]
+} = {}) => {
+  const signature = await privateKeyToAccount(
+    '0xabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcdefabcd'
+  ).signMessage({ message: SHIELD_PRIVATE_KEY_SIGNATURE_MESSAGE })
+  let sent = 0
+
+  return createWalletClient({
+    account: ACCOUNT_ADDRESS,
+    chain: mainnet,
+    transport: custom({
+      /**
+       * Serve signing, token reads, submission, and receipts offline.
+       * @param root0 - RPC request.
+       * @param root0.method - RPC method name.
+       * @returns Mocked RPC response for the requested action.
+       */
+      request: async ({ method }: { method: string }) => {
+        if (method === 'personal_sign') return signature
+        if (method === 'eth_chainId') return '0x1'
+        if (method === 'eth_call') {
+          if (call === undefined) {
+            throw new Error('Unexpected token read')
+          }
+          return call()
+        }
+        if (method === 'eth_sendTransaction') {
+          const hash = hashes[sent] ?? hashes[hashes.length - 1]
+          sent += 1
+          return hash
+        }
+        if (method === 'eth_getTransactionReceipt') {
+          return toRpcReceipt(shieldReceipt())
+        }
+        throw new Error(`Unexpected RPC method ${method}`)
+      }
+    })
+  })
+}
 
 type NamedAbiItem = { name: string, type: string }
 
@@ -1132,6 +1189,255 @@ test('client.shield exposes signature and approval failures as distinct errors',
       }, NetworkName.Ethereum),
       ShieldApprovalRevertedError
     )
+  } finally {
+    await client.close()
+  }
+})
+
+test('client.shield reports every stage in order when an approval is required', async () => {
+  const signer = await offlineSigner({
+    /**
+     * Report an exhausted allowance so an approval transaction is sent.
+     * @returns Encoded zero allowance.
+     */
+    call: () => encodeFunctionResult({
+      abi: ERC20_APPROVAL_ABI,
+      functionName: 'allowance',
+      result: 0n
+    }),
+    hashes: [APPROVAL_TX_HASH, TX_HASH]
+  })
+  const walletDB = await createWalletDB({
+    path: ':memory:',
+    runMigrations: true,
+    migrationsFolder: '../storage/drizzle/wallet'
+  })
+  const client = await RailgunClient.create({ walletDB })
+
+  try {
+    const keys = await deriveWalletKeys(MNEMONIC)
+    const progress: ShieldProgress[] = []
+
+    const result = await client.shield({
+      tokenAddress: TOKEN_ADDRESS,
+      amount: AMOUNT,
+      recipient: keys.railgunAddress,
+      signer,
+      approvalMode: 'exact',
+      /**
+       * Record a reported stage.
+       * @param event - Stage boundary reported by `shield()`.
+       */
+      onProgress: (event) => { progress.push(event) }
+    }, NetworkName.Ethereum)
+
+    assert.equal(result.txHash, TX_HASH)
+    assert.deepEqual(progress, [
+      { stage: ShieldStage.DerivingKey },
+      { stage: ShieldStage.CheckingApproval },
+      { stage: ShieldStage.ApprovalSubmitted, txHash: APPROVAL_TX_HASH },
+      { stage: ShieldStage.ApprovalConfirmed, txHash: APPROVAL_TX_HASH },
+      { stage: ShieldStage.ShieldSubmitted, txHash: TX_HASH },
+      { stage: ShieldStage.ShieldConfirmed, txHash: TX_HASH }
+    ])
+  } finally {
+    await client.close()
+  }
+})
+
+test('client.shield reports no approval submission when no approval is sent', async () => {
+  const walletDB = await createWalletDB({
+    path: ':memory:',
+    runMigrations: true,
+    migrationsFolder: '../storage/drizzle/wallet'
+  })
+  const client = await RailgunClient.create({ walletDB })
+
+  try {
+    const keys = await deriveWalletKeys(MNEMONIC)
+    const vectors: Array<{
+      name: string
+      skipApprove?: boolean
+      call?: () => Hex
+      expected: ShieldProgress[]
+    }> = [
+      {
+        name: 'skipApprove leaves approval to the caller',
+        skipApprove: true,
+        expected: [
+          { stage: ShieldStage.DerivingKey },
+          { stage: ShieldStage.ShieldSubmitted, txHash: TX_HASH },
+          { stage: ShieldStage.ShieldConfirmed, txHash: TX_HASH }
+        ]
+      },
+      {
+        name: 'the existing allowance already covers the amount',
+        /**
+         * Report an allowance equal to the shielded amount.
+         * @returns Encoded sufficient allowance.
+         */
+        call: () => encodeFunctionResult({
+          abi: ERC20_APPROVAL_ABI,
+          functionName: 'allowance',
+          result: AMOUNT
+        }),
+        expected: [
+          { stage: ShieldStage.DerivingKey },
+          { stage: ShieldStage.CheckingApproval },
+          { stage: ShieldStage.ShieldSubmitted, txHash: TX_HASH },
+          { stage: ShieldStage.ShieldConfirmed, txHash: TX_HASH }
+        ]
+      }
+    ]
+
+    for (const vector of vectors) {
+      const progress: ShieldProgress[] = []
+      const signer = await offlineSigner({
+        ...(vector.call !== undefined && { call: vector.call })
+      })
+
+      await client.shield({
+        tokenAddress: TOKEN_ADDRESS,
+        amount: AMOUNT,
+        recipient: keys.railgunAddress,
+        signer,
+        ...(vector.skipApprove === true && { skipApprove: true }),
+        /**
+         * Record a reported stage.
+         * @param event - Stage boundary reported by `shield()`.
+         */
+        onProgress: (event) => { progress.push(event) }
+      }, NetworkName.Ethereum)
+
+      assert.deepEqual(progress, vector.expected, vector.name)
+    }
+  } finally {
+    await client.close()
+  }
+})
+
+test('client.shield sends no approval when an ERC721 approval already covers the token', async () => {
+  const walletDB = await createWalletDB({
+    path: ':memory:',
+    runMigrations: true,
+    migrationsFolder: '../storage/drizzle/wallet'
+  })
+  const client = await RailgunClient.create({ walletDB })
+
+  try {
+    const keys = await deriveWalletKeys(MNEMONIC)
+    const vectors: Array<{
+      name: string
+      approvalMode: 'exact' | 'unlimited'
+      call: () => Hex
+    }> = [
+      {
+        name: 'an unlimited operator approval is already granted',
+        approvalMode: 'unlimited',
+        /**
+         * Report the proxy as an approved operator for every token.
+         * @returns Encoded `true`.
+         */
+        call: () => encodeFunctionResult({
+          abi: ERC721_APPROVAL_ABI,
+          functionName: 'isApprovedForAll',
+          result: true
+        })
+      },
+      {
+        name: 'this token is already approved to the proxy',
+        approvalMode: 'exact',
+        /**
+         * Report the proxy as the approved address for this token.
+         * @returns Encoded proxy address.
+         */
+        call: () => encodeFunctionResult({
+          abi: ERC721_APPROVAL_ABI,
+          functionName: 'getApproved',
+          result: getAddress(ETHEREUM.proxyContractAddress)
+        })
+      }
+    ]
+
+    for (const vector of vectors) {
+      const progress: ShieldProgress[] = []
+      const signer = await offlineSigner({ call: vector.call })
+
+      await client.shield({
+        tokenAddress: TOKEN_ADDRESS,
+        tokenType: 'ERC721',
+        tokenSubID: NFT_TOKEN_SUB_ID,
+        recipient: keys.railgunAddress,
+        signer,
+        approvalMode: vector.approvalMode,
+        /**
+         * Record a reported stage.
+         * @param event - Stage boundary reported by `shield()`.
+         */
+        onProgress: (event) => { progress.push(event) }
+      }, NetworkName.Ethereum)
+
+      assert.deepEqual(progress, [
+        { stage: ShieldStage.DerivingKey },
+        { stage: ShieldStage.CheckingApproval },
+        { stage: ShieldStage.ShieldSubmitted, txHash: TX_HASH },
+        { stage: ShieldStage.ShieldConfirmed, txHash: TX_HASH }
+      ], vector.name)
+    }
+  } finally {
+    await client.close()
+  }
+})
+
+test('a progress callback that throws leaves the shield unaffected', async () => {
+  const signer = await offlineSigner({
+    /**
+     * Report an exhausted allowance so every stage is reached.
+     * @returns Encoded zero allowance.
+     */
+    call: () => encodeFunctionResult({
+      abi: ERC20_APPROVAL_ABI,
+      functionName: 'allowance',
+      result: 0n
+    }),
+    hashes: [APPROVAL_TX_HASH, TX_HASH]
+  })
+  const walletDB = await createWalletDB({
+    path: ':memory:',
+    runMigrations: true,
+    migrationsFolder: '../storage/drizzle/wallet'
+  })
+  const client = await RailgunClient.create({ walletDB })
+
+  try {
+    const keys = await deriveWalletKeys(MNEMONIC)
+    const seen: ShieldStage[] = []
+
+    const result = await client.shield({
+      tokenAddress: TOKEN_ADDRESS,
+      amount: AMOUNT,
+      recipient: keys.railgunAddress,
+      signer,
+      approvalMode: 'exact',
+      /**
+       * Record the reported stage, then throw.
+       * @param event - Stage boundary reported by `shield()`.
+       * @throws {Error} On every reported stage.
+       */
+      onProgress: (event) => {
+        seen.push(event.stage)
+        throw new Error('progress handler failed')
+      }
+    }, NetworkName.Ethereum)
+
+    assert.deepEqual(
+      seen,
+      Object.values(ShieldStage),
+      'every stage still reports after the first handler throw'
+    )
+    assert.equal(result.txHash, TX_HASH)
+    assert.equal(result.shieldedAmount, 975n)
+    assert.equal(result.fee, 25n)
   } finally {
     await client.close()
   }

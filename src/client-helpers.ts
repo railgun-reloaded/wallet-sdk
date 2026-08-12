@@ -1,4 +1,5 @@
 import { NETWORK_CONFIG, NetworkName } from './network-config.js'
+import type { ShieldProgress, ShieldStage } from './shield/types.js'
 import type { SyncProgress } from './sync/wallet-decryptor.js'
 import { SyncPhase } from './sync/wallet-decryptor.js'
 
@@ -27,6 +28,28 @@ function makeScanOnBatch (
       notesAdded: 0,
       notesSpent: 0
     })
+  }
+}
+
+/**
+ * Report a shield stage boundary to a caller-supplied progress callback.
+ * Exceptions thrown by the callback are caught and discarded.
+ * @param onProgress - Progress callback from `ShieldExecutionOptions`.
+ * @param stage - Stage the shield has just entered.
+ * @param txHash - Hash of the transaction the stage refers to, when known.
+ */
+function reportShieldProgress (
+  onProgress: ((progress: ShieldProgress) => void) | undefined,
+  stage: ShieldStage,
+  txHash?: `0x${string}`
+): void {
+  if (onProgress === undefined) {
+    return
+  }
+  try {
+    onProgress({ stage, ...(txHash !== undefined && { txHash }) })
+  } catch {
+    // Progress reporting is informational only.
   }
 }
 
@@ -71,5 +94,6 @@ export {
   clonePoiNodeUrls,
   findNetworkByChainId,
   hasUsablePoiNodeUrls,
-  makeScanOnBatch
+  makeScanOnBatch,
+  reportShieldProgress
 }

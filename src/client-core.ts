@@ -22,7 +22,8 @@ import {
   clonePoiNodeUrls,
   findNetworkByChainId,
   hasUsablePoiNodeUrls,
-  makeScanOnBatch
+  makeScanOnBatch,
+  reportShieldProgress
 } from './client-helpers.js'
 import { ERC20_APPROVAL_ABI, ERC721_APPROVAL_ABI } from './contracts/abi.js'
 import type { UnsignedTx } from './contracts/index.js'
@@ -60,7 +61,8 @@ import type { ShieldReceiptResult as ShieldResult } from './shield/receipt.js'
 import { parseShieldReceipt } from './shield/receipt.js'
 import type { BuildShieldParams, BuildShieldResult } from './shield/shield.js'
 import { buildShield } from './shield/shield.js'
-import type { ShieldParams } from './shield/types.js'
+import type { ShieldParams, ShieldProgress } from './shield/types.js'
+import { ShieldStage } from './shield/types.js'
 import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor.js'
 import { runWalletDecryption } from './sync/wallet-decryptor.js'
 
@@ -553,6 +555,13 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
   /**
    * Derive a shield key, ensure token approval, submit the shield transaction,
    * and parse its V2.1 Shield event.
+   *
+   * `params.onProgress` reports each stage as it begins, in this order:
+   * `deriving-key`, `checking-approval`, `approval-submitted`,
+   * `approval-confirmed`, `shield-submitted`, `shield-confirmed`. The three
+   * approval stages are conditional: `skipApprove` suppresses all three, and
+   * an ERC20 allowance or ERC721 approval that already covers the shield
+   * reports only `checking-approval`.
    * @param params - Token, recipient, signer, and execution options.
    * @param network - Network whose RAILGUN contract receives the shield.
    * @returns Parsed receipt data for the confirmed shield.
@@ -566,6 +575,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     params: ShieldParams,
     network: NetworkName
   ): Promise<ShieldResult> {
+    reportShieldProgress(params.onProgress, ShieldStage.DerivingKey)
+
     let key: Uint8Array
     try {
       key = await deriveShieldPrivateKey(params.signer)
@@ -582,7 +593,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     const receipt = await this.#sendAndWait(
       transaction,
       params.signer,
-      params.confirmations
+      params.confirmations,
+      params.onProgress
     )
     const result = parseShieldReceipt(receipt, proxy)
     if (result === undefined) {
@@ -600,6 +612,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     if (params.skipApprove === true) {
       return
     }
+
+    reportShieldProgress(params.onProgress, ShieldStage.CheckingApproval)
 
     const account = params.signer.account
     const tokenAddress = getAddress(params.tokenAddress)
@@ -671,6 +685,11 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
         })
       }
 
+      reportShieldProgress(
+        params.onProgress,
+        ShieldStage.ApprovalSubmitted,
+        txHash
+      )
       const receipt = await this.#waitForReceipt(
         txHash,
         params.signer,
@@ -680,6 +699,11 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
       if (receipt.status === 'reverted') {
         throw new ShieldApprovalRevertedError(tokenAddress, receipt)
       }
+      reportShieldProgress(
+        params.onProgress,
+        ShieldStage.ApprovalConfirmed,
+        txHash
+      )
     } catch (cause) {
       if (
         cause instanceof ShieldApprovalRevertedError ||
@@ -696,12 +720,14 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
    * @param transaction - Call target and calldata from `buildShield`.
    * @param signer - Wallet client used to submit the call.
    * @param confirmations - Required confirmation count.
+   * @param onProgress - Optional shield progress callback.
    * @returns Confirmed shield receipt.
    */
   async #sendAndWait (
     transaction: UnsignedTx,
     signer: WalletClient,
-    confirmations?: number
+    confirmations?: number,
+    onProgress?: (progress: ShieldProgress) => void
   ): Promise<TransactionReceipt> {
     const account = signer.account
     if (account === undefined) {
@@ -722,6 +748,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
       throw new ShieldTransactionRevertedError(cause)
     }
 
+    reportShieldProgress(onProgress, ShieldStage.ShieldSubmitted, txHash)
+
     let receipt: TransactionReceipt
     try {
       receipt = await this.#waitForReceipt(
@@ -739,6 +767,9 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     if (receipt.status === 'reverted') {
       throw new ShieldTransactionRevertedError(receipt, txHash)
     }
+
+    reportShieldProgress(onProgress, ShieldStage.ShieldConfirmed, txHash)
+
     return receipt
   }
 
