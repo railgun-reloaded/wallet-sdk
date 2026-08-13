@@ -151,11 +151,14 @@ class RailgunEngine {
   /**
    * Drain the configured data source into chain.db, returning when the source
    * reaches its current tip. Resumes from the persisted sync cursor when one
-   * exists, otherwise starts at the network's deployment block.
+   * exists, otherwise starts at `startBlock` or the network's deployment
+   * block.
    *
    * Live sources (RPCProvider) never reach a natural tip; bound the scan with
    * `endBlock` when using one.
-   * @param options - Optional `{ endBlock?, onBatch? }`.
+   * @param options - Optional `{ startBlock?, endBlock?, onBatch? }`.
+   * @param options.startBlock - Inclusive floor used only without a persisted
+   *   cursor. Must be at or above the network deployment block.
    * @param options.endBlock - Inclusive ceiling; the scan exits after writing
    *   a block at or above this height.
    * @param options.onBatch - Fired after each batch is committed to chain.db
@@ -167,6 +170,7 @@ class RailgunEngine {
    *   source had nothing to yield.
    */
   async scan (options: {
+    startBlock?: bigint | undefined
     endBlock?: bigint | undefined
     onBatch?: ((startHeight: bigint, lastBlock: bigint) => void) | undefined
     persistRailgunTransactions?: boolean | undefined
@@ -198,7 +202,14 @@ class RailgunEngine {
     await loadMerkleTrees(this.#storage!, this.#noteCommitmentTree)
 
     const lastSyncedBlock = (await this.#storage!.getSyncState(this.#networkConfig.chainID))?.lastBlockHeight
-    const startHeight = lastSyncedBlock ? lastSyncedBlock + 1n : this.#networkConfig.deploymentBlock
+    const startHeight = lastSyncedBlock !== undefined
+      ? lastSyncedBlock + 1n
+      : options.startBlock ?? this.#networkConfig.deploymentBlock
+    if (startHeight < this.#networkConfig.deploymentBlock) {
+      throw new Error(
+        `startBlock ${startHeight} is below deployment block ${this.#networkConfig.deploymentBlock}`
+      )
+    }
 
     const onBatch = options.onBatch
     const wrappedOnBatch = onBatch

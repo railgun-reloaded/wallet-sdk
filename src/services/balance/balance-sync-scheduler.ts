@@ -2,13 +2,22 @@ import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
 
 import type {
   DecryptParams,
-  RailgunClient,
+  RailgunClientCore,
+  RailgunClientCoreEngine,
   ScanParams
-} from '../../client.js'
+} from '../../client-core.js'
 import type { NetworkName } from '../../network-config.js'
 import { NETWORK_CONFIG } from '../../network-config.js'
 
-type BalanceSyncSchedulerClient = Pick<RailgunClient, 'scan' | 'decrypt'>
+/**
+ * The subset of a client the scheduler drives. Taken from the shared client
+ * core, which both clients wrap, so the two methods stay in step with the
+ * implementation and carry no storage-backend dependency.
+ */
+type BalanceSyncSchedulerClient = Pick<
+  RailgunClientCore<RailgunClientCoreEngine>,
+  'scan' | 'decrypt'
+>
 
 type BalanceSyncSchedulerWallet = {
   walletId: string

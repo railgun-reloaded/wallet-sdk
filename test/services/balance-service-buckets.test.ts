@@ -3,6 +3,7 @@ import { test } from 'node:test'
 
 import type { DBNewNote, WalletStorage } from '@railgun-reloaded/storage'
 import { createWalletDB, createWalletStorage } from '@railgun-reloaded/storage/node'
+import { TokenType } from '@railgun-reloaded/wallet-node'
 
 import { POIStatus, WalletBalanceBucket } from '../../src/poi/index.js'
 import type { TokenBalance } from '../../src/services/balance/balance-service.js'
@@ -14,6 +15,7 @@ const NON_PPOI_CHAIN_ID = 1
 const LIST_KEY = 'efc6ddb59c098a13fb2b618fdae94c1c3a807abc8fb1837c93620c9143ee9e88'
 const USDC = '0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48'
 const DAI = '0x6b175474e89094c44da98b954eedeac495271d0f'
+const NFT = '0x1111111111111111111111111111111111111111'
 const SHIELD_COMMITMENT_TYPE = 0
 const TRANSACT_COMMITMENT_TYPE = 1
 const OUTPUT_TYPE_TRANSFER = 0
@@ -193,6 +195,46 @@ test('BalanceService.getBalancesByBucket aggregates unspent notes by bucket and 
   assert.deepEqual(
     await service.getBalances(WALLET_ID, CHAIN_ID, WalletBalanceBucket.Spent),
     []
+  )
+})
+
+test('BalanceService excludes ERC721 notes from every ERC20 balance mode', async () => {
+  const db = await memWalletDB()
+  await seedWallet(db)
+  await seedNotes(db, [
+    noteFixture(9, {
+      token: USDC,
+      amount: 100n,
+      tokenType: TokenType.ERC20
+    }),
+    noteFixture(10, {
+      token: NFT,
+      amount: 1n,
+      tokenType: TokenType.ERC721,
+      tokenSubID: bytes(42)
+    })
+  ])
+
+  const service = new BalanceService(db)
+  const modes = ['spendable', 'all', ...Object.values(WalletBalanceBucket)] as const
+
+  for (const mode of modes) {
+    const balances = await service.getBalances(WALLET_ID, CHAIN_ID, mode)
+    assert.equal(balances.some(balance => balance.token === NFT), false)
+  }
+
+  assert.deepEqual(
+    await service.getBalances(WALLET_ID, CHAIN_ID, 'all'),
+    [{ token: USDC, balance: 100n }]
+  )
+
+  const byBucket = await service.getBalancesByBucket(WALLET_ID, CHAIN_ID)
+  for (const balances of Object.values(byBucket)) {
+    assert.equal(balances.some(balance => balance.token === NFT), false)
+  }
+  assert.deepEqual(
+    byBucket[WalletBalanceBucket.Spendable],
+    [{ token: USDC, balance: 100n }]
   )
 })
 

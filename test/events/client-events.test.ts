@@ -6,7 +6,8 @@ import type { EVMBlock } from '@railgun-reloaded/scanner'
 import { SourceAggregator } from '@railgun-reloaded/scanner'
 import type {
   DBNewNote,
-  DBNewNullifier
+  DBNewNullifier,
+  DBNewRailgunTransaction
 } from '@railgun-reloaded/storage'
 import type {
   ChainDB,
@@ -27,6 +28,9 @@ import { TEST_VECTOR_TRANSACT } from '../test-vector.js'
 const SEPOLIA_CHAIN_ID = 11155111
 const SEPOLIA_DEPLOYMENT_BLOCK = 5784866n
 const TOKEN = '0x0000000000000000000000000000000000000000'
+const SPEND_TIMESTAMP_MS = 1_735_789_245_000n
+const SPEND_TIMESTAMP_SECONDS = SPEND_TIMESTAMP_MS / 1000n
+const SPEND_INSTANT = new Date(Number(SPEND_TIMESTAMP_MS))
 
 /**
  * In-memory wallet DB with migrations applied.
@@ -196,20 +200,47 @@ async function seedNotes (
  * @param chainDB - Chain database.
  * @param nullifier - Owned note nullifier.
  * @param blockNumber - Block carrying the nullifier.
+ * @param options - Optional overrides.
+ * @param options.timestamp - Block timestamp to record on the railgun
+ * transaction. Subsquid reports milliseconds, an RPC source reports seconds.
+ * @param options.withRailgunTransaction - When `false`, seed only the
+ * nullifier, standing in for a source that dropped the railgun transaction.
  */
 async function seedChainNullifier (
   chainDB: ChainDB,
   nullifier: Uint8Array,
-  blockNumber: bigint
+  blockNumber: bigint,
+  options: { timestamp?: bigint, withRailgunTransaction?: boolean } = {}
 ): Promise<void> {
+  const transactionHash = filledBytes(90)
   const row: DBNewNullifier = {
     nullifier,
-    transactionHash: filledBytes(90),
+    transactionHash,
     blockNumber,
     treeNumber: 0
   }
+  const transaction: DBNewRailgunTransaction = {
+    railgunTxid: filledBytes(91),
+    txidVersion: 0,
+    chainTxid: transactionHash,
+    graphID: null,
+    blockNumber,
+    timestamp: options.timestamp ?? SPEND_TIMESTAMP_MS,
+    nullifiers: [nullifier],
+    commitments: [],
+    boundParamsHash: filledBytes(92),
+    hasUnshield: false,
+    unshield: null,
+    utxoTreeIn: 0,
+    utxoTreeOut: 0,
+    utxoBatchStartPositionOut: 0,
+    verificationHash: null
+  }
   const chainStorage = createChainStorage(chainDB)
   await chainStorage.insertNullifiersBatch([row])
+  if (options.withRailgunTransaction !== false) {
+    await chainStorage.insertRailgunTransactions([transaction])
+  }
   await chainStorage.updateSyncState(SEPOLIA_CHAIN_ID, blockNumber)
 }
 
@@ -314,6 +345,85 @@ test('balance:update fires with a fresh snapshot when decrypt marks a note spent
   assert.equal(balanceEvents[0]!.spent, 1, 'notesSpent reflected in event')
   assert.equal(balanceEvents[0]!.len, 1, 'snapshot contains remaining positive balance')
   assert.equal(balanceEvents[0]!.balance, 7n, 'snapshot was read after recompute')
+  const spentNote = (await client.getNotes(wallet.walletId, SEPOLIA_CHAIN_ID))
+    .find((note) => note.spent)
+  assert.equal(spentNote?.spentBlockNumber, 1n)
+  assert.deepEqual(
+    spentNote?.spentTimestamp,
+    SPEND_INSTANT
+  )
+  await client.close()
+})
+
+test('a seconds-denominated block timestamp records the same instant as milliseconds', async () => {
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
+
+  const encryptionKey = new Uint8Array(randomBytes(32))
+  const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
+  const spentNullifier = filledBytes(12)
+  await seedNotes(walletDB, wallet.walletId, [
+    noteFixture(wallet.walletId, {
+      commitment: filledBytes(11),
+      nullifier: spentNullifier,
+      amount: 5n
+    })
+  ])
+  await seedChainNullifier(chainDB, spentNullifier, 1n, {
+    timestamp: SPEND_TIMESTAMP_SECONDS
+  })
+
+  await client.decrypt(wallet.walletId, encryptionKey, {
+    chainId: SEPOLIA_CHAIN_ID,
+    fromBlock: 1n,
+    toBlock: 1n
+  })
+
+  const spentNote = (await client.getNotes(wallet.walletId, SEPOLIA_CHAIN_ID))
+    .find((note) => note.spent)
+  assert.deepEqual(
+    spentNote?.spentTimestamp,
+    SPEND_INSTANT,
+    'RPC seconds resolve to the same instant as Subsquid milliseconds'
+  )
+  await client.close()
+})
+
+test('a spend without a railgun transaction falls back to the nullifier block', async () => {
+  const walletDB = await memWalletDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
+
+  const encryptionKey = new Uint8Array(randomBytes(32))
+  const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey })
+  const spentNullifier = filledBytes(12)
+  await seedNotes(walletDB, wallet.walletId, [
+    noteFixture(wallet.walletId, {
+      commitment: filledBytes(11),
+      nullifier: spentNullifier,
+      amount: 5n
+    })
+  ])
+  await seedChainNullifier(chainDB, spentNullifier, 1n, {
+    withRailgunTransaction: false
+  })
+
+  const summary = await client.decrypt(wallet.walletId, encryptionKey, {
+    chainId: SEPOLIA_CHAIN_ID,
+    fromBlock: 1n,
+    toBlock: 1n
+  })
+
+  assert.equal(summary.notesSpent, 1, 'the spend is recorded without provenance')
+  const spentNote = (await client.getNotes(wallet.walletId, SEPOLIA_CHAIN_ID))
+    .find((note) => note.spent)
+  assert.equal(
+    spentNote?.spentBlockNumber,
+    1n,
+    'spend orders by the nullifier block, not the note creation block'
+  )
+  assert.equal(spentNote?.spentTimestamp, null)
   await client.close()
 })
 

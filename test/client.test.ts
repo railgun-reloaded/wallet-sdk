@@ -12,7 +12,9 @@ import {
   createWalletDB,
   createWalletStorage
 } from '@railgun-reloaded/storage/node'
+import { TokenType } from '@railgun-reloaded/wallet-node'
 
+import { RailgunClient as BrowserRailgunClient } from '../src/browser/client.js'
 import { RailgunClient, SyncPhase } from '../src/client.js'
 import { NetworkName } from '../src/network-config.js'
 import {
@@ -96,7 +98,6 @@ test('RailgunClient delegates createWallet / listWallets / deleteWallet', async 
   assert.equal((await client.listWallets()).length, 0)
 
   await client.close()
-  assert.ok(true, 'close did not throw')
 })
 
 test('RailgunClient close() does not close injected walletDB', async () => {
@@ -108,11 +109,21 @@ test('RailgunClient close() does not close injected walletDB', async () => {
   assert.equal(rows[0]!.one, 1)
 })
 
-test('RailgunClient exposes engine property', async () => {
+test('RailgunClient.getSyncCursor distinguishes fresh and persisted chain state', async () => {
   const walletDB = await memDB()
-  const client = await RailgunClient.create({ walletDB })
-  assert.ok(client.engine)
-  assert.equal(typeof client.engine.setNetwork, 'function')
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
+
+  assert.deepEqual(await client.getSyncCursor(11155111), {
+    status: 'never-synced'
+  })
+
+  await createChainStorage(chainDB).updateSyncState(11155111, 5784867n)
+  assert.deepEqual(await client.getSyncCursor(11155111), {
+    status: 'synced',
+    lastBlockHeight: 5784867n
+  })
+
   await client.close()
 })
 
@@ -180,7 +191,33 @@ test('RailgunClient balance API returns empty values for an empty wallet', async
 
   const balances = await client.getBalances(wallet.walletId, 11155111)
   assert.deepEqual(balances, [])
+  assert.deepEqual(await client.getNFTs(wallet.walletId, 11155111), [])
   assert.deepEqual(await client.getNotes(wallet.walletId, 11155111), [])
+  await client.close()
+})
+
+test('RailgunClient.getNFTs returns private ERC721 holdings', async () => {
+  const walletDB = await memDB()
+  const client = await RailgunClient.create({ walletDB })
+  const key = new Uint8Array(randomBytes(32))
+  const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
+  const token = '0x1111111111111111111111111111111111111111'
+  const tokenSubID = filledBytes(42)
+
+  await seedNotes(walletDB, wallet.walletId, [
+    noteFixture({
+      commitment: filledBytes(40),
+      nullifier: filledBytes(41),
+      token,
+      tokenType: TokenType.ERC721,
+      tokenSubID
+    })
+  ])
+
+  assert.deepEqual(await client.getNFTs(wallet.walletId, 11155111), [{
+    token,
+    tokenSubID: `0x${'2a'.repeat(32)}`
+  }])
   await client.close()
 })
 
@@ -208,6 +245,8 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
   const wallet = await client.createWallet({ mnemonic: MNEMONIC, encryptionKey: key })
   const tokenMixed = '0xA0b86991C6218b36c1d19D4a2e9Eb0cE3606eB48'
   const spentTxid = filledBytes(33)
+  const creationTxid = filledBytes(35)
+  const spentTimestamp = new Date('2026-02-04T05:06:07.000Z')
 
   await seedNotes(walletDB, wallet.walletId, [
     noteFixture({
@@ -218,6 +257,7 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
       blockNumber: 100n,
       treeNumber: 2,
       treePosition: 7,
+      creationTxid,
       decryptedAt: new Date('2026-02-03T04:05:06.000Z')
     }),
     noteFixture({
@@ -226,7 +266,9 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
       token: tokenMixed,
       amount: 20n,
       spent: true,
-      spentTxid
+      spentTxid,
+      spentBlockNumber: 200n,
+      spentTimestamp
     })
   ])
 
@@ -244,8 +286,11 @@ test('RailgunClient.getNotes maps all and unspent notes', async () => {
   assert.equal(first?.nullifier, `0x${'1f'.repeat(32)}`)
   assert.equal(first?.token, tokenMixed.toLowerCase())
   assert.equal(first?.leafIndex, 7n)
+  assert.equal(first?.creationTxid, `0x${'23'.repeat(32)}`)
   assert.equal(first?.decryptedAt.toISOString(), '2026-02-03T04:05:06.000Z')
   assert.equal(spent?.spentTxid, `0x${'21'.repeat(32)}`)
+  assert.equal(spent?.spentBlockNumber, 200n)
+  assert.deepEqual(spent?.spentTimestamp, spentTimestamp)
   await client.close()
 })
 
@@ -257,6 +302,7 @@ test('RailgunClient balance API throws WalletNotFoundError for unknown wallet', 
   for (const action of [
     () => client.getBalances(unknown, 11155111),
     () => client.getBalancesByBucket(unknown, 11155111),
+    () => client.getNFTs(unknown, 11155111),
     () => client.getNotes(unknown, 11155111)
   ]) {
     try {
@@ -293,6 +339,8 @@ function memChainDB () {
 class FakeSource {
   /** Required by DataSource — non-live so the aggregator drains to its head. */
   isLiveProvider = false
+  /** Inclusive floor requested by the aggregator. */
+  observedStart: bigint | undefined
   /** Buffered blocks to replay. */
   readonly #blocks: EVMBlock[]
 
@@ -322,6 +370,7 @@ class FakeSource {
    * @yields Blocks in ascending order.
    */
   async * from (options: { startHeight: bigint, endHeight?: bigint | undefined }): AsyncGenerator<EVMBlock> {
+    this.observedStart = options.startHeight
     for (const block of this.#blocks) {
       if (block.number < options.startHeight) continue
       if (options.endHeight !== undefined && block.number > options.endHeight) break
@@ -354,6 +403,97 @@ test('RailgunClient.scan drains a fake source into chain.db', async () => {
   const cursor = (await createChainStorage(chainDB).getSyncState(11155111))?.lastBlockHeight
   assert.equal(cursor, 5784867n, 'sync cursor advanced to tip')
 
+  await client.close()
+})
+
+test('RailgunClient.scan honors startBlock on empty storage and persists actual coverage', async () => {
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
+  const source = new FakeSource([
+    { number: 5784866n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] },
+    { number: 5784966n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] },
+    { number: 5784967n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] }
+  ])
+
+  const last = await client.scan({
+    network: NetworkName.EthereumSepolia,
+    dataSource: new SourceAggregator<EVMBlock>([source]),
+    startBlock: 5784966n,
+    endBlock: 5784967n
+  })
+
+  assert.equal(source.observedStart, 5784966n, 'ingestion started at the requested floor')
+  assert.equal(last, 5784967n, 'scan returned the last ingested block')
+  assert.equal(
+    (await createChainStorage(chainDB).getSyncState(11155111))?.lastBlockHeight,
+    5784967n,
+    'persisted cursor matches the range the scan covered'
+  )
+
+  await client.close()
+})
+
+test('RailgunClient.scan rejects startBlock below the deployment block on empty storage', async () => {
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const client = await RailgunClient.create({ walletDB, chainDB })
+
+  await assert.rejects(() => client.scan({
+    network: NetworkName.EthereumSepolia,
+    dataSource: new SourceAggregator<EVMBlock>([new FakeSource([])]),
+    startBlock: 5784865n
+  }), /startBlock 5784865 is below deployment block 5784866/)
+
+  await client.close()
+})
+
+test('RailgunClient.scan ignores startBlock when a persisted cursor exists', async () => {
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const chainStorage = createChainStorage(chainDB)
+  await chainStorage.updateSyncState(11155111, 5784867n)
+  const client = await RailgunClient.create({ walletDB, chainDB })
+  const source = new FakeSource([
+    { number: 5784868n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] },
+    { number: 5784869n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] }
+  ])
+
+  await client.scan({
+    network: NetworkName.EthereumSepolia,
+    dataSource: new SourceAggregator<EVMBlock>([source]),
+    startBlock: 5784966n,
+    endBlock: 5784869n
+  })
+
+  assert.equal(source.observedStart, 5784868n, 'scan resumed immediately after the cursor')
+  assert.equal(
+    (await chainStorage.getSyncState(11155111))?.lastBlockHeight,
+    5784869n,
+    'cursor advanced without a coverage gap'
+  )
+
+  await client.close()
+})
+
+test('browser RailgunClient.scan honors startBlock on empty storage', async () => {
+  const walletDB = await memDB()
+  const chainDB = await memChainDB()
+  const client = await BrowserRailgunClient.create({
+    walletStorage: createWalletStorage(walletDB),
+    chainStorage: createChainStorage(chainDB)
+  })
+  const source = new FakeSource([
+    { number: 5784966n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] }
+  ])
+
+  await client.scan({
+    network: NetworkName.EthereumSepolia,
+    dataSource: new SourceAggregator<EVMBlock>([source]),
+    startBlock: 5784966n
+  })
+
+  assert.equal(source.observedStart, 5784966n)
   await client.close()
 })
 
@@ -405,15 +545,18 @@ test('RailgunClient.sync composes scan() then decrypt()', async () => {
     { number: 5784866n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] },
     { number: 5784867n, hash: new Uint8Array(32), timestamp: 0n, transactions: [] }
   ]
-  const aggregator = new SourceAggregator<EVMBlock>([new FakeSource(blocks)])
+  const source = new FakeSource(blocks)
+  const aggregator = new SourceAggregator<EVMBlock>([source])
 
   const summary = await client.sync(VECTORS[0]!.walletId, key, {
     network: NetworkName.EthereumSepolia,
     dataSource: aggregator,
+    startBlock: 5784867n,
     endBlock: 5784867n,
     refreshPoi: false
   })
 
+  assert.equal(source.observedStart, 5784867n, 'sync forwarded the chain ingestion floor')
   assert.equal(summary.scan.lastBlock, 5784867n, 'scan reached the requested tip')
   assert.equal(summary.decrypt.chainId, 11155111, 'decrypt chainId derived from network')
   assert.equal(summary.decrypt.notesAdded, 0, 'no commitments → no notes added')

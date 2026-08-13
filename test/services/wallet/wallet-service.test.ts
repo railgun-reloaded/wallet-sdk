@@ -173,7 +173,7 @@ test('deleteWallet removes the wallet; second delete is a no-op', async () => {
   await service.deleteWallet(VECTORS[0]!.walletId)
   assert.equal((await service.listWallets()).length, 0)
   await service.deleteWallet(VECTORS[0]!.walletId)
-  assert.ok(true, 'second delete did not throw')
+  assert.equal((await service.listWallets()).length, 0)
 })
 
 test('full lifecycle: create -> list -> load -> delete -> load throws', async () => {

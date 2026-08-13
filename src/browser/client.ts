@@ -7,12 +7,15 @@ import type {
   DecryptParams,
   DecryptSummary,
   DecryptedNote,
+  ERC721Holding,
   ScanParams,
   ShieldParams,
   ShieldResult,
+  SyncCursor,
   SyncParams,
   SyncSummary,
-  TokenBalance
+  TokenBalance,
+  TransactionHistoryEntry
 } from '../client-core.js'
 import { RailgunClientCore } from '../client-core.js'
 import type { NetworkName } from '../network-config.js'
@@ -154,6 +157,19 @@ class RailgunClient {
   }
 
   /**
+   * Read unspent private ERC-721 holdings for a wallet on a given chain.
+   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
+   * @param chainId - Chain id to scope the lookup to.
+   * @returns ERC-721 contract addresses and token sub-IDs.
+   */
+  getNFTs (
+    walletId: string,
+    chainId: number
+  ): Promise<ERC721Holding[]> {
+    return this.#core.getNFTs(walletId, chainId)
+  }
+
+  /**
    * Read decrypted notes with protocol and optional POI spend state.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param chainId - Chain id to scope the lookup to.
@@ -167,6 +183,47 @@ class RailgunClient {
     options?: { unspent?: boolean }
   ): Promise<DecryptedNote[]> {
     return this.#core.getNotes(walletId, chainId, options)
+  }
+
+  /**
+   * Record a confirmed shield in wallet-scoped transaction history.
+   * @param walletId - Wallet that received the shield.
+   * @param chainId - Chain on which the shield confirmed.
+   * @param result - Confirmed shield receipt returned by `shield()`.
+   * @param timestamp - Timestamp of the confirmed shield block.
+   * @returns Resolves once the history row is stored.
+   */
+  recordShield (
+    walletId: string,
+    chainId: number,
+    result: ShieldResult,
+    timestamp: Date
+  ): Promise<void> {
+    return this.#core.recordShield(walletId, chainId, result, timestamp)
+  }
+
+  /**
+   * Read stored transaction history for one wallet and chain, newest first.
+   * @param walletId - Wallet whose history should be returned.
+   * @param chainId - Chain to scope the history query to.
+   * @param limit - Optional maximum number of rows to return.
+   * @returns Stored wallet transaction history.
+   */
+  getTransactionHistory (
+    walletId: string,
+    chainId: number,
+    limit?: number
+  ): Promise<TransactionHistoryEntry[]> {
+    return this.#core.getTransactionHistory(walletId, chainId, limit)
+  }
+
+  /**
+   * Read the persisted chain-ingestion cursor without accessing the engine.
+   * @param chainId - Chain whose persisted cursor should be returned.
+   * @returns Explicit synced or never-synced state.
+   */
+  getSyncCursor (chainId: number): Promise<SyncCursor> {
+    return this.#core.getSyncCursor(chainId)
   }
 
   /**
@@ -279,6 +336,8 @@ export type {
   ScanParams,
   ShieldParams,
   ShieldResult,
+  SyncCursor,
   SyncParams,
-  SyncSummary
+  SyncSummary,
+  TransactionHistoryEntry
 }

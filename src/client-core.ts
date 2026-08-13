@@ -1,5 +1,9 @@
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
-import type { ChainStorage, WalletStorage } from '@railgun-reloaded/storage'
+import type {
+  ChainStorage,
+  DBTxHistory,
+  WalletStorage
+} from '@railgun-reloaded/storage'
 import type { Hash, TransactionReceipt, WalletClient } from 'viem'
 import {
   WaitForTransactionReceiptTimeoutError,
@@ -18,7 +22,8 @@ import {
   clonePoiNodeUrls,
   findNetworkByChainId,
   hasUsablePoiNodeUrls,
-  makeScanOnBatch
+  makeScanOnBatch,
+  reportShieldProgress
 } from './client-helpers.js'
 import { ERC20_APPROVAL_ABI, ERC721_APPROVAL_ABI } from './contracts/abi.js'
 import type { UnsignedTx } from './contracts/index.js'
@@ -34,6 +39,7 @@ import {
 import type {
   BalanceMode,
   DecryptedNote,
+  ERC721Holding,
   TokenBalance
 } from './services/balance/balance-service.js'
 import { BalanceService } from './services/balance/balance-service.js'
@@ -55,7 +61,8 @@ import type { ShieldReceiptResult as ShieldResult } from './shield/receipt.js'
 import { parseShieldReceipt } from './shield/receipt.js'
 import type { BuildShieldParams, BuildShieldResult } from './shield/shield.js'
 import { buildShield } from './shield/shield.js'
-import type { ShieldParams } from './shield/types.js'
+import type { ShieldParams, ShieldProgress } from './shield/types.js'
+import { ShieldStage } from './shield/types.js'
 import type { DecryptSummary, SyncProgress } from './sync/wallet-decryptor.js'
 import { runWalletDecryption } from './sync/wallet-decryptor.js'
 
@@ -63,6 +70,7 @@ type RailgunClientCoreEngine = {
   setDataSource: (dataSource: SourceAggregator<EVMBlock>) => void
   setNetwork: (networkName: NetworkName) => Promise<void>
   scan: (options?: {
+    startBlock?: bigint | undefined
     endBlock?: bigint | undefined
     onBatch?: ((startHeight: bigint, lastBlock: bigint) => void) | undefined
     persistRailgunTransactions?: boolean | undefined
@@ -76,6 +84,12 @@ type RailgunClientCoreEngine = {
 type ScanParams = {
   network: NetworkName
   dataSource: SourceAggregator<EVMBlock>
+  /**
+   * Inclusive chain ingestion floor on empty storage. Values below the
+   * network deployment block are rejected. Ignored when a cursor exists.
+   */
+  startBlock?: bigint
+  /** Inclusive ceiling on chain ingestion. */
   endBlock?: bigint
   /** Fired per batch with `phase: 'scan'`. Synchronous; throwing aborts the run. */
   onProgress?: (progress: SyncProgress) => void
@@ -105,9 +119,14 @@ type DecryptParams = {
 type SyncParams = {
   network: NetworkName
   dataSource: SourceAggregator<EVMBlock>
+  /**
+   * Inclusive chain ingestion floor on empty storage. Values below the
+   * network deployment block are rejected. Ignored when a cursor exists.
+   */
+  startBlock?: bigint
   /** Inclusive ceiling on chain ingestion. */
   endBlock?: bigint
-  /** Override the wallet decryption cursor; defaults to scanState + 1. */
+  /** Override only the wallet decryption cursor; defaults to scanState + 1. */
   fromBlock?: bigint
   /** Stop point for decryption; defaults to chain storage's tip. */
   toBlock?: bigint
@@ -129,11 +148,20 @@ type SyncSummary = {
   poi?: RefreshSummary
 }
 
+/** Persisted chain-ingestion progress, including the explicit fresh state. */
+type SyncCursor =
+  | { status: 'never-synced' }
+  | { status: 'synced', lastBlockHeight: bigint }
+
+/** One wallet-scoped transaction-history row. */
+type TransactionHistoryEntry = DBTxHistory
+
 type RailgunClientCoreOptions<T extends RailgunClientCoreEngine> = {
   engine: T
   walletStorage: WalletStorage
   poiNodeUrls?: Partial<Record<NetworkName, string[]>>
   missingChainStorageMessage?: string
+  readPersistedSyncCursor?: (chainId: number) => Promise<bigint | undefined>
 }
 
 const EMPTY_REFRESH_SUMMARY: RefreshSummary = {
@@ -166,6 +194,9 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
   /** Error message used when decrypt runs before chain storage exists. */
   readonly #missingChainStorageMessage: string
 
+  /** Runtime-specific persisted cursor reader, when storage is not yet open. */
+  readonly #readPersistedSyncCursor: ((chainId: number) => Promise<bigint | undefined>) | undefined
+
   /**
    * Wire shared client behavior around injected storage and engine contracts.
    * @param options - Engine, wallet storage, PPOI URLs, and optional errors.
@@ -178,6 +209,7 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     this.#engine = options.engine
     this.#missingChainStorageMessage = options.missingChainStorageMessage ??
       'Decrypt failed: chain storage not initialized — call scan() first'
+    this.#readPersistedSyncCursor = options.readPersistedSyncCursor
   }
 
   /**
@@ -261,6 +293,19 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
   }
 
   /**
+   * Read unspent private ERC-721 holdings for a wallet on a given chain.
+   * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
+   * @param chainId - Chain id to scope the lookup to.
+   * @returns ERC-721 contract addresses and token sub-IDs.
+   */
+  getNFTs (
+    walletId: string,
+    chainId: number
+  ): Promise<ERC721Holding[]> {
+    return this.#balanceService.getNFTs(walletId, chainId)
+  }
+
+  /**
    * Read decrypted notes with protocol and optional POI spend state.
    * @param walletId - Wallet ID returned from `createWallet`/`listWallets`.
    * @param chainId - Chain id to scope the lookup to.
@@ -277,6 +322,65 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
   }
 
   /**
+   * Record a confirmed shield in wallet-scoped transaction history.
+   * @param walletId - Wallet that received the shield.
+   * @param chainId - Chain on which the shield confirmed.
+   * @param result - Confirmed shield receipt returned by `shield()`.
+   * @param timestamp - Timestamp of the confirmed shield block.
+   * @returns Resolves once the history row is stored.
+   */
+  recordShield (
+    walletId: string,
+    chainId: number,
+    result: ShieldResult,
+    timestamp: Date
+  ): Promise<void> {
+    return this.#walletStorage.insertTxHistory({
+      id: `${walletId}:${chainId}:${result.txHash}`,
+      walletId,
+      chainId,
+      type: 'shield',
+      txid: result.txHash,
+      blockNumber: result.receipt.blockNumber,
+      timestamp,
+      metadata: {
+        token: result.commitment.token.tokenAddress.toLowerCase(),
+        amount: result.shieldedAmount.toString()
+      }
+    })
+  }
+
+  /**
+   * Read stored transaction history for one wallet and chain, newest first.
+   * @param walletId - Wallet whose history should be returned.
+   * @param chainId - Chain to scope the history query to.
+   * @param limit - Optional maximum number of rows to return.
+   * @returns Stored wallet transaction history.
+   */
+  getTransactionHistory (
+    walletId: string,
+    chainId: number,
+    limit?: number
+  ): Promise<TransactionHistoryEntry[]> {
+    return this.#walletStorage.getTxHistory(walletId, chainId, limit)
+  }
+
+  /**
+   * Read persisted chain-ingestion progress without exposing engine storage.
+   * @param chainId - Chain whose persisted cursor should be returned.
+   * @returns Explicit synced or never-synced state.
+   */
+  async getSyncCursor (chainId: number): Promise<SyncCursor> {
+    const lastBlockHeight = this.#readPersistedSyncCursor !== undefined
+      ? await this.#readPersistedSyncCursor(chainId)
+      : (await this.#engine.storage?.getSyncState(chainId))?.lastBlockHeight
+
+    return lastBlockHeight === undefined
+      ? { status: 'never-synced' }
+      : { status: 'synced', lastBlockHeight }
+  }
+
+  /**
    * Drain the supplied data source into chain storage for `network`.
    * @param params - Sync target plus optional bounds.
    * @returns Last block number written, or `undefined` when the source had
@@ -287,6 +391,7 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     await this.#engine.setNetwork(params.network)
     const onProgress = params.onProgress
     return this.#engine.scan({
+      ...(params.startBlock !== undefined && { startBlock: params.startBlock }),
       ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
       ...(onProgress !== undefined && {
         onBatch: makeScanOnBatch(onProgress, params.endBlock)
@@ -354,6 +459,7 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     const lastBlock = await this.scan({
       network: params.network,
       dataSource: params.dataSource,
+      ...(params.startBlock !== undefined && { startBlock: params.startBlock }),
       ...(params.endBlock !== undefined && { endBlock: params.endBlock }),
       ...(params.onProgress !== undefined && { onProgress: params.onProgress })
     })
@@ -449,6 +555,13 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
   /**
    * Derive a shield key, ensure token approval, submit the shield transaction,
    * and parse its V2.1 Shield event.
+   *
+   * `params.onProgress` reports each stage as it begins, in this order:
+   * `deriving-key`, `checking-approval`, `approval-submitted`,
+   * `approval-confirmed`, `shield-submitted`, `shield-confirmed`. The three
+   * approval stages are conditional: `skipApprove` suppresses all three, and
+   * an ERC20 allowance or ERC721 approval that already covers the shield
+   * reports only `checking-approval`.
    * @param params - Token, recipient, signer, and execution options.
    * @param network - Network whose RAILGUN contract receives the shield.
    * @returns Parsed receipt data for the confirmed shield.
@@ -462,6 +575,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     params: ShieldParams,
     network: NetworkName
   ): Promise<ShieldResult> {
+    reportShieldProgress(params.onProgress, ShieldStage.DerivingKey)
+
     let key: Uint8Array
     try {
       key = await deriveShieldPrivateKey(params.signer)
@@ -478,7 +593,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     const receipt = await this.#sendAndWait(
       transaction,
       params.signer,
-      params.confirmations
+      params.confirmations,
+      params.onProgress
     )
     const result = parseShieldReceipt(receipt, proxy)
     if (result === undefined) {
@@ -496,6 +612,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     if (params.skipApprove === true) {
       return
     }
+
+    reportShieldProgress(params.onProgress, ShieldStage.CheckingApproval)
 
     const account = params.signer.account
     const tokenAddress = getAddress(params.tokenAddress)
@@ -567,6 +685,11 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
         })
       }
 
+      reportShieldProgress(
+        params.onProgress,
+        ShieldStage.ApprovalSubmitted,
+        txHash
+      )
       const receipt = await this.#waitForReceipt(
         txHash,
         params.signer,
@@ -576,6 +699,11 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
       if (receipt.status === 'reverted') {
         throw new ShieldApprovalRevertedError(tokenAddress, receipt)
       }
+      reportShieldProgress(
+        params.onProgress,
+        ShieldStage.ApprovalConfirmed,
+        txHash
+      )
     } catch (cause) {
       if (
         cause instanceof ShieldApprovalRevertedError ||
@@ -592,12 +720,14 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
    * @param transaction - Call target and calldata from `buildShield`.
    * @param signer - Wallet client used to submit the call.
    * @param confirmations - Required confirmation count.
+   * @param onProgress - Optional shield progress callback.
    * @returns Confirmed shield receipt.
    */
   async #sendAndWait (
     transaction: UnsignedTx,
     signer: WalletClient,
-    confirmations?: number
+    confirmations?: number,
+    onProgress?: (progress: ShieldProgress) => void
   ): Promise<TransactionReceipt> {
     const account = signer.account
     if (account === undefined) {
@@ -618,6 +748,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
       throw new ShieldTransactionRevertedError(cause)
     }
 
+    reportShieldProgress(onProgress, ShieldStage.ShieldSubmitted, txHash)
+
     let receipt: TransactionReceipt
     try {
       receipt = await this.#waitForReceipt(
@@ -635,6 +767,9 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
     if (receipt.status === 'reverted') {
       throw new ShieldTransactionRevertedError(receipt, txHash)
     }
+
+    reportShieldProgress(onProgress, ShieldStage.ShieldConfirmed, txHash)
+
     return receipt
   }
 
@@ -683,6 +818,7 @@ export { RailgunClientCore }
 export type {
   BalanceMode,
   DecryptedNote,
+  ERC721Holding,
   DecryptSummary,
   DecryptParams,
   RailgunClientCoreEngine,
@@ -692,8 +828,10 @@ export type {
   BuildShieldResult,
   ShieldParams,
   ShieldResult,
+  SyncCursor,
   SyncParams,
   SyncProgress,
   SyncSummary,
+  TransactionHistoryEntry,
   TokenBalance
 }
