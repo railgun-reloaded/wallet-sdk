@@ -7,6 +7,7 @@ import type {
 } from '@railgun-reloaded/storage'
 
 import type { NetworkName } from '../network-config.js'
+import { CommitmentType } from '../sync/event-processor.js'
 import type { SyncProgress } from '../sync/wallet-decryptor.js'
 import { SyncPhase } from '../sync/wallet-decryptor.js'
 
@@ -50,8 +51,6 @@ type RefreshEntry = NoteIdentity & {
   type: BlindedCommitmentType.Shield | BlindedCommitmentType.Transact
 }
 
-const SHIELD_COMMITMENT_TYPE = 0
-const TRANSACT_COMMITMENT_TYPE = 1
 const TREE_LEAF_COUNT = 65536n
 const ZERO_BLOCK = 0n
 
@@ -257,10 +256,10 @@ function noteToRefreshEntry (note: DBNote): RefreshEntry {
 function getBlindedCommitmentType (
   commitmentType: number
 ): BlindedCommitmentType.Shield | BlindedCommitmentType.Transact {
-  if (commitmentType === SHIELD_COMMITMENT_TYPE) {
+  if (commitmentType === CommitmentType.Shield) {
     return BlindedCommitmentType.Shield
   }
-  if (commitmentType === TRANSACT_COMMITMENT_TYPE) {
+  if (commitmentType === CommitmentType.Transact) {
     return BlindedCommitmentType.Transact
   }
   throw new Error(`Unsupported commitment type: ${commitmentType}`)

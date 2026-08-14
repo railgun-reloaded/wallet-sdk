@@ -340,6 +340,8 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
       timestamp,
       metadata: {
         token: result.commitment.token.tokenAddress.toLowerCase(),
+        tokenType: result.commitment.token.tokenType,
+        tokenSubID: `0x${result.commitment.token.tokenSubID.toString(16).padStart(64, '0')}`,
         amount: result.shieldedAmount.toString()
       }
     })

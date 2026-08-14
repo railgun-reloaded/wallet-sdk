@@ -6,10 +6,14 @@ import type {
   DBUnshield,
   WalletStorage
 } from '@railgun-reloaded/storage'
+import { OutputType, TokenType } from '@railgun-reloaded/wallet-node'
 
+import { UnsupportedTokenTypeError } from '../contracts/errors.js'
 import type { NetworkConfig as NetworkConfigEntry } from '../network-config.js'
 import { classifyNoteSpendState } from '../poi/bucket-classifier.js'
 import type { NoteSpendState } from '../poi/types.js'
+import { CommitmentType } from '../sync/event-processor.js'
+import { blockTimestampToDate } from '../sync/wallet-decryptor.js'
 
 import type {
   HistoryTokenAmount,
@@ -20,12 +24,8 @@ import type {
   UnshieldTokenAmount
 } from './types.js'
 
-/** Commitment type written for a note created by a shield. */
-const SHIELD_COMMITMENT_TYPE = 0
-
-/** Sender-annotation output types, as encoded in the note annotation. */
-const OUTPUT_TYPE_BROADCASTER_FEE = 1
-const OUTPUT_TYPE_CHANGE = 2
+/** Sub-ID carried by every ERC20 amount: 32 zero bytes. */
+const ERC20_TOKEN_SUB_ID = bytesToHex(new Uint8Array(32), { prefix: true })
 
 /** Mutable accumulator for one transaction while the history is assembled. */
 type EntryDraft = {
@@ -48,15 +48,10 @@ type EntryDraft = {
  * @returns The kind to report for the note.
  */
 function receivedKind (note: DBNote): ReceivedKind {
-  if (note.commitmentType === SHIELD_COMMITMENT_TYPE) {
+  if (note.commitmentType === CommitmentType.Shield) {
     return 'shield'
   }
-  if (note.outputType === OUTPUT_TYPE_CHANGE) {
-    return 'change'
-  }
-  return note.outputType === OUTPUT_TYPE_BROADCASTER_FEE
-    ? 'broadcaster-fee'
-    : 'transfer'
+  return note.outputType === OutputType.Change ? 'change' : 'transfer'
 }
 
 /**
@@ -108,6 +103,65 @@ function categorize (draft: EntryDraft): TransactionCategory {
 }
 
 /**
+ * Key an amount by the token it moves, so amounts of different tokens in one
+ * transaction never total together.
+ * @param amount - Amount to key.
+ * @returns Key identifying the token.
+ */
+function tokenKey (amount: HistoryTokenAmount): string {
+  return `${amount.token}:${amount.tokenType}:${amount.tokenSubID}`
+}
+
+/**
+ * Take an amount off a token's running total, when that token has one.
+ * @param totals - Running totals keyed by token.
+ * @param amount - Amount naming the token to deduct from.
+ * @param value - Value to deduct.
+ */
+function deduct (
+  totals: Map<string, HistoryTokenAmount>,
+  amount: HistoryTokenAmount,
+  value: bigint
+): void {
+  const running = totals.get(tokenKey(amount))
+  if (running !== undefined) {
+    running.amount -= value
+  }
+}
+
+/**
+ * Total, per token, the notes a transaction spent less the change it returned
+ * and the value it unshielded.
+ * @param draft - Accumulated amounts for one transaction.
+ * @returns One amount per token, omitting tokens with nothing left over.
+ */
+function transferredAmounts (draft: EntryDraft): HistoryTokenAmount[] {
+  const totals = new Map<string, HistoryTokenAmount>()
+  for (const amount of draft.spent) {
+    const key = tokenKey(amount)
+    const running = totals.get(key)
+    if (running === undefined) {
+      totals.set(key, { ...amount })
+      continue
+    }
+    running.amount += amount.amount
+  }
+
+  for (const amount of draft.received) {
+    if (amount.kind === 'change') {
+      deduct(totals, amount, amount.amount)
+    }
+  }
+  for (const unshield of draft.unshields) {
+    // The event records the recipient's amount net of the fee; the notes
+    // spent covered both.
+    deduct(totals, unshield, unshield.amount + unshield.fee)
+  }
+
+  return [...totals.values()].filter((amount) => amount.amount > 0n)
+}
+
+/**
  * Find or start the accumulator for a transaction.
  * @param drafts - Accumulators so far, keyed by transaction hash.
  * @param txid - Transaction hash the amount belongs to.
@@ -139,19 +193,44 @@ function draftFor (
 /**
  * Describe the token a note or unshield moved.
  * @param token - Token contract address.
+ * @param tokenType - Token standard the amount belongs to.
  * @param tokenSubID - Token sub-ID bytes.
  * @param amount - Amount in base units.
  * @returns Token amount in public form.
  */
 function toTokenAmount (
   token: string,
+  tokenType: TokenType,
   tokenSubID: Uint8Array,
   amount: bigint
 ): HistoryTokenAmount {
   return {
     token,
+    tokenType,
     tokenSubID: bytesToHex(tokenSubID, { prefix: true }),
     amount
+  }
+}
+
+/**
+ * Read a token standard from a stored value.
+ *
+ * A data source records the standard either as the on-chain number or by
+ * name. Both forms resolve to the same value.
+ * @param value - Stored token type, in numeric or named form.
+ * @returns The token standard.
+ * @throws UnsupportedTokenTypeError when the value names no supported standard.
+ */
+function toTokenType (value: number | string): TokenType {
+  switch (String(value).toUpperCase()) {
+    case '0':
+    case 'ERC20':
+      return TokenType.ERC20
+    case '1':
+    case 'ERC721':
+      return TokenType.ERC721
+    default:
+      throw new UnsupportedTokenTypeError(value)
   }
 }
 
@@ -201,7 +280,11 @@ function toUnshieldAmount (
   spent: HistoryTokenAmount[]
 ): UnshieldTokenAmount {
   const eventToken = event.token as
-    | { tokenAddress?: Uint8Array, tokenSubID?: Uint8Array }
+    | {
+      tokenAddress?: Uint8Array
+      tokenSubID?: Uint8Array
+      tokenType?: number | string
+    }
     | null
     | undefined
   const fallback = spent[0]
@@ -211,9 +294,13 @@ function toUnshieldAmount (
   const tokenSubID = eventToken?.tokenSubID !== undefined
     ? bytesToHex(eventToken.tokenSubID, { prefix: true })
     : fallback?.tokenSubID ?? ''
+  const tokenType = eventToken?.tokenType !== undefined
+    ? toTokenType(eventToken.tokenType)
+    : fallback?.tokenType ?? TokenType.ERC20
 
   return {
     token,
+    tokenType,
     tokenSubID,
     amount: event.amount,
     fee: event.fee,
@@ -230,10 +317,18 @@ function toUnshieldAmount (
  * @returns Entry marked as awaiting decryption.
  */
 function toPendingEntry (row: DBTxHistory): TransactionHistoryEntry {
-  const metadata = (row.metadata ?? {}) as { token?: string, amount?: string }
+  const metadata = (row.metadata ?? {}) as {
+    token?: string
+    tokenType?: number | string
+    tokenSubID?: string
+    amount?: string
+  }
   const amount: HistoryTokenAmount = {
     token: metadata.token ?? '',
-    tokenSubID: '',
+    tokenType: metadata.tokenType === undefined
+      ? TokenType.ERC20
+      : toTokenType(metadata.tokenType),
+    tokenSubID: metadata.tokenSubID ?? ERC20_TOKEN_SUB_ID,
     amount: metadata.amount === undefined ? 0n : BigInt(metadata.amount)
   }
 
@@ -244,6 +339,7 @@ function toPendingEntry (row: DBTxHistory): TransactionHistoryEntry {
     category: row.type === 'unshield' ? 'unshield' : row.type === 'transfer' ? 'send' : 'shield',
     received: row.type === 'shield' ? [{ ...amount, kind: 'shield' }] : [],
     spent: row.type === 'shield' ? [] : [amount],
+    transferred: row.type === 'transfer' ? [amount] : [],
     unshields: row.type === 'unshield' ? [{ ...amount, fee: 0n, toAddress: '' }] : [],
     spendState: null,
     pending: true
@@ -283,7 +379,16 @@ async function buildTransactionHistory (params: {
   const spentBlocks = new Set<bigint>()
 
   for (const note of notes) {
-    const amount = toTokenAmount(note.token, note.tokenSubID, note.amount)
+    // A zero-value note pads a circuit rather than moving value.
+    if (note.amount === 0n) {
+      continue
+    }
+    const amount = toTokenAmount(
+      note.token,
+      toTokenType(note.tokenType),
+      note.tokenSubID,
+      note.amount
+    )
 
     if (note.creationTxid !== null) {
       const draft = draftFor(
@@ -322,8 +427,7 @@ async function buildTransactionHistory (params: {
       if (events === undefined) continue
       for (const event of events) {
         draft.unshields.push(toUnshieldAmount(event, draft.spent))
-        // Unshield events store the block time in milliseconds.
-        draft.timestamp = new Date(Number(event.timestamp))
+        draft.timestamp = blockTimestampToDate(event.timestamp)
       }
     }
   }
@@ -336,6 +440,7 @@ async function buildTransactionHistory (params: {
       category: categorize(draft),
       received: draft.received,
       spent: draft.spent,
+      transferred: transferredAmounts(draft),
       unshields: draft.unshields,
       spendState: leastSettled(draft.spendStates),
       pending: false

@@ -1,9 +1,13 @@
+import type { TokenType } from '@railgun-reloaded/wallet-node'
+
 import type { NoteSpendState } from '../poi/types.js'
 
 /** A token and how much of it moved. */
 type HistoryTokenAmount = {
   /** ERC-20 or ERC-721 contract address, lowercased. */
   token: string
+  /** Standard the token follows. */
+  tokenType: TokenType
   /** 32-byte token sub-ID as 0x-prefixed hex; zero for ERC-20. */
   tokenSubID: string
   /** Amount in the token's base units. */
@@ -13,11 +17,11 @@ type HistoryTokenAmount = {
 /**
  * Why a note arrived in the wallet.
  *
- * `shield` comes from the commitment type. The rest come from the sender
+ * `shield` comes from the commitment type. `change` comes from the sender
  * annotation, which only decrypts for outputs this wallet created, so a note
  * received from someone else reads as `transfer`.
  */
-type ReceivedKind = 'shield' | 'transfer' | 'change' | 'broadcaster-fee'
+type ReceivedKind = 'shield' | 'transfer' | 'change'
 
 /** A token amount the wallet received, and why. */
 type ReceivedTokenAmount = HistoryTokenAmount & {
@@ -53,7 +57,17 @@ type TransactionHistoryEntry = {
   received: ReceivedTokenAmount[]
   /** Notes of this wallet the transaction spent. */
   spent: HistoryTokenAmount[]
-  /** Amounts the transaction moved out to a public address. */
+  /**
+   * What the transaction moved to another private address, per token. Derived
+   * from `spent`, less change and less anything unshielded. Includes any
+   * broadcaster fee, which is paid to a note this wallet does not hold.
+   */
+  transferred: HistoryTokenAmount[]
+  /**
+   * Amounts the transaction moved out to a public address. Attributed by
+   * transaction hash, so a transaction carrying more than one wallet's
+   * unshield reports all of them.
+   */
   unshields: UnshieldTokenAmount[]
   /**
    * PPOI state across the notes this transaction created. Reports the least

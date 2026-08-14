@@ -8,6 +8,7 @@ import {
   createWalletDB,
   createWalletStorage
 } from '@railgun-reloaded/storage/node'
+import { TokenType } from '@railgun-reloaded/wallet-node'
 
 import { RailgunClient } from '../../src/client.js'
 import { MNEMONIC } from '../fixtures/wallet-vectors.js'
@@ -138,6 +139,59 @@ test('spending a note and taking change back is a send', async () => {
   assert.equal(send.spent[0]?.amount, 100n)
   assert.equal(send.received[0]?.kind, 'change')
   assert.equal(send.received[0]?.amount, 40n)
+  assert.equal(
+    send.transferred[0]?.amount,
+    60n,
+    'the change returning to this wallet is not part of what was transferred'
+  )
+})
+
+test('an unshielded amount and its fee are not counted as a transfer', async () => {
+  const { client, chainDB, walletId } = await seed([
+    {
+      commitment: bytes32(16),
+      nullifier: bytes32(17),
+      commitmentType: 0,
+      creationTxid: SHIELD_TXID,
+      spent: true,
+      spentTxid: UNSHIELD_TXID,
+      spentBlockNumber: 50n
+    }
+  ])
+
+  await createChainStorage(chainDB).insertUnshieldBatch([{
+    transactionHash: UNSHIELD_TXID,
+    blockNumber: 50n,
+    timestamp: 1_781_188_332n,
+    toAddress: new Uint8Array(20).fill(0xee),
+    amount: 90n,
+    fee: 10n,
+    eventLogIndex: 0
+  }])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+  const unshield = history.find((entry) => entry.category === 'unshield')
+
+  assert.deepEqual(
+    unshield?.transferred,
+    [],
+    'the whole spent note left through the unshield, so nothing was transferred'
+  )
+})
+
+test('a zero-value note does not reach the history', async () => {
+  const { client, walletId } = await seed([
+    {
+      commitment: bytes32(18),
+      commitmentType: 1,
+      amount: 0n,
+      creationTxid: RECEIVE_TXID
+    }
+  ])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+
+  assert.deepEqual(history, [], 'a note padding a circuit moves no value')
 })
 
 test('a spend whose transaction unshielded is reported as an unshield', async () => {
@@ -172,13 +226,60 @@ test('a spend whose transaction unshielded is reported as an unshield', async ()
   assert.deepEqual(
     unshield.timestamp,
     new Date('2026-06-11T14:32:12.000Z'),
-    'unshield events store the block time in milliseconds'
+    'an indexer reports the block time in milliseconds'
   )
   assert.equal(
     unshield.unshields[0]?.token,
     TOKEN,
     'an unshield with no stored token falls back to the spent note token'
   )
+})
+
+test('an unshield timestamp in seconds reports the same instant', async () => {
+  const { client, chainDB, walletId } = await seed([
+    {
+      commitment: bytes32(12),
+      nullifier: bytes32(13),
+      commitmentType: 0,
+      creationTxid: SHIELD_TXID,
+      spent: true,
+      spentTxid: UNSHIELD_TXID,
+      spentBlockNumber: 50n
+    }
+  ])
+
+  await createChainStorage(chainDB).insertUnshieldBatch([{
+    transactionHash: UNSHIELD_TXID,
+    blockNumber: 50n,
+    // An RPC source passes the raw EVM block timestamp through, in seconds.
+    timestamp: 1_781_188_332n,
+    toAddress: new Uint8Array(20).fill(0xee),
+    amount: 90n,
+    fee: 10n,
+    eventLogIndex: 0
+  }])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+  const unshield = history.find((entry) => entry.category === 'unshield')
+
+  assert.deepEqual(unshield?.timestamp, new Date('2026-06-11T14:32:12.000Z'))
+})
+
+test('a note carries its token standard into the history', async () => {
+  const { client, walletId } = await seed([
+    {
+      commitment: bytes32(14),
+      commitmentType: 0,
+      tokenType: TokenType.ERC721,
+      tokenSubID: bytes32(15),
+      creationTxid: SHIELD_TXID
+    }
+  ])
+
+  const [entry] = await client.getTransactionHistory(walletId, CHAIN_ID)
+
+  assert.equal(entry?.received[0]?.tokenType, TokenType.ERC721)
+  assert.equal(entry?.received[0]?.tokenSubID, `0x${'0f'.repeat(32)}`)
 })
 
 test('an unshield in another block is not attached to this wallet', async () => {

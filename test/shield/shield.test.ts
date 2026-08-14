@@ -843,7 +843,8 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
     )
     assert.deepEqual(history[0]?.received, [{
       token: TOKEN_ADDRESS,
-      tokenSubID: '',
+      tokenType: TokenType.ERC20,
+      tokenSubID: `0x${'00'.repeat(32)}`,
       amount: 975n,
       kind: 'shield'
     }])
