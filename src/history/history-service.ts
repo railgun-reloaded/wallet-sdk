@@ -54,15 +54,6 @@ function toCanonicalTokenSubID (value: Uint8Array | string): string {
   )
 }
 
-/**
- * Row count asked of recorded history.
- *
- * Recorded rows are read in full rather than to the caller's limit, because
- * the merge below drops the ones decryption already covers. Reading only as
- * many rows as the caller asked for would return fewer entries than that.
- */
-const ALL_RECORDED_ROWS = Number.MAX_SAFE_INTEGER
-
 /** Mutable accumulator for one transaction while the history is assembled. */
 type EntryDraft = {
   txid: string
@@ -613,10 +604,11 @@ async function buildTransactionHistory (params: {
   )
 
   const derived = new Set(entries.map((entry) => entry.txid.toLowerCase()))
+  // Every recorded row is read, not just as many as the caller asked for,
+  // because the merge below drops the ones decryption already covers.
   const recorded = await params.walletStorage.getTxHistory(
     params.walletId,
-    params.chainId,
-    ALL_RECORDED_ROWS
+    params.chainId
   )
   for (const row of recorded) {
     if (derived.has(row.txid.toLowerCase())) continue
