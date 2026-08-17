@@ -1,7 +1,8 @@
-import { bytesToHex } from '@railgun-reloaded/bytes'
+import { bytesToHex, hexToBytes, padBytesLeft } from '@railgun-reloaded/bytes'
 import type {
   ChainStorage,
   DBNote,
+  DBRailgunTransaction,
   DBTxHistory,
   DBUnshield,
   WalletStorage
@@ -24,8 +25,43 @@ import type {
   UnshieldTokenAmount
 } from './types.js'
 
+/** Byte width of a token sub-ID on chain. */
+const TOKEN_SUB_ID_BYTES = 32
+
 /** Sub-ID carried by every ERC20 amount: 32 zero bytes. */
-const ERC20_TOKEN_SUB_ID = bytesToHex(new Uint8Array(32), { prefix: true })
+const ERC20_TOKEN_SUB_ID = bytesToHex(new Uint8Array(TOKEN_SUB_ID_BYTES), {
+  prefix: true
+})
+
+/**
+ * Widen a token sub-ID to the width the chain uses.
+ *
+ * A data source records the sub-ID at whatever width it stores, so the same
+ * ERC-20 arrives as one zero byte from one source and as 32 from another.
+ * Consumers key amounts by this value, so both forms are widened to the
+ * on-chain width and one token reads as one token.
+ * @param value - Sub-ID as bytes, or as a hex string.
+ * @returns Sub-ID as 32-byte lowercase hex, 0x-prefixed.
+ * @throws {BytesError} When the sub-ID is not hex, or is wider than 32 bytes.
+ */
+function toCanonicalTokenSubID (value: Uint8Array | string): string {
+  const bytes = typeof value === 'string'
+    ? hexToBytes(value, { allowOddLength: true })
+    : value
+  return bytesToHex(
+    padBytesLeft(bytes, TOKEN_SUB_ID_BYTES, { strict: true }),
+    { prefix: true }
+  )
+}
+
+/**
+ * Row count asked of recorded history.
+ *
+ * Recorded rows are read in full rather than to the caller's limit, because
+ * the merge below drops the ones decryption already covers. Reading only as
+ * many rows as the caller asked for would return fewer entries than that.
+ */
+const ALL_RECORDED_ROWS = Number.MAX_SAFE_INTEGER
 
 /** Mutable accumulator for one transaction while the history is assembled. */
 type EntryDraft = {
@@ -207,7 +243,7 @@ function toTokenAmount (
   return {
     token,
     tokenType,
-    tokenSubID: bytesToHex(tokenSubID, { prefix: true }),
+    tokenSubID: toCanonicalTokenSubID(tokenSubID),
     amount
   }
 }
@@ -235,30 +271,142 @@ function toTokenType (value: number | string): TokenType {
 }
 
 /**
- * Read the unshield events for the blocks a wallet spent notes in.
+ * Key a hash the way the maps below are keyed.
+ * @param value - Hash or address bytes.
+ * @returns Lowercase 0x-prefixed hex.
+ */
+function hashKey (value: Uint8Array): string {
+  return bytesToHex(value, { prefix: true }).toLowerCase()
+}
+
+/**
+ * Group rows by the transaction hash they carry.
+ * @param rows - Rows to group.
+ * @param txidOf - Reads the transaction hash off a row.
+ * @returns Rows keyed by 0x-prefixed transaction hash.
+ */
+function groupByTxid<Row> (
+  rows: Row[],
+  txidOf: (row: Row) => Uint8Array
+): Map<string, Row[]> {
+  const byTxid = new Map<string, Row[]>()
+  for (const row of rows) {
+    const txid = hashKey(txidOf(row))
+    const existing = byTxid.get(txid)
+    if (existing === undefined) {
+      byTxid.set(txid, [row])
+      continue
+    }
+    existing.push(row)
+  }
+  return byTxid
+}
+
+/**
+ * Decide whether a Railgun transaction spent any of this wallet's notes.
+ * @param transaction - Stored Railgun transaction.
+ * @param spentNullifiers - Nullifiers of the notes this wallet spent.
+ * @returns True when the transaction spent a note this wallet held.
+ */
+function spendsWalletNote (
+  transaction: DBRailgunTransaction,
+  spentNullifiers: Set<string>
+): boolean {
+  const nullifiers = transaction.nullifiers as Uint8Array[] | null | undefined
+  if (nullifiers === null || nullifiers === undefined) {
+    return false
+  }
+  return nullifiers.some((nullifier) => spentNullifiers.has(hashKey(nullifier)))
+}
+
+/**
+ * Pick the unshield events of one transaction that belong to this wallet.
+ *
+ * One transaction can carry the Railgun transactions of several wallets, so
+ * its hash alone does not say whose unshield an event is. A wallet's spent
+ * nullifiers name its own Railgun transactions, and each of those names the
+ * address it unshielded to, which identifies the event.
+ *
+ * A transaction whose Railgun transactions were not recorded carries no such
+ * evidence, and its events are reported as they are.
+ * @param events - Unshield events of one transaction.
+ * @param transactions - Railgun transactions recorded for that transaction.
+ * @param spentNullifiers - Nullifiers of the notes this wallet spent.
+ * @returns The events this wallet unshielded.
+ */
+function ownUnshieldEvents (
+  events: DBUnshield[],
+  transactions: DBRailgunTransaction[] | undefined,
+  spentNullifiers: Set<string>
+): DBUnshield[] {
+  if (transactions === undefined || transactions.length === 0) {
+    return events
+  }
+
+  const recipients = new Set<string>()
+  for (const transaction of transactions) {
+    if (!transaction.hasUnshield) continue
+    if (!spendsWalletNote(transaction, spentNullifiers)) continue
+    const unshield = transaction.unshield as { to?: Uint8Array } | null | undefined
+    if (unshield?.to === undefined) continue
+    recipients.add(hashKey(unshield.to))
+  }
+
+  if (recipients.size === 0) {
+    return []
+  }
+  return events.filter((event) => recipients.has(hashKey(event.toAddress)))
+}
+
+/**
+ * Read the unshield events this wallet produced in the blocks it spent in.
  *
  * Unshields are queried a block at a time rather than across one wide range,
  * because a wallet's spends are few and far apart and the table holds every
  * unshield on the chain.
  * @param chainStorage - Chain storage holding unshield events.
  * @param blocks - Blocks the wallet spent notes in.
+ * @param spentNullifiers - Nullifiers of the notes this wallet spent.
  * @returns Unshield events keyed by 0x-prefixed transaction hash.
  */
 async function readUnshieldsByTxid (
   chainStorage: ChainStorage,
-  blocks: Set<bigint>
+  blocks: Set<bigint>,
+  spentNullifiers: Set<string>
 ): Promise<Map<string, DBUnshield[]>> {
   const byTxid = new Map<string, DBUnshield[]>()
   for (const block of blocks) {
     const events = await chainStorage.getUnshieldsByBlockRange(block, block)
-    for (const event of events) {
-      const txid = bytesToHex(event.transactionHash, { prefix: true })
-      const existing = byTxid.get(txid)
-      if (existing === undefined) {
-        byTxid.set(txid, [event])
+    if (events.length === 0) {
+      continue
+    }
+    const transactions = await chainStorage.getRailgunTransactionsByBlockRange(
+      block,
+      block
+    )
+    const transactionsByTxid = groupByTxid(
+      transactions,
+      (transaction) => transaction.chainTxid
+    )
+
+    for (const [txid, txEvents] of groupByTxid(
+      events,
+      (event) => event.transactionHash
+    )) {
+      const own = ownUnshieldEvents(
+        txEvents,
+        transactionsByTxid.get(txid),
+        spentNullifiers
+      )
+      if (own.length === 0) {
         continue
       }
-      existing.push(event)
+      const existing = byTxid.get(txid)
+      if (existing === undefined) {
+        byTxid.set(txid, own)
+        continue
+      }
+      existing.push(...own)
     }
   }
   return byTxid
@@ -269,15 +417,16 @@ async function readUnshieldsByTxid (
  *
  * The event's own token is used when the chain data carries it. Databases
  * scanned before unshield tokens were persisted fall back to the token of
- * the notes the transaction spent, which is the same token whenever a
- * transaction moves one.
+ * a note the transaction spent, which is the same token whenever a
+ * transaction moves one. A token is always named either way, so no amount
+ * reports an address that names no contract.
  * @param event - Stored unshield event.
- * @param spent - Amounts the transaction spent from this wallet.
+ * @param fallback - Token of a note the transaction spent from this wallet.
  * @returns The unshielded amount in public form.
  */
 function toUnshieldAmount (
   event: DBUnshield,
-  spent: HistoryTokenAmount[]
+  fallback: HistoryTokenAmount
 ): UnshieldTokenAmount {
   const eventToken = event.token as
     | {
@@ -287,16 +436,15 @@ function toUnshieldAmount (
     }
     | null
     | undefined
-  const fallback = spent[0]
   const token = eventToken?.tokenAddress !== undefined
     ? bytesToHex(eventToken.tokenAddress, { prefix: true }).toLowerCase()
-    : fallback?.token ?? ''
+    : fallback.token
   const tokenSubID = eventToken?.tokenSubID !== undefined
-    ? bytesToHex(eventToken.tokenSubID, { prefix: true })
-    : fallback?.tokenSubID ?? ''
+    ? toCanonicalTokenSubID(eventToken.tokenSubID)
+    : fallback.tokenSubID
   const tokenType = eventToken?.tokenType !== undefined
     ? toTokenType(eventToken.tokenType)
-    : fallback?.tokenType ?? TokenType.ERC20
+    : fallback.tokenType
 
   return {
     token,
@@ -313,6 +461,8 @@ function toUnshieldAmount (
  *
  * These rows exist from the moment a transaction confirms, so the history
  * covers what the wallet did before the data source has indexed the block.
+ * A row that names no token reports the transaction with no amounts, rather
+ * than an amount whose address names no contract.
  * @param row - Stored transaction-history row.
  * @returns Entry marked as awaiting decryption.
  */
@@ -323,24 +473,32 @@ function toPendingEntry (row: DBTxHistory): TransactionHistoryEntry {
     tokenSubID?: string
     amount?: string
   }
-  const amount: HistoryTokenAmount = {
-    token: metadata.token ?? '',
-    tokenType: metadata.tokenType === undefined
-      ? TokenType.ERC20
-      : toTokenType(metadata.tokenType),
-    tokenSubID: metadata.tokenSubID ?? ERC20_TOKEN_SUB_ID,
-    amount: metadata.amount === undefined ? 0n : BigInt(metadata.amount)
-  }
+  const amounts: HistoryTokenAmount[] = metadata.token === undefined
+    ? []
+    : [{
+        token: metadata.token,
+        tokenType: metadata.tokenType === undefined
+          ? TokenType.ERC20
+          : toTokenType(metadata.tokenType),
+        tokenSubID: metadata.tokenSubID === undefined
+          ? ERC20_TOKEN_SUB_ID
+          : toCanonicalTokenSubID(metadata.tokenSubID),
+        amount: metadata.amount === undefined ? 0n : BigInt(metadata.amount)
+      }]
 
   return {
     txid: row.txid,
     blockNumber: row.blockNumber,
     timestamp: row.timestamp,
     category: row.type === 'unshield' ? 'unshield' : row.type === 'transfer' ? 'send' : 'shield',
-    received: row.type === 'shield' ? [{ ...amount, kind: 'shield' }] : [],
-    spent: row.type === 'shield' ? [] : [amount],
-    transferred: row.type === 'transfer' ? [amount] : [],
-    unshields: row.type === 'unshield' ? [{ ...amount, fee: 0n, toAddress: '' }] : [],
+    received: row.type === 'shield'
+      ? amounts.map((amount) => ({ ...amount, kind: 'shield' as const }))
+      : [],
+    spent: row.type === 'shield' ? [] : amounts,
+    transferred: row.type === 'transfer' ? amounts : [],
+    unshields: row.type === 'unshield'
+      ? amounts.map((amount) => ({ ...amount, fee: 0n, toAddress: '' }))
+      : [],
     spendState: null,
     pending: true
   }
@@ -377,6 +535,7 @@ async function buildTransactionHistory (params: {
   )
   const drafts = new Map<string, EntryDraft>()
   const spentBlocks = new Set<bigint>()
+  const spentNullifiers = new Set<string>()
 
   for (const note of notes) {
     // A zero-value note pads a circuit rather than moving value.
@@ -407,6 +566,7 @@ async function buildTransactionHistory (params: {
         note.spentBlockNumber ?? note.blockNumber
       )
       draft.spent.push(amount)
+      spentNullifiers.add(hashKey(note.nullifier))
       if (note.spentTimestamp !== null) {
         draft.timestamp = note.spentTimestamp
       }
@@ -420,13 +580,18 @@ async function buildTransactionHistory (params: {
   if (params.chainStorage !== undefined && spentBlocks.size > 0) {
     const unshieldsByTxid = await readUnshieldsByTxid(
       params.chainStorage,
-      spentBlocks
+      spentBlocks,
+      spentNullifiers
     )
     for (const draft of drafts.values()) {
       const events = unshieldsByTxid.get(draft.txid)
       if (events === undefined) continue
+      // An unshield spends a note, so a transaction this wallet spent nothing
+      // in did not unshield for it.
+      const fallback = draft.spent[0]
+      if (fallback === undefined) continue
       for (const event of events) {
-        draft.unshields.push(toUnshieldAmount(event, draft.spent))
+        draft.unshields.push(toUnshieldAmount(event, fallback))
         draft.timestamp = blockTimestampToDate(event.timestamp)
       }
     }
@@ -450,7 +615,8 @@ async function buildTransactionHistory (params: {
   const derived = new Set(entries.map((entry) => entry.txid.toLowerCase()))
   const recorded = await params.walletStorage.getTxHistory(
     params.walletId,
-    params.chainId
+    params.chainId,
+    ALL_RECORDED_ROWS
   )
   for (const row of recorded) {
     if (derived.has(row.txid.toLowerCase())) continue

@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 
-import type { DBNewNote } from '@railgun-reloaded/storage'
+import type { DBNewNote, DBNewRailgunTransaction } from '@railgun-reloaded/storage'
 import {
   createChainDB,
   createChainStorage,
@@ -53,6 +53,34 @@ function note (overrides: Partial<DBNewNote>): DBNewNote {
 }
 
 /**
+ * Build a Railgun transaction row carried by the unshielding EVM transaction.
+ * @param overrides - Fields to override on the row.
+ * @returns Railgun transaction row ready to insert.
+ */
+function railgunTransaction (
+  overrides: Partial<DBNewRailgunTransaction>
+): DBNewRailgunTransaction {
+  return {
+    railgunTxid: bytes32(0x30),
+    txidVersion: 2,
+    chainTxid: UNSHIELD_TXID,
+    graphID: null,
+    blockNumber: 70n,
+    timestamp: 1_781_188_332n,
+    nullifiers: [],
+    commitments: [],
+    boundParamsHash: bytes32(0x31),
+    hasUnshield: false,
+    unshield: null,
+    utxoTreeIn: 0,
+    utxoTreeOut: 0,
+    utxoBatchStartPositionOut: 0,
+    verificationHash: null,
+    ...overrides
+  }
+}
+
+/**
  * Open a client over in-memory databases and seed one wallet's notes.
  * @param notes - Notes to insert for the wallet.
  * @returns The open client and the seeded wallet id.
@@ -78,7 +106,7 @@ async function seed (notes: Partial<DBNewNote>[]) {
     notes.map((overrides) => note({ ...overrides, walletId: wallet.walletId }))
   )
 
-  return { client, chainDB, walletId: wallet.walletId }
+  return { client, chainDB, walletDB, walletId: wallet.walletId }
 }
 
 test('a shield commitment is reported as a shield', async () => {
@@ -280,6 +308,181 @@ test('a note carries its token standard into the history', async () => {
 
   assert.equal(entry?.received[0]?.tokenType, TokenType.ERC721)
   assert.equal(entry?.received[0]?.tokenSubID, `0x${'0f'.repeat(32)}`)
+})
+
+test('another wallet\'s unshield in the same transaction is not attributed here', async () => {
+  const OUR_NULLIFIER = bytes32(0x21)
+  const STRANGER_NULLIFIER = bytes32(0x22)
+  const STRANGER_ADDRESS = new Uint8Array(20).fill(0xcc)
+
+  const { client, chainDB, walletId } = await seed([
+    {
+      commitment: bytes32(0x23),
+      nullifier: OUR_NULLIFIER,
+      commitmentType: 0,
+      creationTxid: SHIELD_TXID,
+      spent: true,
+      spentTxid: UNSHIELD_TXID,
+      spentBlockNumber: 70n
+    }
+  ])
+
+  const chainStorage = createChainStorage(chainDB)
+  await chainStorage.insertRailgunTransactions([
+    railgunTransaction({
+      railgunTxid: bytes32(0x24),
+      nullifiers: [OUR_NULLIFIER],
+      hasUnshield: false,
+      unshield: null
+    }),
+    railgunTransaction({
+      railgunTxid: bytes32(0x25),
+      nullifiers: [STRANGER_NULLIFIER],
+      hasUnshield: true,
+      unshield: { to: STRANGER_ADDRESS, token: null, value: 90n }
+    })
+  ])
+  await chainStorage.insertUnshieldBatch([{
+    transactionHash: UNSHIELD_TXID,
+    blockNumber: 70n,
+    timestamp: 1_781_188_332n,
+    toAddress: STRANGER_ADDRESS,
+    amount: 90n,
+    fee: 10n,
+    eventLogIndex: 0
+  }])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+  const entry = history.find((item) => item.txid === `0x${'d4'.repeat(32)}`)
+
+  assert.deepEqual(
+    entry?.unshields,
+    [],
+    'the unshield belongs to the Railgun transaction that spent another wallet\'s note'
+  )
+  assert.equal(entry?.category, 'send', 'this wallet only spent in that transaction')
+  assert.equal(
+    entry?.transferred[0]?.amount,
+    100n,
+    'the stranger\'s unshield is not deducted from this wallet\'s transferred total'
+  )
+})
+
+test('the same ERC-20 reports one sub-ID whatever width its source stored', async () => {
+  const { client, walletDB, walletId } = await seed([
+    {
+      commitment: bytes32(20),
+      commitmentType: 0,
+      // A data source can store the ERC-20 sub-ID narrower than the chain does.
+      tokenSubID: new Uint8Array([0]),
+      creationTxid: SHIELD_TXID
+    }
+  ])
+
+  await createWalletStorage(walletDB).insertTxHistoryBatch([{
+    id: 'pending-shield',
+    walletId,
+    chainId: CHAIN_ID,
+    type: 'shield' as const,
+    txid: `0x${'ab'.repeat(32)}`,
+    blockNumber: 60n,
+    timestamp: new Date('2026-01-01T00:00:00.000Z'),
+    metadata: { token: TOKEN, tokenType: 0, tokenSubID: '0x00', amount: '5' }
+  }])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+  const derived = history.find((entry) => !entry.pending)
+  const pending = history.find((entry) => entry.pending)
+
+  assert.equal(derived?.received[0]?.tokenSubID, `0x${'00'.repeat(32)}`)
+  assert.equal(
+    pending?.received[0]?.tokenSubID,
+    derived?.received[0]?.tokenSubID,
+    'a recorded shield and its decrypted twin name the same token'
+  )
+})
+
+test('recorded transactions past the storage page size still reach the history', async () => {
+  const RECORDED = 120
+  const { client, walletDB, walletId } = await seed([])
+
+  await createWalletStorage(walletDB).insertTxHistoryBatch(
+    Array.from({ length: RECORDED }, (_, index) => ({
+      id: `recorded-${index}`,
+      walletId,
+      chainId: CHAIN_ID,
+      type: 'shield' as const,
+      txid: `0x${index.toString(16).padStart(64, '0')}`,
+      blockNumber: BigInt(index + 1),
+      timestamp: new Date('2026-01-01T00:00:00.000Z'),
+      metadata: { token: TOKEN, tokenType: 0, amount: '5' }
+    }))
+  )
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+
+  assert.equal(
+    history.length,
+    RECORDED,
+    'the storage row default does not truncate the set the merge dedupes'
+  )
+})
+
+test('no amount reports a token address that names no contract', async () => {
+  const { client, chainDB, walletDB, walletId } = await seed([
+    {
+      commitment: bytes32(0x26),
+      commitmentType: 1,
+      // Received in a block this wallet also spent in, but in another
+      // transaction, so no note of this wallet names the unshield's token.
+      creationTxid: RECEIVE_TXID,
+      blockNumber: 80n
+    },
+    {
+      commitment: bytes32(0x27),
+      nullifier: bytes32(0x28),
+      commitmentType: 0,
+      creationTxid: SHIELD_TXID,
+      spent: true,
+      spentTxid: SEND_TXID,
+      spentBlockNumber: 80n
+    }
+  ])
+
+  await createChainStorage(chainDB).insertUnshieldBatch([{
+    transactionHash: RECEIVE_TXID,
+    blockNumber: 80n,
+    timestamp: 1_781_188_332n,
+    toAddress: new Uint8Array(20).fill(0xee),
+    amount: 90n,
+    fee: 10n,
+    eventLogIndex: 0
+  }])
+  await createWalletStorage(walletDB).insertTxHistoryBatch([{
+    id: 'recorded-no-token',
+    walletId,
+    chainId: CHAIN_ID,
+    type: 'shield' as const,
+    txid: `0x${'ef'.repeat(32)}`,
+    blockNumber: 90n,
+    timestamp: new Date('2026-01-01T00:00:00.000Z'),
+    metadata: { amount: '5' }
+  }])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+  const amounts = history.flatMap((entry) => [
+    ...entry.received,
+    ...entry.spent,
+    ...entry.transferred,
+    ...entry.unshields
+  ])
+
+  assert.ok(amounts.length > 0, 'the history reports amounts to check')
+  assert.deepEqual(
+    amounts.filter((amount) => amount.token === ''),
+    [],
+    'an amount whose token cannot be named is not reported'
+  )
 })
 
 test('an unshield in another block is not attached to this wallet', async () => {

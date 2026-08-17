@@ -64,9 +64,11 @@ type TransactionHistoryEntry = {
    */
   transferred: HistoryTokenAmount[]
   /**
-   * Amounts the transaction moved out to a public address. Attributed by
-   * transaction hash, so a transaction carrying more than one wallet's
-   * unshield reports all of them.
+   * Amounts this wallet moved out to a public address. One transaction can
+   * carry the Railgun transactions of several wallets, so an unshield is
+   * attributed through the nullifiers of the notes this wallet spent. A
+   * transaction whose Railgun transactions were not recorded carries no such
+   * evidence, and reports every unshield under its hash.
    */
   unshields: UnshieldTokenAmount[]
   /**
