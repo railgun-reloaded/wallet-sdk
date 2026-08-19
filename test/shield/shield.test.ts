@@ -832,16 +832,22 @@ test('client.shield composes derivation, build, send, wait, and receipt parsing'
       ETHEREUM.chainID
     )
     assert.equal(history.length, 1, 'confirmed shield record is idempotent')
-    assert.equal(history[0]?.walletId, wallet.walletId)
-    assert.equal(history[0]?.chainId, ETHEREUM.chainID)
-    assert.equal(history[0]?.type, 'shield')
+    assert.equal(history[0]?.category, 'shield')
     assert.equal(history[0]?.txid, TX_HASH)
     assert.equal(history[0]?.blockNumber, 12n)
     assert.deepEqual(history[0]?.timestamp, timestamp)
-    assert.deepEqual(history[0]?.metadata, {
+    assert.equal(
+      history[0]?.pending,
+      true,
+      'a recorded shield stays pending until decryption reaches its block'
+    )
+    assert.deepEqual(history[0]?.received, [{
       token: TOKEN_ADDRESS,
-      amount: '975'
-    })
+      tokenType: TokenType.ERC20,
+      tokenSubID: `0x${'00'.repeat(32)}`,
+      amount: 975n,
+      kind: 'shield'
+    }])
     assert.deepEqual(
       await client.getTransactionHistory(wallet.walletId, 11155111),
       [],

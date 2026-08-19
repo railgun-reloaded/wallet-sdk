@@ -383,7 +383,7 @@ function nullifierKey (nullifier: Uint8Array, treeNumber: number): string {
   return `${bytesToHex(nullifier)}:${treeNumber}`
 }
 
-export { runWalletDecryption, SyncPhase }
+export { blockTimestampToDate, runWalletDecryption, SyncPhase }
 export type {
   DecryptSummary,
   PoiRefreshProgressSummary,

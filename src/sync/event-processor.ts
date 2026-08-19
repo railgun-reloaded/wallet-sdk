@@ -177,6 +177,7 @@ function denormalizeBlockData (block : EVMBlock) : {
             blockNumber,
             timestamp: block.timestamp,
             toAddress: unshield.to,
+            token: unshield.token,
             amount: unshield.amount,
             fee: unshield.fee,
             eventLogIndex: unshield.eventLogIndex

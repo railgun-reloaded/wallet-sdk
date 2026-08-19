@@ -19,6 +19,14 @@ export type {
 
 export { TokenType } from '@railgun-reloaded/wallet-node'
 
+export type {
+  HistoryTokenAmount,
+  ReceivedKind,
+  ReceivedTokenAmount,
+  TransactionCategory,
+  UnshieldTokenAmount
+} from '../history/index.js'
+
 export type { DecryptSummary, SyncProgress } from '../sync/wallet-decryptor.js'
 export { SyncPhase } from '../sync/wallet-decryptor.js'
 

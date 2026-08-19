@@ -1,9 +1,5 @@
 import type { EVMBlock, SourceAggregator } from '@railgun-reloaded/scanner'
-import type {
-  ChainStorage,
-  DBTxHistory,
-  WalletStorage
-} from '@railgun-reloaded/storage'
+import type { ChainStorage, WalletStorage } from '@railgun-reloaded/storage'
 import type { Hash, TransactionReceipt, WalletClient } from 'viem'
 import {
   WaitForTransactionReceiptTimeoutError,
@@ -27,6 +23,8 @@ import {
 } from './client-helpers.js'
 import { ERC20_APPROVAL_ABI, ERC721_APPROVAL_ABI } from './contracts/abi.js'
 import type { UnsignedTx } from './contracts/index.js'
+import type { TransactionHistoryEntry } from './history/index.js'
+import { buildTransactionHistory } from './history/index.js'
 import { initializeCrypto } from './init/crypto.js'
 import type { NetworkName } from './network-config.js'
 import { NETWORK_CONFIG } from './network-config.js'
@@ -152,9 +150,6 @@ type SyncSummary = {
 type SyncCursor =
   | { status: 'never-synced' }
   | { status: 'synced', lastBlockHeight: bigint }
-
-/** One wallet-scoped transaction-history row. */
-type TransactionHistoryEntry = DBTxHistory
 
 type RailgunClientCoreOptions<T extends RailgunClientCoreEngine> = {
   engine: T
@@ -345,24 +340,42 @@ class RailgunClientCore<T extends RailgunClientCoreEngine> {
       timestamp,
       metadata: {
         token: result.commitment.token.tokenAddress.toLowerCase(),
+        tokenType: result.commitment.token.tokenType,
+        tokenSubID: `0x${result.commitment.token.tokenSubID.toString(16).padStart(64, '0')}`,
         amount: result.shieldedAmount.toString()
       }
     })
   }
 
   /**
-   * Read stored transaction history for one wallet and chain, newest first.
+   * Read this wallet's transaction history for one chain, newest first.
+   *
+   * Each entry describes one transaction and every amount it moved for the
+   * wallet, with a category derived from those amounts rather than stored.
+   * Transactions the wallet recorded itself appear as pending entries until
+   * decryption reaches their block.
    * @param walletId - Wallet whose history should be returned.
-   * @param chainId - Chain to scope the history query to.
-   * @param limit - Optional maximum number of rows to return.
-   * @returns Stored wallet transaction history.
+   * @param chainId - Chain to scope the history to.
+   * @param limit - Optional maximum number of entries to return.
+   * @returns Transaction history entries, newest first.
    */
   getTransactionHistory (
     walletId: string,
     chainId: number,
     limit?: number
   ): Promise<TransactionHistoryEntry[]> {
-    return this.#walletStorage.getTxHistory(walletId, chainId, limit)
+    const network = findNetworkByChainId(chainId)
+    if (network === undefined) {
+      throw new Error(`Missing network config for chain ${chainId}`)
+    }
+    return buildTransactionHistory({
+      walletStorage: this.#walletStorage,
+      chainStorage: this.#engine.storage,
+      walletId,
+      chainId,
+      network: NETWORK_CONFIG[network],
+      ...(limit !== undefined && { limit })
+    })
   }
 
   /**

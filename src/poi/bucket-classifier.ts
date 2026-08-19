@@ -1,6 +1,8 @@
 import type { DBNote } from '@railgun-reloaded/storage'
+import { OutputType } from '@railgun-reloaded/wallet-node'
 
 import type { NetworkConfig as NetworkConfigEntry } from '../network-config.js'
+import { CommitmentType } from '../sync/event-processor.js'
 
 import type { NetworkPoiConfig } from './network-config.js'
 import type { NoteSpendState, PoiClassification } from './types.js'
@@ -8,16 +10,13 @@ import { POIStatus, WalletBalanceBucket } from './types.js'
 
 type POIStatusMap = Record<string, POIStatus | string | undefined>
 
-const SHIELD_COMMITMENT_TYPE = 0
-const OUTPUT_TYPE_CHANGE = 2
-
 /**
  * Check whether a note came from a shield commitment.
  * @param note - Stored wallet note.
  * @returns True for shield commitments.
  */
 function isShieldCommitment (note: DBNote): boolean {
-  return note.commitmentType === SHIELD_COMMITMENT_TYPE
+  return note.commitmentType === CommitmentType.Shield
 }
 
 /**
@@ -26,7 +25,7 @@ function isShieldCommitment (note: DBNote): boolean {
  * @returns True for change outputs.
  */
 function isChangeOutput (note: DBNote): boolean {
-  return note.outputType === OUTPUT_TYPE_CHANGE
+  return note.outputType === OutputType.Change
 }
 
 /**
