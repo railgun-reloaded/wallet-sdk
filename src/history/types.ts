@@ -17,11 +17,11 @@ type HistoryTokenAmount = {
 /**
  * Why a note arrived in the wallet.
  *
- * `shield` comes from the commitment type. `change` comes from the sender
- * annotation, which only decrypts for outputs this wallet created, so a note
- * received from someone else reads as `transfer`.
+ * `shield` comes from the commitment type. A transact output this wallet
+ * created is `change` or a broadcaster `fee`, based on its output type. A note
+ * received from another sender is a `transfer`.
  */
-type ReceivedKind = 'shield' | 'transfer' | 'change'
+type ReceivedKind = 'shield' | 'transfer' | 'fee' | 'change'
 
 /** A token amount the wallet received, and why. */
 type ReceivedTokenAmount = HistoryTokenAmount & {
@@ -59,8 +59,9 @@ type TransactionHistoryEntry = {
   spent: HistoryTokenAmount[]
   /**
    * What the transaction moved to another private address, per token. Derived
-   * from `spent`, less change and less anything unshielded. Includes any
-   * broadcaster fee, which is paid to a note this wallet does not hold.
+   * from `spent`, less change and less anything unshielded. A broadcaster fee
+   * is included only when this wallet does not hold its note. A self-held fee
+   * appears in `received` with kind `fee` and is not transferred.
    */
   transferred: HistoryTokenAmount[]
   /**

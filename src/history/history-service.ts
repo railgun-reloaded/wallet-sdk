@@ -33,6 +33,27 @@ const ERC20_TOKEN_SUB_ID = bytesToHex(new Uint8Array(TOKEN_SUB_ID_BYTES), {
   prefix: true
 })
 
+/** Thrown when stored transaction amounts produce an impossible residual. */
+class NegativeTransferredAmountError extends Error {
+  /** Token key whose residual is invalid. */
+  readonly token: string
+
+  /** Negative residual produced by the stored amounts. */
+  readonly amount: bigint
+
+  /**
+   * Construct an error that identifies the inconsistent stored transaction.
+   * @param token - Token key whose residual is invalid.
+   * @param amount - Negative residual produced by the stored amounts.
+   */
+  constructor (token: string, amount: bigint) {
+    super(`Negative transferred amount ${amount} for token ${token}.`)
+    this.name = 'NegativeTransferredAmountError'
+    this.token = token
+    this.amount = amount
+  }
+}
+
 /**
  * Widen a token sub-ID to the width the chain uses.
  *
@@ -68,9 +89,9 @@ type EntryDraft = {
 /**
  * Decide why a note arrived in the wallet.
  *
- * A shield is known from the commitment type. Everything else is a transact
- * output, and its annotation only decrypts for outputs this wallet created,
- * so a note from another sender falls through to `transfer`.
+ * A shield is known from the commitment type. A transact output that this
+ * wallet created carries its output type. A note from another sender has no
+ * decrypted output type and falls through to `transfer`.
  * @param note - Stored note row.
  * @returns The kind to report for the note.
  */
@@ -78,24 +99,36 @@ function receivedKind (note: DBNote): ReceivedKind {
   if (note.commitmentType === CommitmentType.Shield) {
     return 'shield'
   }
+  if (note.outputType === OutputType.BroadcasterFee) {
+    return 'fee'
+  }
   return note.outputType === OutputType.Change ? 'change' : 'transfer'
 }
 
 /**
- * Rank a note's PPOI state by how settled it is, cleared lowest.
+ * Rank a note's PPOI state from cleared through unknown, pending, and blocked.
+ * A network without PPOI has no clearance evidence, so it ranks after cleared.
  * @param state - PPOI state of one note.
  * @returns Rank used to pick the least settled state of a set.
  */
 function settlementRank (state: NoteSpendState): number {
-  if (state.poi === null || state.poi.kind === 'cleared') {
-    return 0
+  if (state.poi === null) {
+    return 1
   }
-  return state.poi.kind === 'pending' ? 1 : 2
+  switch (state.poi.kind) {
+    case 'cleared':
+      return 0
+    case 'pending':
+      return 2
+    case 'blocked':
+      return 3
+  }
 }
 
 /**
- * Reduce a transaction's note states to the least settled one, so an entry
- * only reads as cleared when every note it created is.
+ * Reduce a transaction's note states to the least settled PPOI result.
+ * Cleared ranks before a network without PPOI, then pending, then blocked.
+ * This keeps an entry from reading as cleared when any note is not cleared.
  * @param states - PPOI states of the notes the transaction created.
  * @returns The least settled state, or null when there were no notes.
  */
@@ -161,6 +194,7 @@ function deduct (
  * and the value it unshielded.
  * @param draft - Accumulated amounts for one transaction.
  * @returns One amount per token, omitting tokens with nothing left over.
+ * @throws {NegativeTransferredAmountError} When stored amounts produce a negative residual.
  */
 function transferredAmounts (draft: EntryDraft): HistoryTokenAmount[] {
   const totals = new Map<string, HistoryTokenAmount>()
@@ -175,7 +209,7 @@ function transferredAmounts (draft: EntryDraft): HistoryTokenAmount[] {
   }
 
   for (const amount of draft.received) {
-    if (amount.kind === 'change') {
+    if (amount.kind === 'change' || amount.kind === 'fee') {
       deduct(totals, amount, amount.amount)
     }
   }
@@ -185,7 +219,13 @@ function transferredAmounts (draft: EntryDraft): HistoryTokenAmount[] {
     deduct(totals, unshield, unshield.amount + unshield.fee)
   }
 
-  return [...totals.values()].filter((amount) => amount.amount > 0n)
+  const amounts = [...totals.values()]
+  for (const amount of amounts) {
+    if (amount.amount < 0n) {
+      throw new NegativeTransferredAmountError(tokenKey(amount), amount.amount)
+    }
+  }
+  return amounts.filter((amount) => amount.amount !== 0n)
 }
 
 /**
@@ -236,6 +276,24 @@ function toTokenAmount (
     tokenType,
     tokenSubID: toCanonicalTokenSubID(tokenSubID),
     amount
+  }
+}
+
+/**
+ * Check whether history can represent a stored note's token standard.
+ * Skipping one unsupported note keeps supported history rows readable.
+ * @param value - Stored token type, in numeric or named form.
+ * @returns True for ERC-20 and ERC-721 token types.
+ */
+function isSupportedHistoryTokenType (value: number | string): boolean {
+  switch (String(value).toUpperCase()) {
+    case '0':
+    case 'ERC20':
+    case '1':
+    case 'ERC721':
+      return true
+    default:
+      return false
   }
 }
 
@@ -407,18 +465,17 @@ async function readUnshieldsByTxid (
  * Describe an unshield event, naming the token it moved.
  *
  * The event's own token is used when the chain data carries it. Databases
- * scanned before unshield tokens were persisted fall back to the token of
- * a note the transaction spent, which is the same token whenever a
- * transaction moves one. A token is always named either way, so no amount
- * reports an address that names no contract.
+ * scanned before unshield tokens were persisted can use a fallback only when
+ * every note the transaction spent has the same token key. Without an event
+ * token or a safe fallback, the event cannot name its token and is skipped.
  * @param event - Stored unshield event.
- * @param fallback - Token of a note the transaction spent from this wallet.
- * @returns The unshielded amount in public form.
+ * @param fallback - Shared token of every note this wallet spent, when known.
+ * @returns The unshielded amount, or null when its token is unknown.
  */
 function toUnshieldAmount (
   event: DBUnshield,
-  fallback: HistoryTokenAmount
-): UnshieldTokenAmount {
+  fallback: HistoryTokenAmount | undefined
+): UnshieldTokenAmount | null {
   const eventToken = event.token as
     | {
       tokenAddress?: Uint8Array
@@ -429,13 +486,17 @@ function toUnshieldAmount (
     | undefined
   const token = eventToken?.tokenAddress !== undefined
     ? bytesToHex(eventToken.tokenAddress, { prefix: true }).toLowerCase()
-    : fallback.token
+    : fallback?.token
   const tokenSubID = eventToken?.tokenSubID !== undefined
     ? toCanonicalTokenSubID(eventToken.tokenSubID)
-    : fallback.tokenSubID
+    : fallback?.tokenSubID
   const tokenType = eventToken?.tokenType !== undefined
     ? toTokenType(eventToken.tokenType)
-    : fallback.tokenType
+    : fallback?.tokenType
+
+  if (token === undefined || tokenSubID === undefined || tokenType === undefined) {
+    return null
+  }
 
   return {
     token,
@@ -529,6 +590,9 @@ async function buildTransactionHistory (params: {
   const spentNullifiers = new Set<string>()
 
   for (const note of notes) {
+    if (!isSupportedHistoryTokenType(note.tokenType)) {
+      continue
+    }
     // A zero-value note pads a circuit rather than moving value.
     if (note.amount === 0n) {
       continue
@@ -579,11 +643,18 @@ async function buildTransactionHistory (params: {
       if (events === undefined) continue
       // An unshield spends a note, so a transaction this wallet spent nothing
       // in did not unshield for it.
-      const fallback = draft.spent[0]
-      if (fallback === undefined) continue
+      if (draft.spent.length === 0) continue
+      const spentTokenKeys = new Set(draft.spent.map(tokenKey))
+      const fallback = spentTokenKeys.size === 1 ? draft.spent[0] : undefined
+      let unshieldTimestamp: bigint | undefined
       for (const event of events) {
-        draft.unshields.push(toUnshieldAmount(event, fallback))
-        draft.timestamp = blockTimestampToDate(event.timestamp)
+        const amount = toUnshieldAmount(event, fallback)
+        if (amount === null) continue
+        draft.unshields.push(amount)
+        unshieldTimestamp ??= event.timestamp
+      }
+      if (draft.timestamp === null && unshieldTimestamp !== undefined) {
+        draft.timestamp = blockTimestampToDate(unshieldTimestamp)
       }
     }
   }

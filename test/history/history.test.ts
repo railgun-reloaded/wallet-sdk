@@ -11,14 +11,22 @@ import {
 import { TokenType } from '@railgun-reloaded/wallet-node'
 
 import { RailgunClient } from '../../src/client.js'
+import { buildTransactionHistory } from '../../src/history/history-service.js'
+import type { NetworkConfig } from '../../src/network-config.js'
 import { MNEMONIC } from '../fixtures/wallet-vectors.js'
 
 const CHAIN_ID = 11155111
 const TOKEN = '0x0000000000000000000000000000000000000abc'
+const SECOND_TOKEN = '0x0000000000000000000000000000000000000def'
 const SHIELD_TXID = new Uint8Array(32).fill(0xa1)
 const RECEIVE_TXID = new Uint8Array(32).fill(0xb2)
 const SEND_TXID = new Uint8Array(32).fill(0xc3)
 const UNSHIELD_TXID = new Uint8Array(32).fill(0xd4)
+const POI_CONFIG = {
+  launchBlock: 1n,
+  launchTimestamp: 0,
+  requiredListKeys: ['test-list']
+}
 
 /**
  * Build 32 deterministic bytes.
@@ -174,6 +182,68 @@ test('spending a note and taking change back is a send', async () => {
   )
 })
 
+test('a self-held broadcaster fee is received but not transferred', async () => {
+  const { client, walletId } = await seed([
+    {
+      commitment: bytes32(0x44),
+      nullifier: bytes32(0x45),
+      creationTxid: SHIELD_TXID,
+      spent: true,
+      spentTxid: SEND_TXID,
+      spentBlockNumber: 30n
+    },
+    {
+      commitment: bytes32(0x46),
+      nullifier: bytes32(0x47),
+      commitmentType: 1,
+      outputType: 1,
+      amount: 10n,
+      blockNumber: 30n,
+      creationTxid: SEND_TXID
+    }
+  ])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+  const send = history.find((entry) => entry.txid === `0x${'c3'.repeat(32)}`)
+
+  assert.equal(send?.received[0]?.kind, 'fee')
+  assert.equal(
+    send?.transferred[0]?.amount,
+    90n,
+    'the fee note this wallet holds did not leave its balance'
+  )
+})
+
+test('a negative transferred residual raises a data error', async () => {
+  const { client, walletId } = await seed([
+    {
+      commitment: bytes32(0x4c),
+      nullifier: bytes32(0x4d),
+      creationTxid: SHIELD_TXID,
+      spent: true,
+      spentTxid: SEND_TXID,
+      spentBlockNumber: 30n
+    },
+    {
+      commitment: bytes32(0x4e),
+      nullifier: bytes32(0x4f),
+      commitmentType: 1,
+      outputType: 2,
+      amount: 110n,
+      blockNumber: 30n,
+      creationTxid: SEND_TXID
+    }
+  ])
+
+  await assert.rejects(
+    client.getTransactionHistory(walletId, CHAIN_ID),
+    {
+      name: 'NegativeTransferredAmountError',
+      message: `Negative transferred amount -10 for token ${TOKEN}:0:${`0x${'00'.repeat(32)}`}.`
+    }
+  )
+})
+
 test('an unshielded amount and its fee are not counted as a transfer', async () => {
   const { client, chainDB, walletId } = await seed([
     {
@@ -204,6 +274,52 @@ test('an unshielded amount and its fee are not counted as a transfer', async () 
     unshield?.transferred,
     [],
     'the whole spent note left through the unshield, so nothing was transferred'
+  )
+})
+
+test('an unshield without a token is skipped for a multi-token spend', async () => {
+  const { client, chainDB, walletId } = await seed([
+    {
+      commitment: bytes32(0x40),
+      nullifier: bytes32(0x41),
+      token: TOKEN,
+      amount: 100n,
+      spent: true,
+      spentTxid: UNSHIELD_TXID,
+      spentBlockNumber: 50n
+    },
+    {
+      commitment: bytes32(0x42),
+      nullifier: bytes32(0x43),
+      token: SECOND_TOKEN,
+      amount: 50n,
+      spent: true,
+      spentTxid: UNSHIELD_TXID,
+      spentBlockNumber: 50n
+    }
+  ])
+
+  await createChainStorage(chainDB).insertUnshieldBatch([{
+    transactionHash: UNSHIELD_TXID,
+    blockNumber: 50n,
+    timestamp: 1_781_188_332n,
+    toAddress: new Uint8Array(20).fill(0xee),
+    amount: 90n,
+    fee: 10n,
+    eventLogIndex: 0
+  }])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+  const send = history.find((entry) => entry.txid === `0x${'d4'.repeat(32)}`)
+
+  assert.deepEqual(send?.unshields, [])
+  assert.deepEqual(
+    send?.transferred.map(({ token, amount }) => ({ token, amount })),
+    [
+      { token: TOKEN, amount: 100n },
+      { token: SECOND_TOKEN, amount: 50n }
+    ],
+    'an unknown unshield token does not alter either token total'
   )
 })
 
@@ -293,6 +409,48 @@ test('an unshield timestamp in seconds reports the same instant', async () => {
   assert.deepEqual(unshield?.timestamp, new Date('2026-06-11T14:32:12.000Z'))
 })
 
+test('unshield events do not replace a known spent timestamp', async () => {
+  const spentTimestamp = new Date('2026-01-02T03:04:05.000Z')
+  const { client, chainDB, walletId } = await seed([
+    {
+      commitment: bytes32(0x55),
+      nullifier: bytes32(0x56),
+      creationTxid: SHIELD_TXID,
+      spent: true,
+      spentTxid: UNSHIELD_TXID,
+      spentBlockNumber: 50n,
+      spentTimestamp
+    }
+  ])
+
+  await createChainStorage(chainDB).insertUnshieldBatch([
+    {
+      transactionHash: UNSHIELD_TXID,
+      blockNumber: 50n,
+      timestamp: 1_781_188_332n,
+      toAddress: new Uint8Array(20).fill(0xee),
+      amount: 40n,
+      fee: 0n,
+      eventLogIndex: 0
+    },
+    {
+      transactionHash: UNSHIELD_TXID,
+      blockNumber: 50n,
+      timestamp: 1_781_188_333n,
+      toAddress: new Uint8Array(20).fill(0xef),
+      amount: 50n,
+      fee: 10n,
+      eventLogIndex: 1
+    }
+  ])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+  const unshield = history.find((entry) => entry.category === 'unshield')
+
+  assert.equal(unshield?.unshields.length, 2)
+  assert.deepEqual(unshield?.timestamp, spentTimestamp)
+})
+
 test('a note carries its token standard into the history', async () => {
   const { client, walletId } = await seed([
     {
@@ -308,6 +466,90 @@ test('a note carries its token standard into the history', async () => {
 
   assert.equal(entry?.received[0]?.tokenType, TokenType.ERC721)
   assert.equal(entry?.received[0]?.tokenSubID, `0x${'0f'.repeat(32)}`)
+})
+
+test('an ERC-1155 note does not hide supported token history', async () => {
+  const { client, walletId } = await seed([
+    {
+      commitment: bytes32(0x50),
+      nullifier: bytes32(0x51),
+      token: SECOND_TOKEN,
+      tokenType: TokenType.ERC1155,
+      tokenSubID: bytes32(0x52),
+      creationTxid: RECEIVE_TXID
+    },
+    {
+      commitment: bytes32(0x53),
+      nullifier: bytes32(0x54),
+      treePosition: 1,
+      token: TOKEN,
+      tokenType: TokenType.ERC20,
+      creationTxid: SHIELD_TXID
+    }
+  ])
+
+  const history = await client.getTransactionHistory(walletId, CHAIN_ID)
+
+  assert.equal(history.length, 1)
+  assert.equal(history[0]?.received[0]?.token, TOKEN)
+  assert.equal(history[0]?.received[0]?.tokenType, TokenType.ERC20)
+})
+
+test('a not-configured note keeps a mixed transaction from reading as cleared', async () => {
+  const { walletDB, walletId } = await seed([
+    {
+      commitment: bytes32(0x48),
+      nullifier: bytes32(0x4a),
+      creationTxid: RECEIVE_TXID,
+      poisPerList: { 'test-list': 'Valid' }
+    },
+    {
+      commitment: bytes32(0x49),
+      nullifier: bytes32(0x4b),
+      treePosition: 1,
+      creationTxid: RECEIVE_TXID,
+      poisPerList: { 'test-list': 'Valid' }
+    }
+  ])
+  const spendStates = []
+
+  for (const poiOrder of [
+    [POI_CONFIG, POI_CONFIG, undefined],
+    [undefined, POI_CONFIG, POI_CONFIG]
+  ]) {
+    let poiIndex = 0
+    const network: NetworkConfig = {
+      chainID: CHAIN_ID,
+      deploymentBlock: 1n,
+      proxyContractAddress: '0x0000000000000000000000000000000000000000',
+      rpcURL: 'https://rpc.example',
+      poi: POI_CONFIG
+    }
+    Object.defineProperty(network, 'poi', {
+      /**
+       * Reverse the state order without exposing the internal reducer.
+       * @returns The next PPOI configuration in the ordering under test.
+       */
+      get: () => {
+        const poi = poiOrder[poiIndex]
+        poiIndex += 1
+        return poi
+      }
+    })
+    const [entry] = await buildTransactionHistory({
+      walletStorage: createWalletStorage(walletDB),
+      chainStorage: undefined,
+      walletId,
+      chainId: CHAIN_ID,
+      network
+    })
+    spendStates.push(entry?.spendState)
+  }
+
+  assert.deepEqual(spendStates, [
+    { spendable: true, poi: null },
+    { spendable: true, poi: null }
+  ])
 })
 
 test('another wallet\'s unshield in the same transaction is not attributed here', async () => {
